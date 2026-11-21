@@ -9,6 +9,8 @@
 ![AI 에이전트 포함 시스템 아키텍처](images/architecture-ai-agent.png)
 
 > 그림은 [`scripts/draw_architecture.py`](../scripts/draw_architecture.py)로 생성한다(`python scripts/draw_architecture.py`).
+>
+> 이 그림의 AI 부분은 이전 설계(Amazon Bedrock Converse, Guardrails)로 그려져 있다. 현재 설계는 아래 텍스트 도식과 같이 LangGraph 에이전트가 외부 OpenAI 호환 LLM API를 호출하는 구조이므로, 그림은 다시 생성해야 한다.
 
 ```
 브라우저(React) ──▶ CloudFront ──▶ S3 (비공개, 정적 파일, OAC)
