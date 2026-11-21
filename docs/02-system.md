@@ -6,6 +6,10 @@
 
 ## 2.1 아키텍처
 
+![AI 에이전트 포함 시스템 아키텍처](images/architecture-ai-agent.png)
+
+> 그림은 [`scripts/draw_architecture.py`](../scripts/draw_architecture.py)로 생성한다(`python scripts/draw_architecture.py`).
+
 ```
 브라우저(React) ──▶ CloudFront ──▶ S3 (비공개, 정적 파일, OAC)
      │
