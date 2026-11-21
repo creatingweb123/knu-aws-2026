@@ -20,7 +20,7 @@
 
 ## 7.2 단계와 연동 지점
 
-프론트엔드는 7단계, 백엔드는 7단계(6단계는 6a·6b)다. 두 저장소는 연동 지점 S0–S5에서 만난다.
+프론트엔드는 7단계, 백엔드는 7단계(6단계는 6a·6b)다. 코드는 한 저장소의 `backend/`, `frontend/`에 두며, 두 영역은 연동 지점 S0–S5에서 만난다.
 
 | 지점 | 시점 | 백엔드가 넘기는 것 | 프론트엔드가 시작하는 일 |
 |---|---|---|---|
@@ -54,7 +54,7 @@
 
 ### 병렬로 나눌 수 있는 조합
 
-| 저장소 | 조합 |
+| 영역 | 조합 |
 |---|---|
 | 백엔드 | 2단계 이후 "3단계(트랜잭션)"와 "6a(AI 레벨 0·계약)"는 서로 의존하지 않는다. 5단계의 사진 처리 로직(Pillow 축소·메타데이터 제거)도 3단계와 병행해 단위 테스트까지 먼저 만들 수 있다 |
 | 프론트엔드 | 1단계 공통 컴포넌트가 끝나면 "2·4단계(실행자·수신함 화면)"와 "3·6단계(하루 남기기 화면)"를 나눌 수 있다. 두 흐름은 `types.ts`와 공통 컴포넌트만 공유한다 |
@@ -86,7 +86,7 @@
 | DynamoDB `HaruTable`(PK/SK, GSI1, GSI2, TTL 속성 `ttl`) | [§2.6](./02-architecture.md) |
 | `common/` 모듈, `GET /me` | BE-AUTH-04, 05 |
 | `samconfig.toml`(dev/demo), 출력값 정의 | BE-INFRA-01, 04 |
-| 로컬 개발 환경 골격: `docker-compose.yml`, init 스크립트(HaruTable+GSI+TTL, `HaruAgentCheckpoints`, 유저 풀+시드 사용자), HTTP 어댑터(payload 2.0 변환, JWKS 검증), `DynamoDBSaver` 로컬 연결 확인(BE-Q21) | BE-INFRA-08 |
+| 로컬 개발 환경 골격: `docker-compose.yml`, init 스크립트(HaruTable+GSI+TTL, `HaruAgentCheckpoints`, 유저 풀+시드 사용자), HTTP 어댑터(payload 2.0 변환, JWKS 검증), `DynamoDBSaver` 연결 확인은 의존성을 고정하는 6a에서 한다(BE-Q21) | BE-INFRA-08 |
 
 - 산출물: `dev` 스택, `ApiUrl`/`UserPoolId`/`UserPoolClientId` 출력.
 - 검증: T1(토큰 없이 401), 가입 직후 로그인 가능, `GET /me` 닉네임 확인(`dev` 스택). 로컬에서는 시드 사용자 토큰으로 `GET /me`가 같은 응답을 내는지 확인한다(BE-Q17).
@@ -156,6 +156,7 @@
 | `turns` 경로의 분기: 세션 없음·소유자 아님 404, `turn ≠ expectedTurn` 200, `READY`·`FAILED` 409 `AI_SESSION_CLOSED`(레벨 0은 생성 즉시 `READY`이므로 같은 `turn`의 `turns`는 `AI_SESSION_CLOSED`). 턴 잠금·`AI_SESSION_BUSY`는 6b | BE-AI-09 |
 | 레벨 0 파이프라인(`AGENT_MODE=pipeline`): `graph.py` 골격(`draft` → `check_draft` → 규칙 노드 → `gate` → 통과 END / 위반 시 바로 `fallback`)으로 `prompts/day_card.md` 단발 생성 → pydantic 검증(실패 시 남은 12초 이상이면 1회 재시도) → `check_draft` → `gate` → 필요하면 결정적 폴백 → `READY`. interrupt가 없으므로 체크포인터 없이 컴파일한다. 6b는 규칙 노드 자리에 `decide`를 연결하고 체크포인터를 붙인다 | BE-AI-11, 13 |
 | 의존성 고정(`==`)과 빌드: 에이전트 함수 전용 requirements.txt, `sam build --use-container`, 패키지 크기(`du -sh .aws-sam/build/AiCardFunction`)·Init Duration 기록(BE-Q18). 레벨 0도 같은 의존성을 쓰므로 빌드·import 문제를 여기서 먼저 드러낸다 | BE-AI-14 |
+| 로컬 에뮬레이터의 `HaruAgentCheckpoints`(1단계 init에서 생성)에 `DynamoDBSaver` 연결 확인. 안 되면 BE-Q21의 대안으로 바꾼다 | BE-AI-14, BE-INFRA-08 |
 | 타임아웃 규칙(Lambda 27s, connect 2 / read 8, 남은 12초 미만이면 호출 중단)과 에러 코드 | BE-AI-05 |
 | `AiQuota`(하루 10세션, 429 `AI_QUOTA_EXCEEDED`), 경로별 스로틀 | BE-AI-10, BE-INFRA-06 |
 | `POST /plans`의 `authoring.aiSessionId`로 AI 세션 지표 계산 | BE-PLAN-03 |
@@ -438,13 +439,14 @@ T1–T22의 판정은 실제 AWS에 SAM으로 배포한 스택에서 한다. T3�
 
 | 항목 | 프론트엔드 | 백엔드 |
 |---|---|---|
-| `main` | 항상 빌드 가능 | 항상 배포 가능 |
-| 브랜치 | `feat/<단계>-<요약>` (예: `feat/5-photo-polling`) | `feat/<단계>-<요약>` (예: `feat/3-claim-transaction`) |
+| 코드 위치 | `frontend/` | `backend/` |
+| `main` | `frontend/`가 항상 빌드 가능 | `backend/`가 항상 배포 가능 |
+| 브랜치 | `feat/fe-<단계>-<요약>` (예: `feat/fe-5-photo-polling`) | `feat/be-<단계>-<요약>` (예: `feat/be-3-claim-transaction`) |
 | PR 본문 | 요구사항 ID(`FE-*`), 화면 번호, 목업·실제 API 중 어디서 확인했는지, 390px 스크린샷 | 요구사항 ID(`BE-*`), 통과한 검증 시나리오(T 번호) |
 | 커밋 접두어 | `feat:` `fix:` `test:` `style:` `chore:` `docs:` | `feat:` `fix:` `test:` `infra:` `docs:` |
 | 비밀값 | `.env.local`은 커밋하지 않고 `.env.example`만 둔다 | 계정 ID·토큰·테스트 비밀번호는 로컬 `.env`나 SSM Parameter Store에 둔다 |
 
-두 저장소 모두 PR에 리뷰어 1명 이상을 둔다.
+모든 PR에 리뷰어 1명 이상을 둔다. 두 영역의 단계 번호가 겹치므로 브랜치 이름에 `fe`/`be`를 붙여 구분한다. API 계약을 바꾸는 PR은 [§3](./03-api-contract.md), `backend/`, `frontend/`의 `types.ts`·MSW 핸들러를 같은 PR에서 함께 고칠 수 있다.
 
 ## 7.10 위험과 대응
 

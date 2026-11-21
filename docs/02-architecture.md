@@ -32,7 +32,7 @@ CloudWatch Logs/Metrics/Alarms, 배포: AWS SAM
 
 요청 경로는 네 갈래다.
 
-1. **정적 파일**: CloudFront가 비공개 S3의 React 빌드 산출물을 제공한다. 웹 버킷과 배포는 백엔드 SAM 스택이 만들고, 프론트엔드 저장소는 빌드 결과를 sync한다.
+1. **정적 파일**: CloudFront가 비공개 S3의 React 빌드 산출물을 제공한다. 웹 버킷과 배포는 백엔드 SAM 스택이 만들고, `frontend/`의 빌드 결과를 sync한다.
 2. **API**: 브라우저가 Cognito ID 토큰으로 API Gateway를 직접 호출한다. Lambda가 계획별 작성자·실행자 권한을 검사한다.
 3. **AI 정리**: Lambda 안의 LangGraph 에이전트 그래프가 외부 OpenAI 호환 LLM API를 호출한다. HTTP 요청 1번이 에이전트 1턴이고, 턴 사이의 대화·그래프 상태는 체크포인트 테이블에 남는다.
 4. **사진**: 브라우저가 presigned URL로 S3에 직접 올리면 SQS를 거쳐 사진 처리 Lambda가 비동기로 처리한다.
@@ -63,7 +63,7 @@ CloudWatch Logs/Metrics/Alarms, 배포: AWS SAM
 | 스타일 | CSS Modules 또는 Tailwind (팀 합의) | 모바일 우선, 최대 폭 480px 가운데 정렬 |
 | API 목업 | MSW | 백엔드 배포 전 계약 기준으로 개발 |
 | 로컬 백엔드 (선택) | 백엔드 docker compose (API `http://localhost:3000`, Floci Cognito·S3 `http://localhost:4566`) | 백엔드 기능이 로컬에 올라온 뒤 실제 흐름 확인. §2.4.6 |
-| 배포 | S3(비공개) + CloudFront | 버킷·배포는 백엔드 SAM 스택이 생성, 프론트엔드 저장소는 빌드 산출물 sync |
+| 배포 | S3(비공개) + CloudFront | 버킷·배포는 백엔드 SAM 스택이 생성, `frontend/` 빌드 산출물을 sync |
 
 환경 변수
 ```
@@ -258,7 +258,7 @@ volumes: { floci-data: {}, ollama-models: {} }
 | 로컬 백엔드 | `http://localhost:3000`(어댑터) 또는 Vite 프록시 | Floci Cognito(`http://localhost:4566`)의 시드 사용자, 또는 dev JWT | 백엔드 기능이 로컬에 올라온 뒤 실제 흐름 확인 |
 | `dev`/`demo` 스택 | SAM 출력 `ApiUrl` | 실제 Cognito(`UserPoolId`, `UserPoolClientId`) | S1–S5 연동, 리허설, 시연 |
 
-- 로컬 백엔드 모드에서 프론트는 API 주소와 Cognito 설정(User Pool ID, App Client ID, 엔드포인트)을 init 스크립트가 출력한 로컬 값으로 바꾼다. 로그인 SDK가 사용자 지정 엔드포인트를 지원하는지(Amplify v6의 `userPoolEndpoint` 등)는 프론트 저장소에서 확인한다(BE-Q17). 지원하지 않으면 로컬 모드에서는 dev JWT를 쓴다.
+- 로컬 백엔드 모드에서 프론트는 API 주소와 Cognito 설정(User Pool ID, App Client ID, 엔드포인트)을 init 스크립트가 출력한 로컬 값으로 바꾼다. 로그인 SDK가 사용자 지정 엔드포인트를 지원하는지(Amplify v6의 `userPoolEndpoint` 등)는 프론트엔드 구현(`frontend/`)에서 확인한다(BE-Q17). 지원하지 않으면 로컬 모드에서는 dev JWT를 쓴다.
 - 사진 업로드는 presigned URL의 호스트(`http://localhost:4566`)로 직접 PUT한다. init 스크립트가 사진 버킷 CORS에 `http://localhost:5173`을 넣는다.
 - 로컬 백엔드 모드의 동작이 계약 일치의 근거는 아니다. 계약 비교(S2·S3·S4)는 `dev` 스택 응답으로 한다.
 
@@ -284,7 +284,7 @@ volumes: { floci-data: {}, ollama-models: {} }
 | `VITE_AUTH_MODE` | (쓰지 않음) | `cognito`(기본) / `dev-jwt`(FE-Q8) | `cognito` |
 
 로컬 백엔드 모드 사용 방법
-- 백엔드 저장소에서 `docker compose up`을 실행하면 init 스크립트가 테이블·버킷·큐·유저 풀·시드 사용자를 만든다. 프론트는 호스트에서 `npm run dev`(Vite `http://localhost:5173`)로 띄운다. 어댑터의 CORS 허용 Origin은 `http://localhost:5173`이다(또는 Vite 프록시).
+- `backend/`에서 `docker compose up`을 실행하면 init 스크립트가 테이블·버킷·큐·유저 풀·시드 사용자를 만든다. 프론트는 호스트에서 `npm run dev`(Vite `http://localhost:5173`)로 띄운다. 어댑터의 CORS 허용 Origin은 `http://localhost:5173`이다(또는 Vite 프록시).
 - 인증: Floci Cognito의 시드 사용자(`AdminCreateUser`, `AdminSetUserPassword --permanent`, `nickname`)로 로그인한다. 어댑터가 ID 토큰을 로컬 User Pool JWKS로 검증해 클레임을 넣으므로, API 호출 방식(`Authorization: Bearer {ID token}`)은 AWS와 같다. Amplify가 사용자 지정 엔드포인트를 지원하지 않거나 ID 토큰에 `nickname`이 없으면(FE-Q8) `VITE_AUTH_MODE=dev-jwt`로 어댑터의 dev JWT 발급 엔드포인트(`STAGE=local` 전용)에서 토큰을 받는다. 어댑터는 `STAGE=local`에서 Floci User Pool JWKS와 dev JWT 공개키를 둘 다 신뢰하므로 dev JWT도 같은 검증을 통과하고, API 호출 방식은 바뀌지 않는다. 발급 경로와 요청 형식은 백엔드 1단계에서 정해지는 대로 `auth/devJwt.ts`에 맞춘다. 자동화 테스트(Playwright)도 dev JWT를 쓴다.
 - 회원가입: 자동 확인(PreSignUp 트리거)이 로컬에서 동작하지 않으므로 로컬에서는 시드 사용자로만 로그인하고, FE-AUTH-02는 `dev` 스택에서 확인한다.
 - 사진: presigned URL은 `http://localhost:4566` 호스트와 경로 방식 주소로 서명되어 온다. `upload.url`과 `upload.headers`를 그대로 쓴다. init 스크립트가 사진 버킷 CORS에 `http://localhost:5173`을 넣는다.
@@ -534,7 +534,20 @@ SAM 주의: 버킷 알림(QueueConfiguration)은 SQS 큐 정책이 먼저 있어
 
 ## 2.10 저장소 구조
 
-### 백엔드
+문서와 백엔드·프론트엔드 코드를 한 저장소에 둔다.
+
+```
+README.md
+docs/          # 기획·명세·API 계약·개발 계획 (기준 문서)
+references/    # 초안 PDF, 화면 시안, AI 에이전트 권고안
+scripts/       # 문서용 스크립트 (draw_architecture.py)
+backend/       # 백엔드 코드 (아래 "백엔드" 트리)
+frontend/      # 프론트엔드 코드 (아래 "프론트엔드" 트리)
+```
+
+문서에 나오는 코드 경로는 영역 폴더 기준이다. 백엔드 경로(`src/domain/claim_service.py`, `tests/integration/`, `scripts/seed.py` 등)는 `backend/` 아래, 프론트엔드 경로(`src/api/client.ts`, `src/mocks/` 등)는 `frontend/` 아래를 가리킨다. 루트 `scripts/`는 문서용이고 백엔드 스크립트는 `backend/scripts/`에 둔다.
+
+### 백엔드 (`backend/`)
 
 ```
 template.yaml               # SAM: HttpApi, Cognito, DynamoDB(HaruTable, HaruAgentCheckpoints), S3(웹·사진), CloudFront(OAC), SQS+DLQ, Lambda, 알람
@@ -575,7 +588,7 @@ scripts/
 - `handlers/ai_card.py`: 턴 잠금, `AiQuota`, 그래프 실행(`thread_id = sessionId`, `durability="sync"`, `tracing_context(enabled=False)`), 그래프 상태 → `SessionView` 변환, trace 생성.
 - `responses.py`: Plan·Claim·Record·InboxItem 직렬화. 허용 목록 방식으로 내부 속성을 걸러낸다(BE-PLAN-08).
 
-### 프론트엔드
+### 프론트엔드 (`frontend/`)
 
 ```
 src/
