@@ -55,25 +55,25 @@
     - Stubber로 `TransactionConflict` 3회 재시도 후 503 `TRY_AGAIN`, `ConditionalCheckFailed` 무재시도 `ConditionFailed`를 확인한다.
     - _Requirements: 2.1, 2.3, 4.9, 4.10, 4.11_
 
-- [ ] 3. 순수 도메인 함수 (`src/domain`)
-  - [ ] 3.1 원문 충실도 판정 구현
+- [x] 3. 순수 도메인 함수 (`src/domain`)
+  - [x] 3.1 원문 충실도 판정 구현
     - `fidelity.py`: `normalize`, `find_not_in_source(sources, targets)`. 토큰별 말미 조사 제거 후 근거 텍스트(공백 제거)의 부분 문자열 일치, 모든 토큰이 일치해야 통과(BE-Q25).
     - `null`·빈·공백 target은 판정하지 않고, `sources`가 비었으면 나머지 target을 모두 hit로 반환한다. hit는 입력 순서, `path`·`text`는 입력 그대로. 순수 함수(입력 불변, LLM·DB 없음).
     - `tests/fixtures/normalization.json`(동의어 사전)을 만들고 사전에 있는 동의어만 같은 표현으로 인정한다.
     - _Requirements: 9.1, 9.2, 9.3, 9.4, 9.5, 9.6, 9.8, 9.10_
 
-  - [ ] 3.2 개인정보 탐지 구현
+  - [x] 3.2 개인정보 탐지 구현
     - `privacy.py`: `PrivacyHit(path, kind, severity)`, `scan_privacy(texts)`, `mask(text)`. `PHONE`, `EMAIL`, `RRN`, `UNIT`은 `HIGH`, `PLATE`, `LOT`, `PRIVATE_PLACE`(사전 + "~네 집" 정규식)는 `MEDIUM`(BE-Q22). `PERSON_NAME`은 구현하지 않고 항상 빈 결과(BE-Q26).
     - 빈 입력·`null`은 예외 없이 빈 목록. `mask`는 `HIGH` 부분만 가리고 재스캔 시 `HIGH` 0건.
     - 로그에는 `kind`별 개수만 남기는 헬퍼를 둔다(원문·일치 문자열 금지).
     - _Requirements: 10.1, 10.2, 10.3, 10.4, 10.6, 10.7_
 
-  - [ ]* 3.3 Write property test for find_not_in_source
+  - [x]* 3.3 Write property test for find_not_in_source
     - **Property 8: `S ⊆ S'`이면 `hits(S') ⊆ hits(S)`(단조성), 같은 입력은 같은 결과, 입력 불변**
     - 단위 테스트: 데모 사연 기준 "골목 빵집"은 hit, "출근길 빵집"은 통과(9.9), 빈 `sources`(9.5), 빈 target(9.4), 픽스처 동의어(9.8).
     - **Validates: Requirements 9.1, 9.4, 9.5, 9.7, 9.9**
 
-  - [ ]* 3.4 Write property test for scan_privacy·mask
+  - [x]* 3.4 Write property test for scan_privacy·mask
     - **Property 9: 전화·이메일·주민번호·동/호수 샘플은 `HIGH`, 데모 사연은 0건, `mask` 후 재스캔 시 `HIGH` 0건**
     - 단위 테스트: 차량번호·번지·비공개 장소 사전, 음성 사례, 빈 입력.
     - **Validates: Requirements 10.1, 10.2, 10.3, 10.4, 10.5**
