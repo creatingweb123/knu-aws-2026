@@ -1,8 +1,10 @@
 -r src/requirements.txt
 pytest==9.2.0
 hypothesis==6.170.17
-# botocore Stubber와 로컬 통합 테스트용
+# botocore Stubber와 로컬·AWS 통합 테스트용
 boto3==1.44.10
+# Docker 없이 실제 DynamoDB 조건식·갱신식을 확인하는 인프로세스 흉내(병렬성은 재현하지 않는다)
+moto[dynamodb]==5.2.6
 # template.yaml 정적 검사(sam validate --lint와 같은 검사기)와 템플릿 단위 테스트
 cfn-lint==1.61.0
 PyYAML==6.0.4

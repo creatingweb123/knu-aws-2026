@@ -156,11 +156,13 @@
     - `docker-compose.yml`: `aws`(`floci/floci:2.5.0-compat` 태그 고정, 4566, init 마운트 `./local/init:/etc/floci/init/ready.d`), `api`(`./local/adapter` 빌드, 3000, `.env`). `LANGSMITH_TRACING=false`, `LANGCHAIN_TRACING_V2=false` 명시. SQS·S3·ollama는 넣지 않는다.
     - init: `HaruTable`(GSI1·GSI2·TTL `ttl`), `HaruAgentCheckpoints`(PK/SK, TTL `ttl`, 테이블만), 유저 풀·앱 클라이언트, 시드 사용자 3명(지연, 수현, 민준: 로컬 전용 예시 값, BE-Q28), 마지막에 `LOCAL_JWT_ISSUER`, `LOCAL_JWKS_URL`, 풀 ID, 클라이언트 ID 출력. 단계 실패 시 단계 이름을 출력하고 0이 아닌 코드로 종료.
     - _Requirements: 13.1, 13.2, 13.3, 13.10, 13.11_
+    - 상태: 작성 완료(`docker-compose.yml`, `local/init/01_haru.py`, 단위 테스트 `test_local_init.py` 통과). **Docker 실행은 미확인**: 개발 PC에서 이미지 다운로드가 멈췄다. 첫 실행 확인은 `backend/README.md` "로컬 환경 첫 실행 확인 필요"를 따른다.
 
   - [ ] 9.2 로컬 HTTP 어댑터 구현
     - `local/adapter/Dockerfile`, `app.py`: 요청을 payload 2.0 이벤트로 변환하고 ID 토큰의 `iss`, `aud`, `exp`, `token_use=id`, 서명을 검증한 뒤 `requestContext.authorizer.jwt.claims`를 주입해 같은 핸들러를 호출(`FakeContext(remaining_ms=27000)`). 실패 시 핸들러 호출 없이 에러 형식 401 `UNAUTHORIZED`.
     - `STAGE=local`에서만 `POST /dev/token {userId, nickname}` → `{idToken}`을 등록하고, 그 외에는 등록하지 않는다. CORS preflight `OPTIONS`는 인증 없이 `http://localhost:5173`에 204. 라우팅은 `routes.py`를 사용한다. SQS 폴러는 넣지 않는다. 어댑터는 SAM 배포물에 포함하지 않는다.
     - _Requirements: 13.4, 13.5, 13.6, 13.7, 13.8_
+    - 상태: 작성 완료(`local/adapter/`, 단위 테스트 `test_adapter.py` 통과, 실제 HTTP 서버 포함). **Docker 실행은 미확인**(9.1과 같다).
 
   - [x]* 9.3 Write test for 라우트 목록 일치
     - `template.yaml`의 이벤트 경로와 어댑터가 쓰는 `routes.py` 목록이 한쪽에만 있는 경로 없이 일치하는지 단위 테스트한다. 한쪽에만 있으면 실패해야 한다.
@@ -172,6 +174,7 @@
     - `POST /plans` → `GET /plans/{id}` → `GET /plans`, 같은 키 3회 호출 시 Plan 1건. 어댑터 401 경로와 `/dev/token`, preflight 204. `HaruAgentCheckpoints` 테이블 존재와 TTL만 확인한다.
     - 이 결과는 T 시나리오 합격 근거로 쓰지 않는다(BE-Q15).
     - _Requirements: 13.12, 13.13, 2.4, 4.5, 13.5, 13.8_
+    - 상태: 테스트 코드 작성(`tests/local/test_local_flow.py`, 마커 `local`). **실행은 미확인**(Docker). 대신 실제 DynamoDB 조건식은 moto 테스트(`tests/unit/test_plan_service_moto.py`)로 확인했다. moto도 실제 병렬성은 재현하지 않는다.
 
 - [ ] 11. 배포 스택 통합 테스트 (`tests/integration/`)
   - [ ] 11.1 T1 권한 테스트 작성 (`test_authz.py`)
@@ -189,6 +192,7 @@
   - `pytest tests/unit`과 `sam validate --lint`가 통과하는지 확인하고, 로컬 환경을 쓰는 경우 `tests/local`도 확인한다. 질문이 있으면 사용자에게 묻는다.
 
 - [ ] 13. Checkpoint - dev 스택 배포와 T1·T13 판정 (사용자 승인 필요)
+  - 실행 담당: AWS 담당(docs/07 §7.8). 개발 담당은 계정이 없으므로 배포하지 않는다. 절차는 `backend/README.md`의 배포 런북과 판정 실행표를 따른다.
   - 배포는 되돌리기 어려운 작업이므로 에이전트가 임의로 실행하지 않는다. 사용자에게 `sam build`, `sam deploy --config-env dev` 실행(또는 승인)을 요청하고, 사용자가 AWS 자격 증명과 대상 계정·리전을 확인한 뒤 진행한다.
   - 배포 후 `ApiUrl`, `UserPoolId`, `UserPoolClientId` 출력이 실제 리소스와 일치하는지 확인한다(12.3).
   - 사용자가 실행한 `tests/integration/test_authz.py`(T1)와 `tests/integration/test_idempotency.py`(T13) 결과가 모두 통과하는지 확인한다. 통과 결과는 `dev` 스택 기준으로만 인정한다(BE-Q15).

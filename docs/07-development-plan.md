@@ -410,6 +410,7 @@ AWS 계정은 AWS 담당이 등록한다. 계정 등록 전까지 개발 담당�
 | AWS 담당 | AWS 계정 등록과 Budgets 알림, `sam deploy`(`dev`/`demo`), T1–T22 판정과 결과 로그 보관, §2.4.4 항목 확인, SSM 파라미터 등록, 프론트 웹 배포(CloudFront), AWS가 있어야 답할 수 있는 질문(BE-Q8, BE-Q11의 Budgets 금액, BE-Q17의 실제 Cognito, BE-Q18의 Init Duration) |
 | LLM 담당 | LLM 공급자·모델 선정과 API 키(BE-Q6), 동의 문구(BE-Q7), 파라미터 실측(BE-Q9), 단가(BE-Q11), 지연 측정(BE-Q12), 실모델 오프라인 평가 실행과 프롬프트 조정. 개발 담당은 `scripts/eval_agent.py`, `tests/fixtures/stories.json`, 프롬프트 초안을 키만 넣으면 돌아가는 상태로 넘긴다 |
 
+- 배포 런북, 판정 실행표, AWS 전용 확인 항목, 함수별 IAM 권한, 인계 상태는 [`backend/README.md`](../backend/README.md)에 둔다.
 - 프론트엔드도 개발 담당이 맡으므로 계약 변경(§7.2)의 리뷰는 다른 팀원 한 명이 한다.
 - 3단계 동시성(G1–G4)은 AWS에서만 판정되므로, 계정이 생기면 단계별 PR을 바로 `dev` 스택에 배포해 판정한다.
 

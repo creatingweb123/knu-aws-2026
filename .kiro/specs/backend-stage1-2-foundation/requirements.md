@@ -48,7 +48,8 @@
 4. WHEN Cognito가 PreSignUp 이벤트를 전달하면, THE PreSignUp_Function SHALL 응답의 `autoConfirmUser`와 `autoVerifyEmail`을 `true`로 설정하고, 이 두 필드 외에는 입력 이벤트의 값을 바꾸지 않고 반환한다. [BE-AUTH-02]
 5. WHEN 사용자가 이메일, 비밀번호, `nickname`으로 가입을 마치면, THE UserPool SHALL 인증 코드 입력 없이 같은 자격 증명으로 로그인(`InitiateAuth`)을 허용하고 ID 토큰을 발급한다. [BE-AUTH-02]
 6. THE Authorizer SHALL 등록된 모든 API 경로(`GET /me`, `POST /plans`, `GET /plans`, `GET /plans/{planId}`)를 기본 authorizer로 보호하며, 인증 없이 호출할 수 있는 경로를 두지 않는다. [BE-AUTH-03]
-7. IF 요청에 `Authorization` 토큰이 없거나, 만료되었거나, 서명·audience 검증에 실패하면, THEN THE Api SHALL 요청을 Lambda에 전달하지 않고 401 `UNAUTHORIZED`로 응답한다. [BE-AUTH-03, T1]
+7. IF 요청에 `Authorization` 토큰이 없거나, 만료되었거나, 서명·audience 검증에 실패하면, THEN THE Api SHALL 요청을 Lambda에 전달하지 않고 HTTP 401로 응답한다. [BE-AUTH-03, T1]
+   - API Gateway JWT authorizer가 거부한 401의 본문은 `{"message":"Unauthorized"}`이고 계약의 에러 형식(`{"error":{"code":"UNAUTHORIZED",...}}`)이 아니다. T1은 상태 코드로만 판정한다. 로컬 어댑터와 Lambda 핸들러(`sub` 없음, 2.3)의 401은 계약 형식이다. 프론트는 401을 상태 코드로 처리한다(FE-COM-03). 계약 변경 리뷰 대상이다(docs/03 §3.6).
 
 참고: PreSignUp 자동 확인은 로컬 에뮬레이터에서 동작하지 않는다. 확인은 PreSignUp 핸들러 단위 테스트와 `Dev_Stack`에서 한다. [§2.4]
 
