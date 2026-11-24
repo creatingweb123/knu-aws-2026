@@ -133,7 +133,7 @@
     - `GET /me`가 DB를 호출하지 않음, `sub` 없는 이벤트 401, 예상치 못한 예외가 500 `INTERNAL_ERROR`이고 응답에 예외 메시지가 없음, 핸들러 응답 시간 값이 ISO 8601 UTC임을 확인한다.
     - _Requirements: 1.4, 2.3, 2.7, 11.4, 11.5, 11.6_
 
-- [ ] 7. Checkpoint - 단위 테스트 통과 확인
+- [x] 7. Checkpoint - 단위 테스트 통과 확인
   - `pytest tests/unit`을 실행해 모두 통과하는지 확인하고, 질문이 있으면 사용자에게 묻는다.
 
 - [ ] 8. SAM 템플릿 (`template.yaml`, `samconfig.toml`)
