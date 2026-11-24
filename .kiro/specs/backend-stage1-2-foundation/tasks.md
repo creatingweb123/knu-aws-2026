@@ -11,7 +11,7 @@
 
 ## Tasks
 
-- [ ] 1. 프로젝트 골격과 테스트 설정
+- [x] 1. 프로젝트 골격과 테스트 설정
   - `backend/` 아래에 `src/common`, `src/handlers`, `src/domain`, `local/init`, `local/adapter`, `tests/unit`, `tests/local`, `tests/integration`, `tests/fixtures` 디렉터리와 `__init__.py`를 만든다(`metrics.py`, `agent/`, `workers/`, `layers/`는 만들지 않는다).
   - `requirements.txt`(pydantic v2, ULID 생성 라이브러리)와 `requirements-dev.txt`(pytest, hypothesis, botocore Stubber용 boto3, PyJWT, cryptography)를 만든다. langgraph·langchain·Pillow는 넣지 않는다(요구사항 12.9).
   - `pytest.ini`(pythonpath `src`, 마커 `local`, `integration`), `.env.example`(로컬 전용 예시 시드 사용자 값, 실제 계정 아님), `.gitignore`(`.env`, `.aws-sam`)를 만든다.

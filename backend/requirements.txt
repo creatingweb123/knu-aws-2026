@@ -1,0 +1,4 @@
+# Lambda 런타임 의존성 (1·2단계). boto3는 Lambda 런타임 내장본을 쓴다.
+# langgraph·langchain·Pillow는 이번 범위에서 넣지 않는다(요구사항 12.9).
+pydantic==2.14.4
+python-ulid==4.2.0

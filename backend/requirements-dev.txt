@@ -1,0 +1,8 @@
+-r requirements.txt
+pytest==9.2.0
+hypothesis==6.170.17
+# botocore Stubber와 로컬 통합 테스트용
+boto3==1.44.10
+# 로컬 어댑터·dev JWT 테스트용
+PyJWT==2.15.1
+cryptography==50.0.2
