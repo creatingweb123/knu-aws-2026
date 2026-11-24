@@ -1,0 +1,155 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: >-
+  이어온 하루 백엔드 1·2단계 (HttpApi + JWT authorizer, Cognito, HaruTable, GET /me, /plans).
+  CloudFront·웹 버킷·사진·AI 리소스는 이후 단계에서 추가한다.
+
+Parameters:
+  AllowedOrigins:
+    Type: CommaDelimitedList
+    Default: http://localhost:5173
+    Description: API CORS 허용 Origin. CloudFront 도메인은 7단계에서 추가한다(BE-INFRA-03).
+
+Globals:
+  Function:
+    Runtime: python3.12
+    CodeUri: src/
+    Timeout: 10
+    MemorySize: 256
+    Environment:
+      Variables:
+        TABLE_NAME: !Ref HaruTable
+        AREA_ID: default
+        CLAIM_DURATION_DAYS: "3"
+        LANGSMITH_TRACING: "false"
+        LANGCHAIN_TRACING_V2: "false"
+        # AWS_ENDPOINT_URL, AWS_EMF_ENVIRONMENT는 로컬 전용이라 정의하지 않는다(BE-INFRA-05).
+
+Resources:
+  HaruTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: PK, AttributeType: S }
+        - { AttributeName: SK, AttributeType: S }
+        - { AttributeName: GSI1PK, AttributeType: S }
+        - { AttributeName: GSI1SK, AttributeType: S }
+        - { AttributeName: GSI2PK, AttributeType: S }
+        - { AttributeName: GSI2SK, AttributeType: S }
+      KeySchema:
+        - { AttributeName: PK, KeyType: HASH }
+        - { AttributeName: SK, KeyType: RANGE }
+      GlobalSecondaryIndexes:
+        - IndexName: GSI1
+          KeySchema:
+            - { AttributeName: GSI1PK, KeyType: HASH }
+            - { AttributeName: GSI1SK, KeyType: RANGE }
+          Projection: { ProjectionType: ALL }
+        - IndexName: GSI2
+          KeySchema:
+            - { AttributeName: GSI2PK, KeyType: HASH }
+            - { AttributeName: GSI2SK, KeyType: RANGE }
+          Projection: { ProjectionType: ALL }
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UsernameAttributes: [email]
+      Schema:
+        - Name: nickname
+          AttributeDataType: String
+          Mutable: true
+          Required: true
+      # 비밀번호 정책은 Cognito 기본(BE-Q27)
+      LambdaConfig:
+        PreSignUp: !GetAtt PreSignUpFunction.Arn
+
+  UserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      UserPoolId: !Ref UserPool
+      GenerateSecret: false
+      ExplicitAuthFlows:
+        - ALLOW_USER_PASSWORD_AUTH
+        - ALLOW_USER_SRP_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+
+  HttpApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      # StageName을 두지 않으면 스테이지는 $default다.
+      Auth:
+        DefaultAuthorizer: CognitoJwt
+        Authorizers:
+          CognitoJwt:
+            IdentitySource: $request.header.Authorization
+            JwtConfiguration:
+              issuer: !Sub https://cognito-idp.${AWS::Region}.amazonaws.com/${UserPool}
+              audience:
+                - !Ref UserPoolClient
+      CorsConfiguration:
+        AllowOrigins: !Ref AllowedOrigins
+        AllowHeaders: [Authorization, Content-Type, Idempotency-Key]
+        AllowMethods: [GET, POST, PUT, OPTIONS]
+
+  # 경로는 src/handlers/routes.py와 같아야 한다(tests/unit/test_template.py가 확인).
+  MeFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: handlers.me.handler
+      # GET /me는 4단계 전까지 DB를 쓰지 않으므로 DynamoDB 권한이 없다(BE-Q30).
+      Events:
+        GetMe:
+          Type: HttpApi
+          Properties: { ApiId: !Ref HttpApi, Path: /me, Method: GET }
+
+  PlansFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: handlers.plans.handler
+      Policies:
+        - Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              # TransactWriteItems의 Put은 dynamodb:PutItem 권한으로 실행된다.
+              Action: [dynamodb:GetItem, dynamodb:PutItem, dynamodb:Query]
+              Resource:
+                - !GetAtt HaruTable.Arn
+                - !Sub ${HaruTable.Arn}/index/*
+      Events:
+        CreatePlan:
+          Type: HttpApi
+          Properties: { ApiId: !Ref HttpApi, Path: /plans, Method: POST }
+        ListPlans:
+          Type: HttpApi
+          Properties: { ApiId: !Ref HttpApi, Path: /plans, Method: GET }
+        GetPlan:
+          Type: HttpApi
+          Properties: { ApiId: !Ref HttpApi, Path: "/plans/{planId}", Method: GET }
+
+  PreSignUpFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: handlers.pre_signup.handler
+
+  PreSignUpInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !GetAtt PreSignUpFunction.Arn
+      Principal: cognito-idp.amazonaws.com
+      # UserPool → 함수 → UserPool 순환 참조를 피하려고 와일드카드를 쓴다(design.md).
+      SourceArn: !Sub arn:${AWS::Partition}:cognito-idp:${AWS::Region}:${AWS::AccountId}:userpool/*
+
+Outputs:
+  ApiUrl:
+    Description: HTTP API 주소 (스테이지 $default)
+    Value: !Sub https://${HttpApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}
+  UserPoolId:
+    Value: !Ref UserPool
+  UserPoolClientId:
+    Value: !Ref UserPoolClient

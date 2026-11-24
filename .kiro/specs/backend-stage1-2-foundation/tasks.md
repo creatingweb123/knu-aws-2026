@@ -137,8 +137,8 @@
 - [x] 7. Checkpoint - 단위 테스트 통과 확인
   - `pytest tests/unit`을 실행해 모두 통과하는지 확인하고, 질문이 있으면 사용자에게 묻는다.
 
-- [ ] 8. SAM 템플릿 (`template.yaml`, `samconfig.toml`)
-  - [ ] 8.1 `template.yaml` 작성
+- [x] 8. SAM 템플릿 (`template.yaml`, `samconfig.toml`)
+  - [x] 8.1 `template.yaml` 작성
     - `Globals.Function`: Python 3.12, VPC 밖, 환경 변수 `TABLE_NAME`, `AREA_ID=default`, `CLAIM_DURATION_DAYS=3`, `LANGSMITH_TRACING=false`, `LANGCHAIN_TRACING_V2=false`. `AWS_ENDPOINT_URL`, `AWS_EMF_ENVIRONMENT`은 정의하지 않는다.
     - `HaruTable`(PK/SK, GSI1, GSI2, TTL `ttl`, on-demand), `UserPool`(이메일 사용자 이름, `nickname` 필수, Cognito 기본 비밀번호 정책 BE-Q27, PreSignUp 트리거), `UserPoolClient`(시크릿 없음, `ALLOW_USER_PASSWORD_AUTH`·`ALLOW_USER_SRP_AUTH`·`ALLOW_REFRESH_TOKEN_AUTH`).
     - `HttpApi`: 스테이지 `$default`, 기본 JWT authorizer(issuer, audience = ClientId, `Authorization` 헤더), CORS(`AllowedOrigins` 파라미터 기본 `http://localhost:5173`, 헤더 `Authorization`·`Content-Type`·`Idempotency-Key`, 메서드 `GET`·`POST`·`PUT`·`OPTIONS`).
@@ -146,7 +146,7 @@
     - Outputs: `ApiUrl`, `UserPoolId`, `UserPoolClientId`. `AiCardFunction` 등 3단계 이후 리소스, CloudFront, 웹 버킷은 만들지 않는다.
     - _Requirements: 1.1, 1.2, 1.3, 1.6, 12.1, 12.2, 12.3, 12.4, 12.5, 12.8, 12.9_
 
-  - [ ] 8.2 `samconfig.toml`과 템플릿 검증
+  - [x] 8.2 `samconfig.toml`과 템플릿 검증
     - `dev`, `demo` 환경을 두고 `AllowedOrigins`를 환경별로 지정한다(CloudFront 도메인 없음).
     - `sam validate --lint`를 실행해 종료 코드 0을 확인하고, `sam build` 산출물에 langgraph·langchain·Pillow가 없는지 확인한다.
     - _Requirements: 12.6, 12.7, 12.9_
@@ -162,7 +162,7 @@
     - `STAGE=local`에서만 `POST /dev/token {userId, nickname}` → `{idToken}`을 등록하고, 그 외에는 등록하지 않는다. CORS preflight `OPTIONS`는 인증 없이 `http://localhost:5173`에 204. 라우팅은 `routes.py`를 사용한다. SQS 폴러는 넣지 않는다. 어댑터는 SAM 배포물에 포함하지 않는다.
     - _Requirements: 13.4, 13.5, 13.6, 13.7, 13.8_
 
-  - [ ]* 9.3 Write test for 라우트 목록 일치
+  - [x]* 9.3 Write test for 라우트 목록 일치
     - `template.yaml`의 이벤트 경로와 어댑터가 쓰는 `routes.py` 목록이 한쪽에만 있는 경로 없이 일치하는지 단위 테스트한다. 한쪽에만 있으면 실패해야 한다.
     - _Requirements: 13.9_
 

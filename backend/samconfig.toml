@@ -1,0 +1,28 @@
+# SAM CLI 설정. 계정 ID는 넣지 않는다. 배포는 AWS 담당이 실행한다(docs/07 §7.8).
+#   sam build
+#   sam deploy --config-env dev      # 또는 demo
+version = 0.1
+
+[default.validate.parameters]
+lint = true
+
+[default.build.parameters]
+cached = true
+parallel = true
+
+[dev.deploy.parameters]
+stack_name = "haru-dev"
+region = "ap-northeast-2"
+capabilities = "CAPABILITY_IAM"
+confirm_changeset = true
+resolve_s3 = true
+# CloudFront 도메인은 7단계에서 추가한다(요구사항 12.6).
+parameter_overrides = "AllowedOrigins=http://localhost:5173"
+
+[demo.deploy.parameters]
+stack_name = "haru-demo"
+region = "ap-northeast-2"
+capabilities = "CAPABILITY_IAM"
+confirm_changeset = true
+resolve_s3 = true
+parameter_overrides = "AllowedOrigins=http://localhost:5173"
