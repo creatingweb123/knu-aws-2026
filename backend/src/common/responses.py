@@ -2,13 +2,20 @@
 
 from __future__ import annotations
 
+import functools
 import json
+import logging
+from collections.abc import Callable
 from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any
 
-from common.errors import VALIDATION_ERROR, ApiError
+from pydantic import ValidationError
 
+from common.errors import INTERNAL_ERROR, VALIDATION_ERROR, ApiError
+from common.validation import to_details
+
+_log = logging.getLogger(__name__)
 _JSON_HEADERS = {"Content-Type": "application/json; charset=utf-8"}
 
 
@@ -30,6 +37,28 @@ def error_body(e: ApiError) -> dict[str, Any]:
 
 def error_response(e: ApiError) -> dict[str, Any]:
     return ok(e.status, error_body(e))
+
+
+def api_handler(fn: Callable[[dict[str, Any], Any], dict[str, Any]]) -> Callable[[dict[str, Any], Any], dict[str, Any]]:
+    """핸들러 공통 에러 변환. ApiError·pydantic ValidationError·예상치 못한 예외를 모두 에러 형식으로 바꾼다.
+
+    예상치 못한 예외는 500 INTERNAL_ERROR(BE-Q23 임시)이고, 응답에는 예외 메시지·스택을 담지 않으며
+    로그에는 예외 유형만 남긴다(요구사항 11.4, 11.5).
+    """
+
+    @functools.wraps(fn)
+    def wrapper(event: dict[str, Any], context: Any) -> dict[str, Any]:
+        try:
+            return fn(event, context)
+        except ApiError as e:
+            return error_response(e)
+        except ValidationError as e:
+            return error_response(ApiError(VALIDATION_ERROR, details=to_details(e)))
+        except Exception as e:  # noqa: BLE001
+            _log.error("unhandled_error type=%s", type(e).__name__)
+            return error_response(ApiError(INTERNAL_ERROR))
+
+    return wrapper
 
 
 # ---------------------------------------------------------------------------

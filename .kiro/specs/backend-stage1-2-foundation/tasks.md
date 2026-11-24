@@ -117,18 +117,18 @@
     - **Property 7: `claimable = !isOwner ∧ myClaim = null ∧ shown = OPEN`, `COMPLETED` 계획은 소유자·실행자 외 404, `ABANDONED`·`EXPIRED` Claim만 있으면 `myClaim = null`**
     - **Validates: Requirements 7.4, 7.5, 7.7, 7.8, 7.10, 7.11**
 
-- [ ] 6. Lambda 핸들러와 라우트 (`src/handlers`)
-  - [ ] 6.1 `me.py`, `pre_signup.py` 구현
+- [x] 6. Lambda 핸들러와 라우트 (`src/handlers`)
+  - [x] 6.1 `me.py`, `pre_signup.py` 구현
     - `me.py`: `GET /me`가 `{userId, nickname, unreadInboxCount: 0}`을 반환한다. HaruTable을 읽지 않는다(BE-Q30). `ApiError`·`ValidationError`·예상치 못한 예외를 에러 형식으로 변환한다.
     - `pre_signup.py`: `autoConfirmUser`, `autoVerifyEmail`만 `true`로 바꾸고 나머지 이벤트를 그대로 반환한다.
     - _Requirements: 2.4, 2.5, 2.7, 1.4, 11.1, 11.4_
 
-  - [ ] 6.2 `plans.py`와 라우트 목록 구현
+  - [x] 6.2 `plans.py`와 라우트 목록 구현
     - `plans.py`: `POST /plans`(헤더 `Idempotency-Key`, pydantic 검증 실패는 `to_details`로 400), `GET /plans`(`status`, `limit` 쿼리), `GET /plans/{planId}`를 라우팅하고 서비스를 호출한다. 예외는 에러 형식으로 변환한다.
     - `src/handlers/routes.py`에 경로 목록을 한 곳에 둔다(`GET /me`, `POST /plans`, `GET /plans`, `GET /plans/{planId}`). 클레임·AI·수신함 경로는 넣지 않는다.
     - _Requirements: 3.4, 3.5, 4.1, 6.1, 7.1, 11.1, 12.8_
 
-  - [ ]* 6.3 Write tests for 핸들러
+  - [x]* 6.3 Write tests for 핸들러
     - **Property 11: PreSignUp 출력은 두 플래그 `true`이고 나머지 필드가 입력과 같다. Validates: Requirements 1.4**
     - `GET /me`가 DB를 호출하지 않음, `sub` 없는 이벤트 401, 예상치 못한 예외가 500 `INTERNAL_ERROR`이고 응답에 예외 메시지가 없음, 핸들러 응답 시간 값이 ISO 8601 UTC임을 확인한다.
     - _Requirements: 1.4, 2.3, 2.7, 11.4, 11.5, 11.6_
