@@ -8,7 +8,7 @@
 - 인증: 모든 경로에 `Authorization: Bearer {Cognito ID token}` 필수. HTTP API JWT authorizer의 audience는 User Pool App Client ID. 사용자 ID는 JWT `sub`, 닉네임은 ID 토큰의 `nickname` 클레임(액세스 토큰에는 없으므로 반드시 ID 토큰 사용).
 - API CORS: 허용 Origin = CloudFront 도메인, `http://localhost:5173` / 허용 헤더 = `Authorization`, `Content-Type`, `Idempotency-Key` / 허용 메서드 = `GET`, `POST`, `PUT`, `OPTIONS`.
 - 에러 형식: `{ "error": { "code": "ALREADY_CLAIMED", "message": "이미 다른 사람이 이어받았어요.", "details": { "places[0].name": "1–30자로 입력해 주세요." } } }` — `details`는 `VALIDATION_ERROR`일 때만, 키는 요청 본문 경로(`flags[].path`와 같은 표기).
-- 시간은 모두 ISO 8601 UTC 문자열.
+- 시간은 모두 ISO 8601 UTC 문자열이고 밀리초 3자리를 고정한다(`2026-11-17T09:00:00.000Z`). 서버가 저장한 시각을 문자열로 비교·정렬하므로 자릿수를 섞지 않는다. 이 문서의 예시는 밀리초를 생략해 적었다.
 
 ## 3.1 내 정보
 

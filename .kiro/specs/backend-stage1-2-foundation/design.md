@@ -114,11 +114,12 @@ def get_user(event: dict) -> tuple[str, str]:
 
 ```python
 def table() -> Table                                   # AWS_ENDPOINT_URL은 SDK가 읽는다. 앱 코드는 엔드포인트를 직접 다루지 않는다
-class ConditionFailed(Exception):                      # 취소 사유에 ConditionalCheckFailed가 있을 때
+class ConditionFailed(Exception):                      # TransactionConflict 없이 실패 사유가 모두 ConditionalCheckFailed일 때
     reasons: list[str]                                  # 항목별 CancellationReasons.Code
 def transact_with_retry(items: list[dict]) -> None
     # TransactWriteItems. TransactionConflict면 50·100·200ms 백오프로 최대 3회 재시도 후 ApiError("TRY_AGAIN", 503).
-    # 취소 사유에 ConditionalCheckFailed가 있으면 재시도하지 않고 ConditionFailed를 올려 서비스 계층이 분기한다(§2.6, BE-REC-10).
+    # 취소 사유에 TransactionConflict가 하나라도 있으면 재시도한다. 실패 사유가 모두 ConditionalCheckFailed일 때만
+    # 재시도하지 않고 ConditionFailed를 올려 서비스 계층이 분기한다(§2.6, BE-REC-10).
 ```
 `transact_with_retry`는 이번 범위의 `POST /plans`(Plan + 멱등 키를 한 트랜잭션으로 저장)에서 처음 만들고, 3단계 이어받기·포기·완료 트랜잭션이 그대로 재사용한다.
 
@@ -271,7 +272,7 @@ def _replay(existing, body_hash):
 
 **Preconditions**: `user.id`는 JWT `sub`. `body`는 pydantic 검증을 통과.
 **Postconditions**: 같은 `(user, key, body)`의 호출은 몇 번이든 동일한 `planId`를 반환하고 Plan 항목은 1건이다(T13). 같은 키·다른 본문은 409. 처음 생성하면 201, 재요청도 **201로 처음 만든 Plan을 그대로 반환**한다(§3.3은 "처음 생성한 Plan을 그대로 반환"이라고만 하고 재요청 상태 코드는 정하지 않았다 → BE-Q24).
-**설계 근거**: Plan과 멱등 키를 TransactWriteItems 한 번으로 쓰므로 "키만 있고 Plan은 없는" 상태가 생기지 않는다. 키를 먼저 쓰고 Plan을 나중에 쓰는 두 단계 방식은 그 사이에 Lambda가 죽으면 24시간(TTL) 동안 재시도가 실패하므로 쓰지 않는다. 트랜잭션은 `common/ddb.py`의 `transact_with_retry`로 실행하며, `TransactionConflict`는 50·100·200ms 백오프로 최대 3회 재시도 후 503 `TRY_AGAIN`, `ConditionalCheckFailed`는 재시도 없이 `ConditionFailed`로 올라와 위 `except`에서 재생한다(§2.6 공통 실패 처리). planId는 매 요청 새 ULID라 Plan 쪽 조건은 실패하지 않으며, 조건 실패는 키 항목에서만 생긴다.
+**설계 근거**: Plan과 멱등 키를 TransactWriteItems 한 번으로 쓰므로 "키만 있고 Plan은 없는" 상태가 생기지 않는다. 키를 먼저 쓰고 Plan을 나중에 쓰는 두 단계 방식은 그 사이에 Lambda가 죽으면 24시간(TTL) 동안 재시도가 실패하므로 쓰지 않는다. 트랜잭션은 `common/ddb.py`의 `transact_with_retry`로 실행하며, `TransactionConflict`는 50·100·200ms 백오프로 최대 3회 재시도 후 503 `TRY_AGAIN`, 실패 사유가 모두 `ConditionalCheckFailed`이면 재시도 없이 `ConditionFailed`로 올라와 위 `except`에서 재생한다(§2.6 공통 실패 처리). planId는 매 요청 새 ULID라 Plan 쪽 조건은 실패하지 않으며, 조건 실패는 키 항목에서만 생긴다.
 
 ### build_plan 의 metrics 계산
 
@@ -301,8 +302,9 @@ def find_not_in_source(sources, targets):
 **Postconditions**: 순수 함수, 입력 불변. `targets`가 `null`/빈 문자열이면 판정하지 않는다(`MISSING`은 `check_draft` 몫, 6b). 같은 입력은 같은 결과.
 **정규화**: 공백 제거·소문자화, 조사 제거(은/는/이/가/을/를/에/에서/으로/로/의/와/과/도/만/까지/부터 등 말미 조사 사전), 결과 길이 1 이하 토큰은 무시. **핵심 명사 추출 규칙**(토큰화, 조사 사전, 일치 판정이 "전부 포함"인지 "하나라도 포함"인지)은 문서에 없으므로 BE-Q25로 두고, 기본안은 아래와 같다.
 - 텍스트를 공백으로 나눠 토큰별로 말미 조사를 떼고, 토큰이 말뭉치(공백 제거 본문)에 부분 문자열로 있으면 통과.
-- 장소 `name`/`activity`의 모든 토큰이 통과하면 원문에 있는 것으로 본다.
-- 프롬프트의 "빵집·빵 가게" 같은 동의어는 픽스처 사전(`tests/fixtures/normalization.json`)으로만 허용한다(§7.3 2단계 "정규화 사전 픽스처").
+- 활동(`activity`)은 서술어 꼴 토큰(끝이 -기, -고, -서, -며)을 빼고 남은 핵심 명사만 대조한다("빵 사기" → "빵"). 남는 토큰이 없으면 판정하지 않는다. 장소 이름(`name`)에는 이 규칙을 쓰지 않는다("경찰서" 같은 명사가 빠지지 않게).
+- 장소 `name`/`activity`의 남은 토큰이 모두 통과하면 원문에 있는 것으로 본다.
+- 프롬프트의 "빵집·빵 가게" 같은 동의어는 정규화 사전(`src/domain/normalization.json`)에 있는 것만 허용한다. 서비스 코드와 테스트가 같은 파일을 쓴다(§7.3 2단계 "정규화 사전").
 UI 배지 문구는 이번 범위가 아니다(명사 휴리스틱이므로 '0건 보장'이 아니다).
 
 ### scan_privacy (BE-AI-06)
@@ -506,7 +508,7 @@ PreSignUp 핸들러 출력은 `autoConfirmUser = autoVerifyEmail = true`이고 �
 ### 단위 (pytest, botocore Stubber, 필요 시 로컬 에뮬레이터)
 
 - 검증 경계값(P5), `to_details` 경로 표기.
-- `find_not_in_source`: 정규화 사전 픽스처(`tests/fixtures/normalization.json`), 데모 사연("골목 빵집"은 NOT_IN_SOURCE, "출근길 빵집"은 통과), 단조성(P8).
+- `find_not_in_source`: 정규화 사전(`src/domain/normalization.json`), 활동의 서술어 토큰 제외, 데모 사연("골목 빵집"은 NOT_IN_SOURCE, "출근길 빵집"은 통과), 단조성(P8).
 - `scan_privacy`: 전화·이메일·주민번호·차량번호·동/호수·번지·비공개 장소 사전, 음성 사례(P9).
 - 직렬화 허용 목록(P4), 상태 표시 규칙 표(P6, P7), `claimable`.
 - 멱등: 같은 키·같은 본문 / 다른 본문 / 동시 선점 패배 / `TransactionConflict` 주입(Stubber)으로 재시도와 503(§7.5).

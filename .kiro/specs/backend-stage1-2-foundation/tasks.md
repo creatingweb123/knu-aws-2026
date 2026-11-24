@@ -20,7 +20,7 @@
 - [x] 2. 공통 모듈 (`src/common`)
   - [x] 2.1 에러·응답·ID 모듈 구현
     - `errors.py`: `ApiError(code, status, message, details)`. 이번 범위 코드는 `VALIDATION_ERROR`(400), `UNAUTHORIZED`(401), `NOT_FOUND`(404), `IDEMPOTENCY_CONFLICT`(409), `TRY_AGAIN`(503), 임시 `INTERNAL_ERROR`(500, BE-Q23).
-    - `responses.py`: `ok(status, body)`(payload 2.0 응답), `error_response(e)`(`{"error":{"code","message","details"?}}`, `details`는 `VALIDATION_ERROR`에만). 시간 값은 ISO 8601 UTC 문자열.
+    - `responses.py`: `ok(status, body)`(payload 2.0 응답), `error_response(e)`(`{"error":{"code","message","details"?}}`, `details`는 `VALIDATION_ERROR`에만). 시간 값은 ISO 8601 UTC 문자열(밀리초 3자리 고정).
     - `ids.py`: `planId = "pln_" + ULID` 생성기.
     - 예외 메시지·스택·내부 식별자를 응답에 담지 않는다. 로그에는 예외 유형만 남긴다.
     - _Requirements: 11.1, 11.2, 11.3, 11.4, 11.5, 11.6, 11.7, 4.2_
@@ -38,7 +38,7 @@
 
   - [x] 2.4 DynamoDB 접근 모듈 구현
     - `ddb.py`: `table()`(엔드포인트는 SDK의 `AWS_ENDPOINT_URL`에 맡기고 앱 코드에서 직접 다루지 않음), `ConditionFailed(reasons)`, `transact_with_retry(items)`.
-    - `TransactionConflict`는 50·100·200ms 백오프로 최대 3회 재시도 후 `ApiError("TRY_AGAIN", 503)`. `ConditionalCheckFailed`가 취소 사유에 있으면 재시도 없이 `ConditionFailed`를 올린다.
+    - `TransactionConflict`는 50·100·200ms 백오프로 최대 3회 재시도 후 `ApiError("TRY_AGAIN", 503)`. 취소 사유에 `TransactionConflict`가 하나라도 있으면 재시도하고, 실패 사유가 모두 `ConditionalCheckFailed`일 때만 재시도 없이 `ConditionFailed`를 올린다(§2.6).
     - _Requirements: 4.9, 4.10, 4.11_
 
   - [x]* 2.5 Write property test for 입력 검증 경계
@@ -52,14 +52,15 @@
 
   - [x]* 2.7 Write unit tests for auth·ddb
     - Property 3: 본문·쿼리에 다른 사용자 ID를 넣어도 `get_user` 결과가 JWT `sub`로 고정됨을 생성기로 확인한다. **Validates: Requirements 2.1**
-    - Stubber로 `TransactionConflict` 3회 재시도 후 503 `TRY_AGAIN`, `ConditionalCheckFailed` 무재시도 `ConditionFailed`를 확인한다.
+    - Stubber로 `TransactionConflict` 3회 재시도 후 503 `TRY_AGAIN`, `ConditionalCheckFailed`만 있으면 무재시도 `ConditionFailed`, 충돌이 섞이면 재시도를 확인한다.
     - _Requirements: 2.1, 2.3, 4.9, 4.10, 4.11_
 
 - [x] 3. 순수 도메인 함수 (`src/domain`)
   - [x] 3.1 원문 충실도 판정 구현
     - `fidelity.py`: `normalize`, `find_not_in_source(sources, targets)`. 토큰별 말미 조사 제거 후 근거 텍스트(공백 제거)의 부분 문자열 일치, 모든 토큰이 일치해야 통과(BE-Q25).
     - `null`·빈·공백 target은 판정하지 않고, `sources`가 비었으면 나머지 target을 모두 hit로 반환한다. hit는 입력 순서, `path`·`text`는 입력 그대로. 순수 함수(입력 불변, LLM·DB 없음).
-    - `tests/fixtures/normalization.json`(동의어 사전)을 만들고 사전에 있는 동의어만 같은 표현으로 인정한다.
+    - 활동(`activity`)은 서술어 꼴 토큰(-기, -고, -서, -며)을 빼고 핵심 명사만 대조한다(BE-Q25).
+    - `src/domain/normalization.json`(동의어 사전, 서비스 코드와 테스트가 공유)을 만들고 사전에 있는 동의어만 같은 표현으로 인정한다.
     - _Requirements: 9.1, 9.2, 9.3, 9.4, 9.5, 9.6, 9.8, 9.10_
 
   - [x] 3.2 개인정보 탐지 구현

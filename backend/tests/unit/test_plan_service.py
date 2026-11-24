@@ -78,11 +78,11 @@ def test_create_stores_plan_and_key_in_one_transaction(table):
 
 def test_metrics_only_four_values(table):
     plan, _ = svc.create_plan(OWNER, "k1", body(), NOW)
-    # 원문에 없음: "골목 빵집", "쉬기"(사연은 활용형 "쉬려고"라 BE-Q25 기본안에서는 hit)
+    # 원문에 없음: "골목 빵집"만. 활동 "쉬기"는 서술어라 대조할 명사가 없어 판정하지 않는다(BE-Q25)
     assert plan["metrics"] == {
         "authoringMode": "AI_EDITED",
         "durationMs": 183000,
-        "addedNotInSource": 2,
+        "addedNotInSource": 1,
         "privacyInPublished": 1,  # whyChosen의 전화번호
     }
 

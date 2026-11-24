@@ -182,9 +182,9 @@
 5. IF `sources`가 빈 목록이거나 모든 항목이 빈 문자열이면, THEN THE Fidelity_Checker SHALL 4번에 해당하지 않는 모든 target을 `NotInSourceHit`으로 반환한다. [BE-AI-06]
 6. THE Fidelity_Checker SHALL 같은 입력에 항상 같은 결과를 반환하고, `sources`와 `targets`를 변경하지 않으며, LLM 호출과 DB 접근을 하지 않는다. [BE-AI-06, G6]
 7. WHEN `sources`에 문장이 추가되어 호출되면, THE Fidelity_Checker SHALL 추가 전보다 적거나 같은 수의 hit를 반환한다. [BE-AI-06]
-8. THE Fidelity_Checker SHALL 정규화 사전 픽스처(`tests/fixtures/normalization.json`)에 등록된 동의어만 같은 표현으로 인정하고, 픽스처에 없는 표현은 서로 다른 표현으로 판정한다. [BE-AI-06, §7.3]
+8. THE Fidelity_Checker SHALL 정규화 사전(`src/domain/normalization.json`, 서비스 코드와 테스트가 공유)에 등록된 동의어만 같은 표현으로 인정하고, 사전에 없는 표현은 서로 다른 표현으로 판정한다. [BE-AI-06, §7.3]
 9. WHEN 데모 사연(§3.2 예시)을 근거로 호출되면, THE Fidelity_Checker SHALL "골목 빵집"을 `NotInSourceHit`으로 반환하고 "출근길 빵집"은 반환하지 않는다. [BE-AI-06, T18]
-10. THE Fidelity_Checker SHALL target 텍스트를 공백으로 나눈 토큰마다 말미 조사를 제거하고, 제거한 토큰이 근거 텍스트(공백 제거)에 부분 문자열로 있으면 일치로 보며, 모든 토큰이 일치해야 통과로 판정한다. 조사 사전의 항목은 2단계 단위 테스트로 확정한다. [BE-AI-06, BE-Q25]
+10. THE Fidelity_Checker SHALL target 텍스트를 공백으로 나눈 토큰마다 말미 조사를 제거하고, 제거한 토큰이 근거 텍스트(공백 제거)에 부분 문자열로 있으면 일치로 보며, 모든 토큰이 일치해야 통과로 판정한다. 활동(`places[].activity`)은 서술어 꼴 토큰(끝이 -기, -고, -서, -며)을 빼고 남은 토큰만 대조하며, 남는 토큰이 없으면 판정하지 않는다. 조사 사전의 항목은 2단계 단위 테스트로 확정한다. [BE-AI-06, BE-Q25]
 
 ### Requirement 10: 개인정보 탐지 함수
 
@@ -211,7 +211,7 @@
 3. IF 응답 코드가 `VALIDATION_ERROR`가 아니면, THEN THE Error_Handler SHALL 응답 본문에 `details`를 포함하지 않는다. [BE-NFR-05, §3]
 4. IF 핸들러에서 예상하지 못한 예외가 발생하면, THEN THE Error_Handler SHALL HTTP 500과 에러 형식 본문으로 응답하며, 응답 본문에 예외 메시지·스택 트레이스·내부 식별자를 담지 않는다. 이때 `code`는 BE-Q23이 확정될 때까지 `INTERNAL_ERROR`를 임시로 쓴다. [BE-NFR-05, BE-Q23]
 5. IF 핸들러에서 예상하지 못한 예외가 발생하면, THEN THE Error_Handler SHALL 로그에 예외 유형만 남기고 토큰·사연 원문·사진 URL을 남기지 않는다. [BE-NFR-03]
-6. THE Backend SHALL 응답 본문의 모든 시간 값을 ISO 8601 UTC 문자열로 반환한다. [BE-NFR-05]
+6. THE Backend SHALL 응답 본문의 모든 시간 값을 밀리초 3자리를 고정한 ISO 8601 UTC 문자열(`2026-11-17T09:00:00.000Z`)로 반환한다. [BE-NFR-05, §3 공통 규칙]
 7. THE Backend SHALL 이번 범위에서 `VALIDATION_ERROR`(400), `UNAUTHORIZED`(401), `NOT_FOUND`(404), `IDEMPOTENCY_CONFLICT`(409), `TRY_AGAIN`(503)을 `docs/03-api-contract.md` §3.6에 적힌 코드 문자열·HTTP 상태와 같은 조합으로만 사용한다. [BE-NFR-07]
 
 ### Requirement 12: SAM 템플릿과 배포 설정
@@ -260,7 +260,7 @@
 2. WHEN 같은 `Idempotency-Key`와 같은 본문으로 `Dev_Stack`에 `POST /plans`를 3회 호출하면, THE Backend SHALL 저장된 Plan을 1건으로 유지하고 3회 응답 모두에 같은 `planId`를 반환하며, 이 결과가 `tests/integration/test_idempotency.py`에서 통과한다. [T13, BE-PLAN-01, BE-Q24]
 3. IF 이미 사용된 `Idempotency-Key`로 본문을 바꿔 `Dev_Stack`에 `POST /plans`를 호출하면, THEN THE Backend SHALL 409 `IDEMPOTENCY_CONFLICT`로 응답하고 새 Plan을 만들지 않으며 처음 저장된 Plan을 변경하지 않는다. [T13, BE-PLAN-01]
 4. WHEN 테스트 사용자가 이메일과 `nickname`으로 `Dev_Stack`에 가입하면, THE UserPool SHALL 인증 코드 입력 없이 가입 직후 로그인을 허용하고, 로그인으로 받은 ID 토큰의 `nickname` 클레임이 가입 때 입력한 값과 같다. [BE-AUTH-01, BE-AUTH-02]
-5. WHEN 2단계 단위 테스트를 실행하면, THE Backend SHALL 검증 경계값, `find_not_in_source`(정규화 사전 픽스처 포함), `scan_privacy`, 응답 직렬화 허용 목록, 상태 표시 규칙, 멱등 분기(같은 키·같은 본문, 같은 키·다른 본문, 새 키), PreSignUp 핸들러의 모든 테스트 케이스를 실패 0건으로 통과한다. [§7.3 2단계, BE-PLAN-02, BE-Q25]
+5. WHEN 2단계 단위 테스트를 실행하면, THE Backend SHALL 검증 경계값, `find_not_in_source`(정규화 사전 포함), `scan_privacy`, 응답 직렬화 허용 목록, 상태 표시 규칙, 멱등 분기(같은 키·같은 본문, 같은 키·다른 본문, 새 키), PreSignUp 핸들러의 모든 테스트 케이스를 실패 0건으로 통과한다. [§7.3 2단계, BE-PLAN-02, BE-Q25]
 6. THE Backend SHALL T1과 T13의 합격 여부를 `Dev_Stack`에서 실행한 결과로만 판정하고 로컬 Docker 환경의 통과 결과는 합격으로 인정하지 않는다. [BE-NFR-01, BE-Q15]
 7. THE Backend SHALL 1·2단계 완료 판정에 G1–G4의 구현과 T3–T7 통과를 요구하지 않으며, 이 항목은 3단계 완료 기준에서 판정한다. [§7.3 3단계]
 ## 미결 사항
