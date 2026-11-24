@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from datetime import datetime, timezone
+from decimal import Decimal
 from typing import Any
 
 from common.errors import VALIDATION_ERROR, ApiError
@@ -29,6 +30,98 @@ def error_body(e: ApiError) -> dict[str, Any]:
 
 def error_response(e: ApiError) -> dict[str, Any]:
     return ok(e.status, error_body(e))
+
+
+# ---------------------------------------------------------------------------
+# 직렬화 (BE-PLAN-08). 허용 목록에 있는 필드만 내보낸다. 저장 속성(PK, SK, claimerId,
+# currentClaimId, dueAt(Plan), GSI*, version, ttl 등)은 목록에 없으므로 어느 깊이에도 나가지 않는다.
+# currentClaimId는 응답에 내보내지 않는다(BE-Q33).
+# ---------------------------------------------------------------------------
+
+PLAN_FIELDS = (
+    "planId", "areaId", "owner", "title", "summary", "reason", "estimatedMinutes",
+    "places", "question", "status", "createdAt", "completedAt",
+)  # + 소유자에게만 "metrics"
+PLACE_FIELDS = ("order", "name", "activity", "whyChosen")
+METRIC_FIELDS = (
+    "authoringMode", "durationMs", "agentMode",
+    "addedNotInSource", "addedNotInSourceOrAnswers",
+    "firstProposalNotInSource", "deliveredNotInSource", "agentSelfRepairs",
+    "missingFirst", "missingDelivered", "questionsAsked", "questionsSkipped",
+    "privacyDetected", "privacyInPublished",
+    "agentWaitMs", "answerWaitMs", "editMs", "fieldsEditedAfterHandoff", "modelCalls",
+)  # §2.5 Plan 예시의 metrics 필드
+SUMMARY_FIELDS = (
+    "planId", "title", "summary", "estimatedMinutes", "placeCount", "status", "ownerNickname", "createdAt",
+)
+CLAIM_FIELDS = ("claimId", "planId", "claimer", "status", "claimedAt", "dueAt", "completedAt", "late")
+
+
+def _plain(value: Any) -> Any:
+    """DynamoDB Decimal을 int/float로 바꾼다."""
+    if isinstance(value, Decimal):
+        return int(value) if value == value.to_integral_value() else float(value)
+    return value
+
+
+def _place(p: Any) -> dict[str, Any]:
+    p = p if isinstance(p, dict) else {}
+    return {k: _plain(p.get(k)) for k in PLACE_FIELDS if k in p}
+
+
+def _metrics(m: Any) -> dict[str, Any]:
+    m = m if isinstance(m, dict) else {}
+    return {k: _plain(m[k]) for k in METRIC_FIELDS if k in m}
+
+
+def serialize_plan(item: dict[str, Any], *, is_owner: bool, status_override: str | None = None) -> dict[str, Any]:
+    out: dict[str, Any] = {
+        "planId": item.get("planId"),
+        "areaId": item.get("areaId"),
+        "owner": {"userId": item.get("ownerId"), "nickname": item.get("ownerNickname")},
+        "title": item.get("title"),
+        "summary": item.get("summary"),
+        "reason": item.get("reason"),
+        "estimatedMinutes": _plain(item.get("estimatedMinutes")),
+        "places": [_place(p) for p in item.get("places") or []],
+        "question": item.get("question"),
+        "status": status_override or item.get("status"),
+        "createdAt": item.get("createdAt"),
+        "completedAt": item.get("completedAt"),  # 없으면 null
+    }
+    if is_owner:
+        out["metrics"] = _metrics(item.get("metrics"))
+    return out
+
+
+def serialize_plan_summary(item: dict[str, Any], status_override: str | None = None) -> dict[str, Any]:
+    """PlanSummary 여덟 필드. 소유자여도 metrics는 넣지 않는다."""
+    return {
+        "planId": item.get("planId"),
+        "title": item.get("title"),
+        "summary": item.get("summary"),
+        "estimatedMinutes": _plain(item.get("estimatedMinutes")),
+        "placeCount": len(item.get("places") or []),
+        "status": status_override or item.get("status"),
+        "ownerNickname": item.get("ownerNickname"),
+        "createdAt": item.get("createdAt"),
+    }
+
+
+def serialize_claim(item: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Claim(§2.5). 저장 속성 claimerId·claimerNickname은 claimer 객체로만 내보낸다."""
+    if item is None:
+        return None
+    return {
+        "claimId": item.get("claimId"),
+        "planId": item.get("planId"),
+        "claimer": {"userId": item.get("claimerId"), "nickname": item.get("claimerNickname")},
+        "status": item.get("status"),
+        "claimedAt": item.get("claimedAt"),
+        "dueAt": item.get("dueAt"),
+        "completedAt": item.get("completedAt"),
+        "late": bool(item.get("late", False)),
+    }
 
 
 def iso_utc(dt: datetime) -> str:

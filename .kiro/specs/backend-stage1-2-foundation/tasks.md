@@ -78,14 +78,14 @@
     - 단위 테스트: 차량번호·번지·비공개 장소 사전, 음성 사례, 빈 입력.
     - **Validates: Requirements 10.1, 10.2, 10.3, 10.4, 10.5**
 
-- [ ] 4. 응답 직렬화
-  - [ ] 4.1 직렬화 함수 구현
+- [x] 4. 응답 직렬화
+  - [x] 4.1 직렬화 함수 구현
     - `responses.py`에 `serialize_plan(item, is_owner, status_override)`, `serialize_plan_summary(item, status_override)`, `serialize_claim(item)`을 추가한다. 허용 목록 방식이며 `PK`, `SK`, `claimerId`, `currentClaimId`, `dueAt`, `GSI*`, `version`, `ttl`은 어느 깊이에도 내보내지 않는다(`currentClaimId`는 내보내지 않는다, BE-Q33).
     - `metrics`는 소유자에게만. `owner`는 `{userId, nickname}`, 값이 없는 `completedAt`은 `null`로 직렬화. `PlanSummary`는 여덟 필드만(소유자여도 `metrics` 없음).
     - `serialize_claim`은 `claimId, planId, claimer{userId,nickname}, status, claimedAt, dueAt, completedAt, late` 허용 목록만 구현한다(이번 범위에서 Claim은 쓰지 않음).
     - _Requirements: 8.1, 8.2, 8.3, 8.4, 8.8, 7.6_
 
-  - [ ]* 4.2 Write property test for 직렬화 허용 목록
+  - [x]* 4.2 Write property test for 직렬화 허용 목록
     - **Property 4: 출력 키 집합이 허용 목록의 부분집합이고 비소유자 응답에 `metrics`가 없다**
     - **Validates: Requirements 7.6, 8.1, 8.2, 8.3, 8.8**
 
