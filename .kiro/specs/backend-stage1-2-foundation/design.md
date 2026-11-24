@@ -66,8 +66,9 @@ graph TD
 
 ```
 backend/
-  template.yaml  samconfig.toml  docker-compose.yml  .env.example  requirements.txt
+  template.yaml  samconfig.toml  docker-compose.yml  .env.example  requirements-dev.txt
   src/
+    requirements.txt   # Lambda 런타임 의존성. sam build가 CodeUri(src/)의 이 파일을 읽는다
     common/   auth.py ddb.py errors.py responses.py validation.py ids.py
     handlers/ me.py plans.py pre_signup.py
     domain/   plan_service.py fidelity.py privacy.py
