@@ -35,6 +35,7 @@ class Stack:
     client_id: str
     table_name: str
     created_users: list[str] = field(default_factory=list)
+    created_subs: list[str] = field(default_factory=list)
     created_plan_ids: list[str] = field(default_factory=list)
 
 
@@ -63,14 +64,17 @@ def _cleanup(s: Stack) -> None:
             idp.admin_delete_user(UserPoolId=s.pool_id, Username=username)
         except Exception:  # noqa: BLE001
             pass
-    for plan_id in s.created_plan_ids:
-        items = ddb.query(
-            TableName=s.table_name,
-            KeyConditionExpression="PK = :pk",
-            ExpressionAttributeValues={":pk": {"S": f"PLAN#{plan_id}"}},
-        )["Items"]
+    def delete_partition(pk: str) -> None:
+        items = ddb.query(TableName=s.table_name, KeyConditionExpression="PK = :pk", ExpressionAttributeValues={":pk": {"S": pk}})["Items"]
         for item in items:
             ddb.delete_item(TableName=s.table_name, Key={"PK": item["PK"], "SK": item["SK"]})
+            if item["SK"]["S"].startswith("CLAIM#"):  # ClaimLookup
+                ddb.delete_item(TableName=s.table_name, Key={"PK": {"S": item["SK"]["S"]}, "SK": {"S": "META"}})
+
+    for plan_id in s.created_plan_ids:
+        delete_partition(f"PLAN#{plan_id}")
+    for sub in s.created_subs:  # 수신함(USER#{owner}/INBOX#)과 멱등 키(IDEM#{sub}#…)는 남겨도 TTL·사용자 삭제로 정리되지만 지운다
+        delete_partition(f"USER#{sub}")
 
 
 def new_password() -> str:
@@ -90,6 +94,7 @@ def create_user(stack: Stack, nickname: str) -> tuple[str, str]:
     )
     stack.created_users.append(email)
     sub = next(a["Value"] for a in resp["User"]["Attributes"] if a["Name"] == "sub")
+    stack.created_subs.append(sub)
     idp.admin_set_user_password(UserPoolId=stack.pool_id, Username=email, Password=password, Permanent=True)
     return sub, login(stack, email, password)
 
@@ -140,3 +145,26 @@ def plan_body(title: str = "통합 테스트 산책") -> dict[str, Any]:
         "question": "어떤 소리가 들렸나요?",
         "authoring": {"mode": "MANUAL", "durationMs": 1000, "story": "출근길 빵집에 들러 빵을 사고 싶었어요."},
     }
+
+
+def get_item(stack: Stack, pk: str, sk: str = "META") -> dict[str, Any] | None:
+    """판정용 ConsistentRead 조회(BE-Q38). 반환값은 boto3 resource 형식(파이썬 기본 타입)."""
+    import boto3
+
+    table = boto3.resource("dynamodb", region_name=REGION).Table(stack.table_name)
+    return table.get_item(Key={"PK": pk, "SK": sk}, ConsistentRead=True).get("Item")
+
+
+def query_items(stack: Stack, pk: str, sk_prefix: str) -> list[dict[str, Any]]:
+    import boto3
+    from boto3.dynamodb.conditions import Key
+
+    table = boto3.resource("dynamodb", region_name=REGION).Table(stack.table_name)
+    return table.query(KeyConditionExpression=Key("PK").eq(pk) & Key("SK").begins_with(sk_prefix), ConsistentRead=True)["Items"]
+
+
+def create_plan(stack: Stack, token: str, title: str = "통합 테스트 산책") -> str:
+    status, body = call(stack, "POST", "/plans", token=token, body=plan_body(title), headers={"Idempotency-Key": str(uuid.uuid4())})
+    assert status == 201, body
+    stack.created_plan_ids.append(body["plan"]["planId"])
+    return body["plan"]["planId"]

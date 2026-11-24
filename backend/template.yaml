@@ -101,11 +101,22 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       Handler: handlers.me.handler
-      # GET /me는 4단계 전까지 DB를 쓰지 않으므로 DynamoDB 권한이 없다(BE-Q30).
+      # GET /me는 4단계 전까지 DB를 쓰지 않는다(BE-Q30). GET /me/claims가 GSI2 조회와 Plan·Record 읽기를 쓴다.
+      Policies:
+        - Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              Action: [dynamodb:GetItem, dynamodb:Query]
+              Resource:
+                - !GetAtt HaruTable.Arn
+                - !Sub ${HaruTable.Arn}/index/*
       Events:
         GetMe:
           Type: HttpApi
           Properties: { ApiId: !Ref HttpApi, Path: /me, Method: GET }
+        GetMyClaims:
+          Type: HttpApi
+          Properties: { ApiId: !Ref HttpApi, Path: /me/claims, Method: GET }
 
   PlansFunction:
     Type: AWS::Serverless::Function
@@ -115,8 +126,8 @@ Resources:
         - Version: "2012-10-17"
           Statement:
             - Effect: Allow
-              # TransactWriteItems의 Put은 dynamodb:PutItem 권한으로 실행된다.
-              Action: [dynamodb:GetItem, dynamodb:PutItem, dynamodb:Query]
+              # TransactWriteItems의 Put·Update는 dynamodb:PutItem·UpdateItem 권한으로 실행된다.
+              Action: [dynamodb:GetItem, dynamodb:PutItem, dynamodb:UpdateItem, dynamodb:Query]
               Resource:
                 - !GetAtt HaruTable.Arn
                 - !Sub ${HaruTable.Arn}/index/*
@@ -130,6 +141,31 @@ Resources:
         GetPlan:
           Type: HttpApi
           Properties: { ApiId: !Ref HttpApi, Path: "/plans/{planId}", Method: GET }
+        ClaimPlan:
+          Type: HttpApi
+          Properties: { ApiId: !Ref HttpApi, Path: "/plans/{planId}/claims", Method: POST }
+
+  ClaimsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: handlers.claims.handler
+      Policies:
+        - Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              # 포기·기록·완료 트랜잭션(Update·Put·ConditionCheck)과 ConsistentRead 읽기. Query는 쓰지 않는다.
+              Action: [dynamodb:GetItem, dynamodb:PutItem, dynamodb:UpdateItem, dynamodb:ConditionCheckItem]
+              Resource: !GetAtt HaruTable.Arn
+      Events:
+        AbandonClaim:
+          Type: HttpApi
+          Properties: { ApiId: !Ref HttpApi, Path: "/claims/{claimId}/abandon", Method: POST }
+        PutRecord:
+          Type: HttpApi
+          Properties: { ApiId: !Ref HttpApi, Path: "/claims/{claimId}/record", Method: PUT }
+        CompleteClaim:
+          Type: HttpApi
+          Properties: { ApiId: !Ref HttpApi, Path: "/claims/{claimId}/complete", Method: POST }
 
   PreSignUpFunction:
     Type: AWS::Serverless::Function

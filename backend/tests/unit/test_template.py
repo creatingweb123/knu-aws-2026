@@ -96,15 +96,32 @@ def test_globals(template):
         assert "VpcConfig" not in props and props.get("Runtime", "python3.12") == "python3.12"
 
 
-def test_iam_least_privilege(template):
-    fns = functions(template)
-    assert "Policies" not in fns["MeFunction"]
-    assert "Policies" not in fns["PreSignUpFunction"]
-    (policy,) = fns["PlansFunction"]["Policies"]
+def _only_statement(props):
+    (policy,) = props["Policies"]
     (stmt,) = policy["Statement"]
     assert stmt["Effect"] == "Allow"
-    assert set(stmt["Action"]) == {"dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:Query"}
-    assert stmt["Resource"] == [{"!GetAtt": "HaruTable.Arn"}, {"!Sub": "${HaruTable.Arn}/index/*"}]
+    return stmt
+
+
+WITH_INDEX = [{"!GetAtt": "HaruTable.Arn"}, {"!Sub": "${HaruTable.Arn}/index/*"}]
+
+
+def test_iam_least_privilege(template):
+    """spec backend-stage3-claim 요구사항 7.2."""
+    fns = functions(template)
+    assert "Policies" not in fns["PreSignUpFunction"]
+    plans = _only_statement(fns["PlansFunction"])
+    assert set(plans["Action"]) == {"dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:UpdateItem", "dynamodb:Query"}
+    assert plans["Resource"] == WITH_INDEX
+    claims = _only_statement(fns["ClaimsFunction"])
+    assert set(claims["Action"]) == {"dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:UpdateItem", "dynamodb:ConditionCheckItem"}
+    assert claims["Resource"] == {"!GetAtt": "HaruTable.Arn"}
+    me = _only_statement(fns["MeFunction"])
+    assert set(me["Action"]) == {"dynamodb:GetItem", "dynamodb:Query"}
+    assert me["Resource"] == WITH_INDEX
+    for props in fns.values():
+        for stmt in (s for p in props.get("Policies", []) for s in p["Statement"]):
+            assert not any(a.endswith(("*", "DeleteItem", "Scan")) for a in stmt["Action"])
 
 
 def test_table(template):

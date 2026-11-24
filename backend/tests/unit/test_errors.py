@@ -39,18 +39,43 @@ def test_status_must_match_contract():
     with pytest.raises(ValueError):
         ApiError("UNAUTHORIZED", 403)
     with pytest.raises(ValueError):
-        ApiError("FORBIDDEN")  # 이번 범위에서 쓰지 않는 코드
+        ApiError("AI_UNAVAILABLE")  # 아직 구현하지 않은 단계(6단계)의 코드
+    with pytest.raises(ValueError):
+        ApiError("FORBIDDEN", 404)
 
 
 def test_contract_code_status_pairs():
+    """docs/03 §3.6과 같은 조합(1–3단계 범위)."""
     assert CODE_STATUS == {
         "VALIDATION_ERROR": 400,
+        "RECORD_REQUIRED": 400,
         "UNAUTHORIZED": 401,
+        "FORBIDDEN": 403,
         "NOT_FOUND": 404,
+        "ALREADY_CLAIMED": 409,
+        "CANNOT_CLAIM_OWN_PLAN": 409,
+        "CLAIM_NOT_ACTIVE": 409,
         "IDEMPOTENCY_CONFLICT": 409,
         "TRY_AGAIN": 503,
         "INTERNAL_ERROR": 500,  # BE-Q23 임시
     }
+
+
+def test_emf_line_format():
+    from common.metrics import emf_line
+
+    doc = json.loads(emf_line("ClaimConflict", 1, timestamp_ms=1234))
+    assert doc == {
+        "_aws": {"Timestamp": 1234, "CloudWatchMetrics": [{"Namespace": "Haru", "Dimensions": [[]], "Metrics": [{"Name": "ClaimConflict", "Unit": "Count"}]}]},
+        "ClaimConflict": 1,
+    }
+
+
+def test_claim_id_format():
+    from common.ids import new_claim_id
+
+    a, b = new_claim_id(), new_claim_id()
+    assert a.startswith("clm_") and len(a) == 30 and a != b
 
 
 def test_ok_without_body():

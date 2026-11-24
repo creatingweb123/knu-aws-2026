@@ -40,6 +40,22 @@ class PlanCreate(BaseModel):
     authoring: AuthoringIn
 
 
+class RecordPut(BaseModel):
+    """PUT /claims/{claimId}/record (3단계: 글만). `photo`는 핸들러가 따로 거부한다(BE-Q34)."""
+
+    model_config = _STRICT
+
+    letter: Annotated[str, Field(min_length=1, max_length=1000)]
+
+
+class CompleteIn(BaseModel):
+    """POST /claims/{claimId}/complete. 클라이언트가 보내는 완료는 TEXT_ONLY뿐이다(§3.4)."""
+
+    model_config = _STRICT
+
+    mode: Literal["TEXT_ONLY"]
+
+
 # 필드 이름(경로의 마지막 이름 요소)별 사유 메시지
 _FIELD_MESSAGES: dict[str, str] = {
     "title": "1–40자로 입력해 주세요.",
@@ -56,6 +72,11 @@ _FIELD_MESSAGES: dict[str, str] = {
     "durationMs": "0 이상의 정수로 입력해 주세요.",
     "aiSessionId": "문자열이어야 해요.",
     "story": "1–1000자로 입력해 주세요.",
+    "letter": "1–1000자로 입력해 주세요.",
+}
+# 같은 필드 이름이 모델마다 뜻이 다를 때는 전체 경로로 먼저 찾는다.
+_PATH_MESSAGES: dict[str, str] = {
+    "mode": "TEXT_ONLY여야 해요.",  # POST /claims/{claimId}/complete
 }
 _REQUIRED_MESSAGE = "필수 항목이에요."
 _GENERIC_MESSAGE = "형식이 올바르지 않아요."
@@ -76,6 +97,8 @@ def loc_to_path(loc: tuple[int | str, ...]) -> str:
 def _message(loc: tuple[int | str, ...], err_type: str) -> str:
     if err_type == "missing":
         return _REQUIRED_MESSAGE
+    if loc_to_path(loc) in _PATH_MESSAGES:
+        return _PATH_MESSAGES[loc_to_path(loc)]
     names = [p for p in loc if isinstance(p, str)]
     if names and names[-1] in _FIELD_MESSAGES:
         return _FIELD_MESSAGES[names[-1]]

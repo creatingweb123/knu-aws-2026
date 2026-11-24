@@ -225,7 +225,7 @@
 2. THE HttpApi SHALL CORS를 허용 Origin = `AllowedOrigins` 파라미터 값(기본 `http://localhost:5173`), 허용 헤더 `Authorization`·`Content-Type`·`Idempotency-Key`, 허용 메서드 `GET`·`POST`·`PUT`·`OPTIONS`로 설정하고 이 목록 밖의 값은 허용하지 않는다. [BE-INFRA-03]
 3. THE Backend SHALL 스택 출력값 `ApiUrl`, `UserPoolId`, `UserPoolClientId`를 내보내고 각 값은 배포된 리소스의 실제 값과 일치한다. [BE-INFRA-04]
 4. THE Backend SHALL 모든 Lambda의 Globals 환경 변수에 `TABLE_NAME`, `AREA_ID=default`, `CLAIM_DURATION_DAYS=3`, `LANGSMITH_TRACING=false`, `LANGCHAIN_TRACING_V2=false`를 설정하고, SDK 표준 변수 `AWS_ENDPOINT_URL`과 `AWS_EMF_ENVIRONMENT`는 정의하지 않는다. [BE-INFRA-05, BE-AI-15]
-5. THE Backend SHALL `PlansFunction`에 `HaruTable`과 그 인덱스에 대한 `dynamodb:GetItem`, `dynamodb:PutItem`, `dynamodb:Query` 권한만 부여하고, `MeFunction`에는 DynamoDB 권한을 부여하지 않는다. [BE-INFRA-06]
+5. THE Backend SHALL `PlansFunction`에 `HaruTable`과 그 인덱스에 대한 `dynamodb:GetItem`, `dynamodb:PutItem`, `dynamodb:Query` 권한만 부여하고, `MeFunction`에는 DynamoDB 권한을 부여하지 않는다. [BE-INFRA-06] (3단계에서 `GET /me/claims`가 추가되어 `MeFunction`에 `GetItem`·`Query`, `PlansFunction`에 `UpdateItem`이 붙었다. spec `backend-stage3-claim` 요구사항 7)
 6. THE Backend SHALL `samconfig.toml`에 `dev`, `demo` 환경을 두고 `AllowedOrigins`를 환경별로 지정하며, 이번 범위에서는 CloudFront 도메인을 넣지 않는다. [BE-INFRA-01, BE-INFRA-03]
 7. WHEN `sam validate --lint`를 실행하면, THE Backend SHALL 종료 코드 0으로 끝나고 오류를 0건 보고하는 템플릿을 제공한다. [BE-INFRA-01]
 8. THE Backend SHALL 이번 범위에서 `POST /plans/{planId}/claims`, `GET /me/claims`, `GET /me/plans`와 AI·Claim·Inbox 관련 경로를 `HttpApi`에 등록하지 않는다. [BE-INFRA-01]

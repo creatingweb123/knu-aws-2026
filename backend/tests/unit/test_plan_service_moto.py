@@ -8,11 +8,9 @@ Validates: Requirements 4.1, 4.3, 4.4, 4.5, 4.7, 4.11, 5.6, 6.3, 6.4, 7.4, 7.5, 
 
 from datetime import datetime, timedelta, timezone
 
-import boto3
 import pytest
 
 moto = pytest.importorskip("moto")
-from moto import mock_aws  # noqa: E402
 
 from common import ddb  # noqa: E402
 from common.auth import User  # noqa: E402
@@ -20,40 +18,18 @@ from common.errors import ApiError  # noqa: E402
 from common.responses import iso_utc  # noqa: E402
 from common.validation import PlanCreate  # noqa: E402
 from domain import plan_service as svc  # noqa: E402
+from tests.unit.moto_table import haru_table, set_env  # noqa: E402
 
 NOW = datetime(2026, 11, 20, 12, 0, tzinfo=timezone.utc)
 OWNER = User("u-owner", "지연")
 OTHER = User("u-other", "수현")
 
 
-def create_haru_table(client):
-    def key(n, t):
-        return {"AttributeName": n, "KeyType": t}
-
-    client.create_table(
-        TableName="HaruTable",
-        BillingMode="PAY_PER_REQUEST",
-        AttributeDefinitions=[{"AttributeName": a, "AttributeType": "S"} for a in ("PK", "SK", "GSI1PK", "GSI1SK", "GSI2PK", "GSI2SK")],
-        KeySchema=[key("PK", "HASH"), key("SK", "RANGE")],
-        GlobalSecondaryIndexes=[
-            {"IndexName": "GSI1", "KeySchema": [key("GSI1PK", "HASH"), key("GSI1SK", "RANGE")], "Projection": {"ProjectionType": "ALL"}},
-            {"IndexName": "GSI2", "KeySchema": [key("GSI2PK", "HASH"), key("GSI2SK", "RANGE")], "Projection": {"ProjectionType": "ALL"}},
-        ],
-    )
-
-
 @pytest.fixture
 def table(monkeypatch):
-    monkeypatch.setenv("AWS_DEFAULT_REGION", "ap-northeast-2")
-    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "test")
-    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "test")
-    monkeypatch.setenv("TABLE_NAME", "HaruTable")
-    monkeypatch.delenv("AWS_ENDPOINT_URL", raising=False)
-    with mock_aws():
-        create_haru_table(boto3.client("dynamodb"))
-        monkeypatch.setattr(ddb, "_table", None)
-        yield ddb.table()
-    monkeypatch.setattr(ddb, "_table", None)
+    set_env(monkeypatch)
+    with haru_table() as t:
+        yield t
 
 
 def body(**over):

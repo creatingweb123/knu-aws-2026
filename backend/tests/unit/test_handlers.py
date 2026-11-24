@@ -218,5 +218,9 @@ def test_detail_times_are_iso_utc(table):
     assert ISO_UTC.match(p["createdAt"])
 
 
-def test_routes_cover_only_stage_1_2():
-    assert set(ROUTES) == {"GET /me", "POST /plans", "GET /plans", "GET /plans/{planId}"}
+def test_routes_cover_stage_1_to_3():
+    assert set(ROUTES) == {
+        "GET /me", "GET /me/claims",
+        "POST /plans", "GET /plans", "GET /plans/{planId}", "POST /plans/{planId}/claims",
+        "POST /claims/{claimId}/abandon", "PUT /claims/{claimId}/record", "POST /claims/{claimId}/complete",
+    }

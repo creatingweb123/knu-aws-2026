@@ -153,6 +153,23 @@ def serialize_claim(item: dict[str, Any] | None) -> dict[str, Any] | None:
     }
 
 
+RECORD_FIELDS = ("claimId", "planId", "letter", "photoStatus", "updatedAt", "deliveredAt")
+
+
+def serialize_record(item: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Record(§2.5). photoKey·processedKey·photoError·authorId·키 속성은 내보내지 않는다."""
+    if item is None:
+        return None
+    return {
+        "claimId": item.get("claimId"),
+        "planId": item.get("planId"),
+        "letter": item.get("letter"),
+        "photoStatus": item.get("photoStatus") or "NONE",
+        "updatedAt": item.get("updatedAt"),
+        "deliveredAt": item.get("deliveredAt"),
+    }
+
+
 def iso_utc(dt: datetime) -> str:
     """ISO 8601 UTC 문자열(`2026-11-17T09:00:00.000Z`). naive datetime은 UTC로 본다.
 

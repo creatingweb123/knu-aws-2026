@@ -270,10 +270,15 @@ def plan_update(
     new_status: str | None = None,
     condition: str | None = None,
     condition_values: dict[str, Any] | None = None,
+    condition_names: dict[str, str] | None = None,
 ) -> dict[str, Any]:
-    """TransactWriteItems의 Update 항목. version을 정확히 1 올리고, status를 바꾸면 GSI1PK도 같은 쓰기에서 바꾼다."""
+    """TransactWriteItems의 Update 항목. version을 정확히 1 올리고, status를 바꾸면 GSI1PK도 같은 쓰기에서 바꾼다.
+
+    조건식의 이름 자리표시자는 condition_names로 넘긴다(예: {"#st": "status"}). 갱신식이 쓰는
+    `#version`, `#s{i}`, `#r{i}`, `:one`, `:s{i}`와 겹치지 않는 이름을 쓴다.
+    """
     values: dict[str, Any] = {":one": 1}
-    names: dict[str, str] = {}
+    names: dict[str, str] = dict(condition_names or {})
     sets = ["#version = #version + :one"]
     names["#version"] = "version"
     fields = dict(set_values or {})

@@ -41,6 +41,14 @@
 | BE-Q31 | `authoring.durationMs`의 상한이 없다. | 0 이상 정수만 검증하고 상한은 두지 않는다. 시범 운영 지표에서 이상값이 보이면 정한다. |
 | BE-Q32 | `GET /plans`의 `limit`이 숫자가 아니거나 1 미만, 50 초과일 때의 동작. | 400으로 거부하지 않고 기본 20 / 최대 50으로 보정한다. 프론트는 `limit`을 보내지 않거나 20을 보낸다. |
 | BE-Q33 | `currentClaimId`를 Plan 응답에 내보낼지. BE-PLAN-08은 내부 속성을 걸러내라고 하고, [§2.5](./02-architecture.md) Plan 예시에는 `currentClaimId: null`이 있다. | 응답에 내보내지 않는다(BE-PLAN-08 우선). 확정되면 §2.5 예시를 고친다. 프론트 `types.ts`의 Plan 타입에도 넣지 않는다. |
+| BE-Q34 | 3단계에서 `PUT /claims/{claimId}/record`를 글만 먼저 구현할 때(§7.3 3단계 비고) 요청에 `photo`가 오면. | 400 `VALIDATION_ERROR`, `details` 키 `photo`. 5단계에서 계약대로(업로드 URL 발급) 구현할 때까지만 쓴다. |
+| BE-Q35 | `GET /me/claims`의 `status`가 없거나 `ACTIVE`·`COMPLETED`가 아닐 때. | 400 `VALIDATION_ERROR`(`details` 키 `status`). 프론트는 항상 보낸다. |
+| BE-Q36 | `claimId` 형식. | `clm_` + ULID(`planId`와 같은 패턴). Claim의 실행자 닉네임 속성은 `claimerNickname`. |
+| BE-Q37 | EMF 지표 구현 방식·네임스페이스·차원. | 라이브러리 없이 EMF JSON 한 줄을 stdout에 출력한다. `AWS_EMF_ENVIRONMENT`와 무관하게 형식이 같다. 네임스페이스 `Haru`, 단위 `Count`, 차원 없음. |
+| BE-Q38 | AWS 판정에서 기한 3일을 기다릴 수 없고(T14), 수신함 API가 4단계라 건수를 API로 볼 수 없다(T5·T6). | 테스트가 테스트 실행자 자격 증명으로 DynamoDB를 직접 조회·갱신한다. T14는 Plan·Claim `dueAt`을 과거로 바꾼다. 필요한 권한: 대상 테이블 `GetItem`·`Query`·`UpdateItem`·`DeleteItem`. |
+| BE-Q39 | `COMPLETED` Plan에 이어받기를 요청할 때의 코드. | 409 `ALREADY_CLAIMED`. 상세 조회는 남에게 404를 주므로 이 응답으로 완료된 계획의 존재가 드러난다(MVP 허용). |
+| BE-Q40 | 완료 트랜잭션의 Record 조건에 [§2.6](./02-architecture.md)보다 더한 방어 조건(`attribute_not_exists(deliveredAt)`, 읽은 `photoStatus` 일치). | 둔다. 5단계 사진 처리와 글로 완료의 경합에서 오래된 사진 상태로 계산하지 않기 위해서다. 실패하면 다시 읽어 판정하므로 응답은 문서와 같다. |
+| BE-Q41 | `GET /me/claims`는 GSI2(최종 일관성)를 읽어 방금 이어받은 Claim이 잠깐 빠질 수 있다. | MVP 허용. 프론트는 이어받기 응답의 `claim`으로 화면을 먼저 그린다(FE 확인 필요). |
 
 ## 8.2 프론트엔드 질문
 
@@ -65,6 +73,7 @@
 | 구현을 시작하기 전 | FE-Q3, BE-Q15·FE-Q9, 단계별 담당자와 날짜 |
 | 백엔드 1단계(로컬 환경 구성) | BE-Q17·FE-Q8, BE-Q16, BE-Q27, BE-Q28, BE-Q30 |
 | 백엔드 2단계(계획 API) | BE-Q22, BE-Q23, BE-Q24, BE-Q25, BE-Q29, BE-Q31, BE-Q32, BE-Q33 |
+| 백엔드 3단계(이어받기·포기·완료) | BE-Q34–BE-Q41 (임시 결정으로 구현, AWS 판정 때 확인) |
 | 백엔드 6a(AI 레벨 0) 시작 전 | BE-Q6, BE-Q7·FE-Q6, BE-Q11, BE-Q8, BE-Q18, BE-Q21 |
 | 백엔드 6b(에이전트 그래프) 시작 전 | BE-Q9, BE-Q19, BE-Q20, BE-Q10, BE-Q13·FE-Q7, BE-Q14, BE-Q26 |
 | 구현 중 | BE-Q1, BE-Q3·FE-Q1, BE-Q4, BE-Q2, FE-Q2, FE-Q4, FE-Q5 |
