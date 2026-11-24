@@ -1,0 +1,64 @@
+# 로컬 개발 환경 (docs/02 §2.4, BE-INFRA-08). 개발과 단위·로컬 통합 테스트용이며 T 시나리오 판정 근거가 아니다(BE-Q15).
+#   cp .env.example .env   (없어도 기본값으로 뜬다)
+#   docker compose up -d --build
+#   docker compose logs aws     # init 출력(풀 ID, 클라이언트 ID, LOCAL_JWT_ISSUER)
+#   docker compose down         # 데이터는 floci-data 볼륨에 남는다(-v로 지운다)
+# 이번 범위(1·2단계)에는 SQS·S3·ollama를 넣지 않는다.
+name: haru
+
+services:
+  aws: # DynamoDB, Cognito User Pool
+    image: floci/floci:2.5.0-compat # 태그 고정, latest 금지. init에서 boto3를 쓰려면 -compat
+    ports: ["4566:4566"]
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      FLOCI_DEFAULT_REGION: ap-northeast-2
+      AWS_DEFAULT_REGION: ap-northeast-2
+      FLOCI_STORAGE_MODE: hybrid # 재시작해도 데이터 유지
+      FLOCI_STORAGE_PERSISTENT_PATH: /var/lib/floci
+      FLOCI_INIT_HOOKS_TIMEOUT_SECONDS: "120"
+    volumes:
+      - ./local/init:/etc/floci/init/ready.d:ro
+      - floci-data:/var/lib/floci
+    healthcheck:
+      # init 스크립트(local/init/01_haru.py)가 모든 단계를 마치면 표시 파일을 남긴다.
+      test: ["CMD-SHELL", "test -f /tmp/haru-init-done"]
+      interval: 3s
+      timeout: 3s
+      retries: 60
+      start_period: 5s
+
+  api: # HTTP 어댑터: payload 2.0 변환 + JWT 검증 + 같은 Lambda 핸들러 호출
+    build:
+      context: .
+      dockerfile: local/adapter/Dockerfile
+    ports: ["3000:3000"]
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      STAGE: local
+      AWS_ENDPOINT_URL: http://aws:4566
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      AWS_REGION: ap-northeast-2
+      AWS_DEFAULT_REGION: ap-northeast-2
+      AWS_EMF_ENVIRONMENT: Local
+      TABLE_NAME: HaruTable
+      CHECKPOINT_TABLE: HaruAgentCheckpoints
+      AREA_ID: default
+      CLAIM_DURATION_DAYS: "3"
+      LANGSMITH_TRACING: "false"
+      LANGCHAIN_TRACING_V2: "false"
+      LOCAL_USER_POOL_CLIENT_ID: ${LOCAL_USER_POOL_CLIENT_ID:-haruLocalWebClient}
+      LOCAL_JWT_ISSUER: ${LOCAL_JWT_ISSUER:-http://localhost:4566/ap-northeast-2_haruLocal}
+      LOCAL_JWKS_URL: ${LOCAL_JWKS_URL:-http://aws:4566/ap-northeast-2_haruLocal/.well-known/jwks.json}
+      CORS_ALLOWED_ORIGIN: http://localhost:5173
+    depends_on:
+      aws:
+        condition: service_healthy
+
+volumes:
+  floci-data: {}
