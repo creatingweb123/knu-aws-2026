@@ -17,40 +17,40 @@
   - `pytest.ini`(pythonpath `src`, 마커 `local`, `integration`), `.env.example`(로컬 전용 예시 시드 사용자 값, 실제 계정 아님), `.gitignore`(`.env`, `.aws-sam`)를 만든다.
   - _Requirements: 12.9, 13.11_
 
-- [ ] 2. 공통 모듈 (`src/common`)
-  - [ ] 2.1 에러·응답·ID 모듈 구현
+- [x] 2. 공통 모듈 (`src/common`)
+  - [x] 2.1 에러·응답·ID 모듈 구현
     - `errors.py`: `ApiError(code, status, message, details)`. 이번 범위 코드는 `VALIDATION_ERROR`(400), `UNAUTHORIZED`(401), `NOT_FOUND`(404), `IDEMPOTENCY_CONFLICT`(409), `TRY_AGAIN`(503), 임시 `INTERNAL_ERROR`(500, BE-Q23).
     - `responses.py`: `ok(status, body)`(payload 2.0 응답), `error_response(e)`(`{"error":{"code","message","details"?}}`, `details`는 `VALIDATION_ERROR`에만). 시간 값은 ISO 8601 UTC 문자열.
     - `ids.py`: `planId = "pln_" + ULID` 생성기.
     - 예외 메시지·스택·내부 식별자를 응답에 담지 않는다. 로그에는 예외 유형만 남긴다.
     - _Requirements: 11.1, 11.2, 11.3, 11.4, 11.5, 11.6, 11.7, 4.2_
 
-  - [ ] 2.2 요청 검증 모듈 구현
+  - [x] 2.2 요청 검증 모듈 구현
     - `validation.py`: `PlaceIn`, `AuthoringIn`, `PlanCreate` pydantic 모델을 요구사항 3.1–3.3의 범위(양 끝 포함)로 정의한다. `authoring.story`는 두 모드 모두 필수(1–1000자). `durationMs`는 0 이상 정수(상한 없음, BE-Q31).
     - `to_details(err)`: pydantic 오류 위치를 `places[0].name` 표기의 `dict[str, str]`로 변환한다.
     - `aiSessionId`는 문자열 여부만 확인한다.
     - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.6_
 
-  - [ ] 2.3 JWT 사용자 식별 구현
+  - [x] 2.3 JWT 사용자 식별 구현
     - `auth.py`: `get_user(event)`가 `requestContext.authorizer.jwt.claims`에서 `(sub, nickname)`만 읽는다. 본문·쿼리·헤더의 사용자 ID는 읽지 않는다. `sub`가 없으면 `ApiError("UNAUTHORIZED", 401)`이며 DB를 읽지 않는다.
     - 닉네임 클레임이 없을 때의 응답은 BE-Q17·BE-Q30 미결로 두고 `nickname = None`으로 처리한다.
     - _Requirements: 2.1, 2.2, 2.3_
 
-  - [ ] 2.4 DynamoDB 접근 모듈 구현
+  - [x] 2.4 DynamoDB 접근 모듈 구현
     - `ddb.py`: `table()`(엔드포인트는 SDK의 `AWS_ENDPOINT_URL`에 맡기고 앱 코드에서 직접 다루지 않음), `ConditionFailed(reasons)`, `transact_with_retry(items)`.
     - `TransactionConflict`는 50·100·200ms 백오프로 최대 3회 재시도 후 `ApiError("TRY_AGAIN", 503)`. `ConditionalCheckFailed`가 취소 사유에 있으면 재시도 없이 `ConditionFailed`를 올린다.
     - _Requirements: 4.9, 4.10, 4.11_
 
-  - [ ]* 2.5 Write property test for 입력 검증 경계
+  - [x]* 2.5 Write property test for 입력 검증 경계
     - **Property 5: 검증 경계에서 유효 범위만 통과하고 실패 `details` 키는 `places[0].name` 표기**
     - Hypothesis로 `title` 40/41자, `estimatedMinutes` 9/10/240/241, `places` 0/1/3/4개, `story` 0/1/1000/1001자 경계를 생성한다.
     - **Validates: Requirements 3.1, 3.2, 3.4**
 
-  - [ ]* 2.6 Write property test for 에러 응답 형식
+  - [x]* 2.6 Write property test for 에러 응답 형식
     - **Property 10: 모든 4xx/5xx 본문이 `{error:{code,message,details?}}`이고 `details`는 `VALIDATION_ERROR`에만 있다**
     - **Validates: Requirements 11.1, 11.2, 11.3**
 
-  - [ ]* 2.7 Write unit tests for auth·ddb
+  - [x]* 2.7 Write unit tests for auth·ddb
     - Property 3: 본문·쿼리에 다른 사용자 ID를 넣어도 `get_user` 결과가 JWT `sub`로 고정됨을 생성기로 확인한다. **Validates: Requirements 2.1**
     - Stubber로 `TransactionConflict` 3회 재시도 후 503 `TRY_AGAIN`, `ConditionalCheckFailed` 무재시도 `ConditionFailed`를 확인한다.
     - _Requirements: 2.1, 2.3, 4.9, 4.10, 4.11_
