@@ -1,0 +1,8 @@
+.venv/
+.aws-sam/
+.env
+**/__pycache__/
+**/*.pyc
+.pytest_cache/
+.hypothesis/
+tests/
