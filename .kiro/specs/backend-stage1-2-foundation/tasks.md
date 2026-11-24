@@ -89,8 +89,8 @@
     - **Property 4: 출력 키 집합이 허용 목록의 부분집합이고 비소유자 응답에 `metrics`가 없다**
     - **Validates: Requirements 7.6, 8.1, 8.2, 8.3, 8.8**
 
-- [ ] 5. 계획 서비스 (`src/domain/plan_service.py`)
-  - [ ] 5.1 `create_plan` 구현
+- [x] 5. 계획 서비스 (`src/domain/plan_service.py`)
+  - [x] 5.1 `create_plan` 구현
     - `Idempotency-Key` 없으면 400 `VALIDATION_ERROR`(`details` 키 `Idempotency-Key`, BE-Q29). 본문 해시는 키 정렬·공백 없는 JSON의 SHA-256.
     - 키 항목이 이미 있으면(ConsistentRead) 재생: 해시 같으면 기존 Plan, 다르면 409 `IDEMPOTENCY_CONFLICT`.
     - 없으면 Plan(`attribute_not_exists(PK)`)과 Idempotency_Key_Item(`IDEM#{userId}#{key}`, `bodyHash`, `planId`, `ttl`=+24h, `attribute_not_exists(PK)`)을 `transact_with_retry` 한 번으로 저장한다. `ConditionFailed`는 키 항목을 다시 읽어 해시 비교 후 재생, 키 항목이 없으면 503 `TRY_AGAIN`.
@@ -98,22 +98,22 @@
     - `metrics`는 `authoringMode`, `durationMs`, `addedNotInSource`(`find_not_in_source([story], places의 name·activity)`), `privacyInPublished`(Plan 텍스트 전체 `scan_privacy` 수)만 저장하고 `aiSessionId`로 AI 세션을 읽지 않는다. 재요청 시 `metrics`를 다시 계산하지 않는다.
     - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.5, 4.6, 4.7, 4.8, 4.11, 4.12, 5.1, 5.2, 5.3, 5.4, 5.5, 5.6, 3.5, 8.5_
 
-  - [ ] 5.2 `list_plans`, `get_plan` 구현
+  - [x] 5.2 `list_plans`, `get_plan` 구현
     - `list_plans(status, limit, now)`: `status != OPEN`이면 400 `VALIDATION_ERROR`. `GSI1PK = AREA#default#STATUS#OPEN` 조회와 `STATUS#CLAIMED` 중 `dueAt < now` 항목을 합쳐 `createdAt` 내림차순, 기본 20, 최대 50(BE-Q3), 모든 `status`를 `OPEN`으로, `nextCursor: null`. `limit`이 숫자가 아니거나 범위 밖이면 20/50으로 보정한다(BE-Q32).
     - `get_plan(plan_id, user, now)`: ConsistentRead GetItem, 없으면 404. 요청자 Claim(`ACTIVE`·`COMPLETED`만)을 `myClaim`으로. `COMPLETED` 계획은 소유자·해당 실행자 외 404. 기한 지난 `CLAIMED`는 현재 실행자가 아니면 `OPEN`, 기한 내 `CLAIMED`는 실행자 정보 숨김. `claimable = !isOwner && myClaim == null && 표시 status == OPEN`.
     - Plan 갱신 헬퍼는 `version`을 정확히 1 올리고 `status` 변경 시 `GSI1PK`를 같은 쓰기에서 바꾼다(3단계가 재사용).
     - _Requirements: 6.1, 6.2, 6.3, 6.4, 6.5, 6.6, 6.7, 7.1, 7.3, 7.4, 7.5, 7.6, 7.7, 7.8, 7.9, 7.10, 7.11, 8.6, 8.7_
 
-  - [ ]* 5.3 Write unit tests for 멱등 분기
+  - [x]* 5.3 Write unit tests for 멱등 분기
     - Stubber 또는 로컬 에뮬레이터로 같은 키·같은 본문, 같은 키·다른 본문(409), 새 키, 동시 선점 패배(`ConditionFailed` → 재생), `TransactionConflict` 주입(재시도·503), 키 항목 없는 취소(503)를 확인한다. 헤더 누락 400(3.5)과 `metrics` 저장(5.1–5.6)도 포함한다.
     - 인메모리 가짜 테이블에 대해 Hypothesis로 임의 `(b, k)`를 n회 호출해도 Plan이 1건이고 `planId`가 같음을 확인한다(Property 2의 서비스 수준 확인, T13 판정은 11.2에서).
     - _Requirements: 4.5, 4.7, 4.8, 4.9, 4.10, 4.11, 4.12, 5.6_
 
-  - [ ]* 5.4 Write property test for 목록 정렬·필터
+  - [x]* 5.4 Write property test for 목록 정렬·필터
     - **Property 6: `list_plans`는 `createdAt` 내림차순이고 모든 `status`가 `OPEN`이며 기한 지난 `CLAIMED`는 포함, 기한 내 `CLAIMED`는 제외**
     - **Validates: Requirements 6.3, 6.4, 6.5**
 
-  - [ ]* 5.5 Write property test for 상세 상태 규칙
+  - [x]* 5.5 Write property test for 상세 상태 규칙
     - **Property 7: `claimable = !isOwner ∧ myClaim = null ∧ shown = OPEN`, `COMPLETED` 계획은 소유자·실행자 외 404, `ABANDONED`·`EXPIRED` Claim만 있으면 `myClaim = null`**
     - **Validates: Requirements 7.4, 7.5, 7.7, 7.8, 7.10, 7.11**
 

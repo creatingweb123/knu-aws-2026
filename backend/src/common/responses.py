@@ -125,12 +125,18 @@ def serialize_claim(item: dict[str, Any] | None) -> dict[str, Any] | None:
 
 
 def iso_utc(dt: datetime) -> str:
-    """ISO 8601 UTC 문자열(`2026-11-17T09:00:00Z`). naive datetime은 UTC로 본다."""
+    """ISO 8601 UTC 문자열(`2026-11-17T09:00:00.000Z`). naive datetime은 UTC로 본다.
+
+    자릿수를 밀리초로 고정한다. 저장한 시각(createdAt, dueAt)을 DynamoDB에서 문자열로 비교·정렬하므로
+    자릿수가 다르면 순서가 틀어진다("…00.500Z" < "…00Z").
+    """
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
-    dt = dt.astimezone(timezone.utc)
-    text = dt.isoformat(timespec="milliseconds" if dt.microsecond else "seconds")
-    return text.replace("+00:00", "Z")
+    return dt.astimezone(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+
+
+def parse_iso(text: str) -> datetime:
+    return datetime.fromisoformat(text.replace("Z", "+00:00"))
 
 
 def utc_now() -> datetime:

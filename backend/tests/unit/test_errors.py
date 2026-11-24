@@ -71,7 +71,13 @@ def test_iso_utc_is_utc_z(dt):
 
 
 def test_iso_utc_example():
-    assert iso_utc(datetime(2026, 11, 17, 9, 0, tzinfo=timezone.utc)) == "2026-11-17T09:00:00Z"
+    assert iso_utc(datetime(2026, 11, 17, 9, 0, tzinfo=timezone.utc)) == "2026-11-17T09:00:00.000Z"
+
+
+@given(a=st.datetimes(timezones=st.just(timezone.utc)), b=st.datetimes(timezones=st.just(timezone.utc)))
+def test_iso_utc_string_order_matches_time_order(a, b):
+    if a.year >= 1000 and b.year >= 1000:  # 연도 자릿수가 같을 때
+        assert (iso_utc(a) < iso_utc(b)) == (a.replace(microsecond=a.microsecond // 1000 * 1000) < b.replace(microsecond=b.microsecond // 1000 * 1000))
 
 
 def test_plan_id_format():
