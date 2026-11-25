@@ -5,7 +5,7 @@ import { request } from '../../api/client';
 import type { ClaimResponse, Me, PlanDetailResponse, PlanListResponse } from '../../api/types';
 import { CLAIM_DURATION_DAYS, DAY_MS, createSeed, iso, loadDb, resetDb, saveDb } from '../db';
 import { mockTokenFor } from '../session';
-import { claimPlan, listOpenPlans, planDetail } from './plans';
+import { claimPlan, createPlan, listOpenPlans, planDetail } from './plans';
 
 const NOW = Date.parse('2026-11-20T03:00:00.000Z');
 const nowIso = iso(NOW);
@@ -239,5 +239,92 @@ describe('이어받기 핸들러(MSW)', () => {
     as('u-suhyun');
     const res = await request<PlanListResponse>('/plans?status=OPEN');
     expect(res.items).toEqual([]);
+  });
+});
+
+describe('공개 createPlan / POST /plans (docs/03 §3.3)', () => {
+  const jiyeon = { userId: 'u-jiyeon', nickname: '지연' };
+  const body = () => ({
+    title: '새 하루',
+    summary: '요약',
+    reason: '이유',
+    estimatedMinutes: 30,
+    places: [{ name: '공원', activity: '걷기', whyChosen: '' }],
+    question: '무엇이 보였나요?',
+    authoring: { mode: 'MANUAL', durationMs: 1000, story: '공원을 걷고 싶었어요.' },
+  });
+
+  it('201: OPEN Plan, order 1부터, 소유자 metrics, 목록 맨 앞', () => {
+    const db = createSeed(NOW);
+    const out = createPlan(db, jiyeon, 'k1', body(), NOW + 1000);
+    if (!('plan' in out)) throw new Error('plan 없음');
+    expect(out.plan).toMatchObject({
+      status: 'OPEN',
+      owner: { userId: 'u-jiyeon', nickname: '지연' },
+      places: [{ order: 1, name: '공원' }],
+      metrics: { authoringMode: 'MANUAL', durationMs: 1000 },
+    });
+    expect(out.plan.planId).toMatch(/^pln_/);
+    expect(listOpenPlans(db, iso(NOW + 2000))[0].planId).toBe(out.plan.planId);
+  });
+
+  it('같은 키·같은 본문은 처음 만든 Plan, 다른 본문은 IDEMPOTENCY_CONFLICT', () => {
+    const db = createSeed(NOW);
+    const a = createPlan(db, jiyeon, 'k1', body(), NOW);
+    const b = createPlan(db, jiyeon, 'k1', body(), NOW + 5000);
+    if (!('plan' in a) || !('plan' in b)) throw new Error('plan 없음');
+    expect(b.plan.planId).toBe(a.plan.planId);
+    expect(db.plans.filter((p) => p.title === '새 하루')).toHaveLength(1);
+    expect(createPlan(db, jiyeon, 'k1', { ...body(), title: '다른 하루' }, NOW)).toEqual({
+      error: 'IDEMPOTENCY_CONFLICT',
+    });
+    // 키는 사용자별이다
+    expect(createPlan(db, { userId: 'u-minjun', nickname: '민준' }, 'k1', body(), NOW)).toHaveProperty(
+      'plan',
+    );
+  });
+
+  it('400 VALIDATION_ERROR: 경로·문구는 백엔드와 같다', () => {
+    const db = createSeed(NOW);
+    expect(createPlan(db, jiyeon, '  ', body(), NOW)).toEqual({
+      error: 'VALIDATION_ERROR',
+      details: { 'Idempotency-Key': '필수 헤더예요.' },
+    });
+    const bad = {
+      ...body(),
+      estimatedMinutes: '45',
+      places: [{ name: '', activity: '걷기', whyChosen: '' }],
+    };
+    delete (bad as { question?: string }).question;
+    expect(createPlan(db, jiyeon, 'k2', bad, NOW)).toEqual({
+      error: 'VALIDATION_ERROR',
+      details: {
+        estimatedMinutes: '10–240 사이의 정수로 입력해 주세요.',
+        'places[0].name': '1–30자로 입력해 주세요.',
+        question: '필수 항목이에요.',
+      },
+    });
+  });
+
+  it('핸들러: 헤더로 키를 받고 201, 다른 본문은 409', async () => {
+    as('u-jiyeon');
+    const headers = { 'Idempotency-Key': 'key-1' };
+    const res = await request<{ plan: { planId: string } }>('/plans', {
+      method: 'POST',
+      body: body(),
+      headers,
+    });
+    expect(res.plan.planId).toMatch(/^pln_/);
+    await expect(
+      request('/plans', { method: 'POST', body: { ...body(), title: '바뀜' }, headers }),
+    ).rejects.toMatchObject({ status: 409, code: 'IDEMPOTENCY_CONFLICT' });
+    // 헤더 오류와 본문 오류를 합쳐 돌려준다(백엔드 _create와 같음)
+    await expect(request('/plans', { method: 'POST', body: { ...body(), title: '' } })).rejects.toMatchObject(
+      {
+        status: 400,
+        code: 'VALIDATION_ERROR',
+        details: { 'Idempotency-Key': '필수 헤더예요.', title: '1–40자로 입력해 주세요.' },
+      },
+    );
   });
 });

@@ -8,6 +8,7 @@ import { ToastProvider } from './components/Toast';
 import { mockTokenFor } from './mocks/session';
 import { createQueryClient } from './queryClient';
 import { SCREENS, routes } from './routes';
+import { newDraft, saveDraft } from './state/planDraft';
 
 function renderAt(path: string) {
   const router = createMemoryRouter(routes, { initialEntries: [path] });
@@ -31,6 +32,8 @@ describe('라우트 골격(docs/05 §5.1)', () => {
 
   it.each(SCREENS.map((s) => [s.screen, s.path]))('화면 %s (%s)가 열린다', async (screenNo, path) => {
     setTokenProvider(async () => mockTokenFor('u-suhyun'));
+    // 폼·장소 추가는 사연이 있는 작성 상태에서만 열린다(없으면 사연 입력으로 보낸다)
+    saveDraft({ ...newDraft(Date.now()), story: '동네 산책을 하고 싶었어요.' });
     renderAt(sample(path));
     expect(await screen.findByTestId(`screen-${screenNo}`)).toBeInTheDocument();
   });

@@ -12,6 +12,8 @@ import { HttpResponse, http } from 'msw';
 import type {
   Claim,
   ClaimResponse,
+  CreatePlanRequest,
+  CreatePlanResponse,
   ErrorCode,
   Plan,
   PlanDetailResponse,
@@ -20,7 +22,9 @@ import type {
 } from '../../api/types';
 import type { DbClaim, DbPlan, MockDb } from '../db';
 import { CLAIM_DURATION_DAYS, DAY_MS, iso, loadDb, updateDb } from '../db';
+import { canonicalJson, hashString } from '../../utils/hash';
 import { getMockScenario } from '../session';
+import { validateCreatePlan } from '../validatePlan';
 import { api, apiError, currentUser, unauthorized } from './common';
 
 const isOverdue = (p: DbPlan, nowIso: string) => p.status === 'CLAIMED' && !!p.dueAt && p.dueAt < nowIso;
@@ -98,6 +102,66 @@ export function planDetail(
   return { plan: toPlan(p, viewerId, nowIso), isOwner, myClaim, claimable };
 }
 
+export type CreateOutcome =
+  | { plan: Plan }
+  | { error: 'VALIDATION_ERROR'; details: { [path: string]: string } }
+  | { error: 'IDEMPOTENCY_CONFLICT' };
+
+/**
+ * `POST /plans` (백엔드 plan_service.create_plan과 같은 순서). `db`를 직접 바꾼다.
+ * 1–2. 키 없음(`Idempotency-Key`)과 본문 검증 오류를 합쳐 VALIDATION_ERROR details (handlers/plans.py `_create`)
+ * 3. 같은 사용자·키가 있으면: 본문 해시가 같으면 처음 만든 Plan, 다르면 IDEMPOTENCY_CONFLICT
+ * 4. 새 Plan(OPEN)과 키 항목 저장
+ * 지표는 authoringMode·durationMs만 둔다(원문 대조·개인정보 지표는 서버가 계산한다).
+ */
+export function createPlan(
+  db: MockDb,
+  user: { userId: string; nickname: string },
+  key: string | null,
+  body: unknown,
+  nowMs: number,
+): CreateOutcome {
+  const details: { [path: string]: string } = {};
+  if (!key || !key.trim()) details['Idempotency-Key'] = '필수 헤더예요.'; // BE-Q29
+  Object.assign(details, validateCreatePlan(body) ?? {});
+  if (!key || Object.keys(details).length > 0) return { error: 'VALIDATION_ERROR', details };
+  const req = body as CreatePlanRequest;
+  const bodyHash = hashString(canonicalJson(req));
+  const idemKey = `${user.userId}#${key}`;
+
+  const existing = db.idempotency[idemKey];
+  if (existing) {
+    if (existing.bodyHash !== bodyHash) return { error: 'IDEMPOTENCY_CONFLICT' };
+    const plan = db.plans.find((p) => p.planId === existing.planId);
+    if (plan) return { plan: toPlan(plan, user.userId, iso(nowMs)) };
+  }
+
+  const plan: DbPlan = {
+    planId: `pln_${crypto.randomUUID().replace(/-/g, '').slice(0, 26).toUpperCase()}`,
+    areaId: 'default',
+    ownerId: user.userId,
+    ownerNickname: user.nickname,
+    title: req.title,
+    summary: req.summary,
+    reason: req.reason,
+    estimatedMinutes: req.estimatedMinutes,
+    places: req.places.map((p, i) => ({
+      order: i + 1,
+      name: p.name,
+      activity: p.activity,
+      whyChosen: p.whyChosen,
+    })),
+    question: req.question,
+    status: 'OPEN',
+    createdAt: iso(nowMs),
+    completedAt: null,
+    metrics: { authoringMode: req.authoring.mode, durationMs: req.authoring.durationMs },
+  };
+  db.plans.push(plan);
+  db.idempotency[idemKey] = { bodyHash, planId: plan.planId };
+  return { plan: toPlan(plan, user.userId, iso(nowMs)) };
+}
+
 export type ClaimOutcome = { status: 200 | 201; claim: Claim } | { error: ErrorCode };
 
 const CLAIM_MESSAGES: Partial<{ [code in ErrorCode]: string }> = {
@@ -168,6 +232,27 @@ export const planHandlers = [
       getMockScenario() === 'browse-empty' ? [] : listOpenPlans(loadDb(), new Date().toISOString());
     const body: PlanListResponse = { items, nextCursor: null };
     return HttpResponse.json(body);
+  }),
+
+  http.post(api('/plans'), async ({ request }) => {
+    const user = currentUser(request);
+    if (!user) return unauthorized();
+    let body: unknown = null;
+    try {
+      body = await request.json();
+    } catch {
+      body = null;
+    }
+    const key = request.headers.get('Idempotency-Key');
+    const outcome = updateDb((db) => createPlan(db, user, key, body, Date.now()));
+    if ('plan' in outcome) {
+      const res: CreatePlanResponse = { plan: outcome.plan };
+      return HttpResponse.json(res, { status: 201 }); // 재요청도 201(BE-Q24)
+    }
+    if (outcome.error === 'VALIDATION_ERROR') {
+      return apiError('VALIDATION_ERROR', '입력값을 확인해 주세요.', 400, outcome.details);
+    }
+    return apiError('IDEMPOTENCY_CONFLICT', '같은 요청 키로 다른 내용을 보냈어요.');
   }),
 
   http.post(api('/plans/:planId/claims'), ({ request, params }) => {

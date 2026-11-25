@@ -1,0 +1,150 @@
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+/* 개인 정보·외부 AI 전송 안내 */
+.notice {
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--color-plan);
+  font-size: var(--font-size-sm);
+}
+
+.notice p + p {
+  margin-top: var(--space-2);
+}
+
+.pending {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-sub);
+}
+
+/* 폼 상단 사연(참고용) */
+.story-ref {
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--color-plan);
+}
+
+.story-ref-label {
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+  color: var(--color-text-sub);
+}
+
+.story-ref-text {
+  margin-top: var(--space-1);
+  font-size: var(--font-size-sm);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.section-title {
+  font-size: var(--font-size-md);
+  font-weight: 700;
+}
+
+.places {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.place {
+  display: flex;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+
+.place-invalid {
+  border-color: var(--color-danger);
+}
+
+.place-no {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-pill);
+  border: 2px solid var(--color-primary);
+  color: var(--color-primary);
+  font-size: var(--font-size-sm);
+  font-weight: 700;
+}
+
+.place-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.place-name {
+  font-weight: 700;
+  word-break: break-word;
+}
+
+.place-activity {
+  font-size: var(--font-size-sm);
+  word-break: break-word;
+}
+
+.place-why {
+  margin-top: var(--space-1);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-sub);
+  word-break: break-word;
+}
+
+.place-actions {
+  display: flex;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.small-button {
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-size: var(--font-size-xs);
+  cursor: pointer;
+}
+
+.add-place {
+  width: 100%;
+  margin-top: var(--space-3);
+  padding: var(--space-3);
+  border: 1px dashed var(--color-primary);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-primary);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.error-text {
+  margin-top: var(--space-2);
+  font-size: var(--font-size-sm);
+  color: var(--color-danger);
+}
+
+.empty-places {
+  margin-top: var(--space-2);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-sub);
+}
+
+/* 하단 고정 버튼이 두 개인 화면: 레이아웃 기본 여백(버튼 1개)에 버튼 하나만큼 더 띄운다 */
+.two-buttons {
+  padding-bottom: calc(52px + var(--space-2));
+}

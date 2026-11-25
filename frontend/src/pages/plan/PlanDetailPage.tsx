@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 
 import { isApiError } from '../../api/client';
 import { errorMessage } from '../../api/errors';
-import { useClaimPlan } from '../../api/queries/useClaimPlan';
+import { useClaim } from '../../api/mutations/useClaim';
 import { usePlan } from '../../api/queries/usePlans';
 import type { PlanStatus } from '../../api/types';
 import { PrimaryButton } from '../../components/PrimaryButton';
@@ -38,7 +38,7 @@ function PlanDetail({ planId }: { planId: string }) {
   const navigate = useNavigate();
   const toast = useToast();
   const { data, error, isPending, refetch, isFetching } = usePlan(planId);
-  const claim = useClaimPlan(planId);
+  const claim = useClaim(planId);
   const [conflict, setConflict] = useState(false);
 
   const notFound = isApiError(error) && error.code === 'NOT_FOUND';

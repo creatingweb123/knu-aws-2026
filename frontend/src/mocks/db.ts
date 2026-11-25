@@ -9,7 +9,8 @@ import type { ClaimStatus, PhotoStatus, PlanMetrics, PlanStatus } from '../api/t
 import { MOCK_USERS } from './session';
 
 export const DB_KEY = 'haru.mock.db';
-const DB_VERSION = 1;
+/** 저장 형태가 바뀌면 올린다. 다른 버전의 저장값은 새 시드로 바뀐다(2: idempotency 추가) */
+const DB_VERSION = 2;
 export const DAY_MS = 24 * 60 * 60 * 1000;
 export const CLAIM_DURATION_DAYS = 3;
 
@@ -74,12 +75,19 @@ export interface DbInboxItem {
   reply: { text: string; sentAt: string } | null;
 }
 
+/** `POST /plans` 멱등 키 항목. 키는 `{userId}#{Idempotency-Key}` */
+export interface DbIdempotency {
+  bodyHash: string;
+  planId: string;
+}
+
 export interface MockDb {
   version: number;
   plans: DbPlan[];
   claims: DbClaim[];
   records: DbRecord[];
   inbox: DbInboxItem[];
+  idempotency: { [userAndKey: string]: DbIdempotency };
 }
 
 /** 계약과 같은 밀리초 3자리 UTC 문자열 */
@@ -249,7 +257,7 @@ export function createSeed(now: number = Date.now()): MockDb {
     },
   ];
 
-  return { version: DB_VERSION, plans, claims, records, inbox };
+  return { version: DB_VERSION, plans, claims, records, inbox, idempotency: {} };
 }
 
 export function loadDb(): MockDb {

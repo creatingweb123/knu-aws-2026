@@ -11,6 +11,10 @@ import { RequireAuth } from './auth/RequireAuth';
 import { Layout } from './components/Layout';
 import { BrowsePage } from './pages/browse/BrowsePage';
 import { PlanDetailPage } from './pages/plan/PlanDetailPage';
+import { PlacePage } from './pages/plan/create/PlacePage';
+import { PlanFormPage } from './pages/plan/create/PlanFormPage';
+import { PublishedPage } from './pages/plan/create/PublishedPage';
+import { StoryPage } from './pages/plan/create/StoryPage';
 import { LoginPage } from './pages/login/LoginPage';
 import { NotFoundPage } from './pages/NotFoundPage';
 import { Placeholder } from './pages/Placeholder';
@@ -32,10 +36,24 @@ export interface ScreenRoute {
 /** `/plans/new*`는 `/plans/:planId`보다 앞에 둔다(React Router는 정적 경로를 우선하지만 표 순서도 맞춘다) */
 export const SCREENS: ScreenRoute[] = [
   { path: '/', screen: '1', name: '둘러보기', tab: true, stage: 2, element: <BrowsePage /> },
-  { path: '/plans/new', screen: '3', name: '사연 입력', back: true, stage: 3 },
+  { path: '/plans/new', screen: '3', name: '사연 입력', back: true, stage: 3, element: <StoryPage /> },
   { path: '/plans/new/card', screen: '3-1', name: 'AI와 함께 정리하기', back: true, stage: 6 },
-  { path: '/plans/new/form', screen: '3-2', name: '하루 남기기', back: true, stage: 3 },
-  { path: '/plans/new/place', screen: '3-3', name: '장소 추가', back: true, stage: 3 },
+  {
+    path: '/plans/new/form',
+    screen: '3-2',
+    name: '하루 남기기',
+    back: true,
+    stage: 3,
+    element: <PlanFormPage />,
+  },
+  {
+    path: '/plans/new/place',
+    screen: '3-3',
+    name: '장소 추가',
+    back: true,
+    stage: 3,
+    element: <PlacePage />,
+  },
   {
     path: '/plans/:planId',
     screen: '2',
@@ -44,7 +62,13 @@ export const SCREENS: ScreenRoute[] = [
     stage: 2,
     element: <PlanDetailPage />,
   },
-  { path: '/plans/:planId/published', screen: '3-4', name: '공개 완료', stage: 3 },
+  {
+    path: '/plans/:planId/published',
+    screen: '3-4',
+    name: '공개 완료',
+    stage: 3,
+    element: <PublishedPage />,
+  },
   { path: '/me', screen: '4', name: '내 하루', tab: true, stage: 4 },
   { path: '/claims/:claimId/abandon', screen: '4-1', name: '이어받기 포기 확인', back: true, stage: 4 },
   { path: '/claims/:claimId/record', screen: '5', name: '그날의 이야기', back: true, stage: 4 },

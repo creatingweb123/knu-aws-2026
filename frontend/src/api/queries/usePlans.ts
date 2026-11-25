@@ -11,9 +11,10 @@ export function usePlans() {
   return useQuery({ queryKey: plansKey, queryFn: () => request<PlanListResponse>('/plans?status=OPEN') });
 }
 
-export function usePlan(planId: string) {
+export function usePlan(planId: string, options: { enabled?: boolean } = {}) {
   return useQuery({
     queryKey: planKey(planId),
     queryFn: () => request<PlanDetailResponse>(`/plans/${encodeURIComponent(planId)}`),
+    enabled: options.enabled ?? true,
   });
 }

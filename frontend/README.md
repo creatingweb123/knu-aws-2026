@@ -70,14 +70,15 @@ docs/02 §2.10을 따른다.
 
 ```
 src/
-  api/        types.ts(docs/03과 같은 이름), client.ts(모든 요청), errors.ts, queries/
+  api/        types.ts(docs/03과 같은 이름), client.ts(모든 요청), errors.ts, queries/, mutations/
   auth/       tokens.ts(getIdToken, 7단계에 Amplify로 교체), RequireAuth.tsx
   components/ Header, BottomTab, PrimaryButton, StatusBadge, RouteTimeline, TextField/TextArea,
               Toast, ResultScreen, PageTitle, Layout, DevMockBar(개발 전용)
-  pages/      login/ browse/ plan/(상세·이어받기) (3–6단계에 me/ record/ inbox/ 추가)
+  pages/      login/ browse/ plan/(상세·이어받기, create/ 하루 남기기) (4–6단계에 me/ record/ inbox/ 추가)
+  state/      planDraft.ts(하루 남기기 작성 상태, sessionStorage)
   mocks/      db.ts, session.ts, handlers/, browser.ts
   styles/     tokens.css, global.css
-  utils/      date.ts(KST), plan.ts
+  utils/      date.ts(KST), plan.ts, validation.ts(백엔드와 같은 규칙·문구), hash.ts, uuid.ts
   routes.tsx  경로 표(docs/05 §5.1)
 ```
 
@@ -86,14 +87,17 @@ src/
 
 ## 임시 결정 (docs/08 §8.2)
 
-| #      | 결정                                                                        |
-| ------ | --------------------------------------------------------------------------- |
-| FE-Q3  | CSS Modules                                                                 |
-| FE-Q10 | 개발 전용 목업 바, 사용자 선택은 탭별 sessionStorage, 데이터는 localStorage |
-| FE-Q11 | `?mock=`은 sessionStorage `haru.mock.scenario`에 유지                       |
-| FE-Q12 | 하단 탭은 `/`, `/me`, `/inbox`                                              |
-| FE-Q13 | `/login`을 뺀 모든 경로 보호                                                |
-| FE-Q14 | 시스템 글꼴, 4px 간격, 모서리 14px(추정값)                                  |
-| FE-Q15 | 시드 장소 이름은 명세(출근길 빵집)                                          |
-| FE-Q16 | Node 22, 버전은 `package-lock.json`으로 고정                                |
-| FE-Q17 | 2단계 목업 시나리오 `claim-conflict`, `browse-empty`                        |
+| #      | 결정                                                                           |
+| ------ | ------------------------------------------------------------------------------ |
+| FE-Q3  | CSS Modules                                                                    |
+| FE-Q10 | 개발 전용 목업 바, 사용자 선택은 탭별 sessionStorage, 데이터는 localStorage    |
+| FE-Q11 | `?mock=`은 sessionStorage `haru.mock.scenario`에 유지                          |
+| FE-Q12 | 하단 탭은 `/`, `/me`, `/inbox`                                                 |
+| FE-Q13 | `/login`을 뺀 모든 경로 보호                                                   |
+| FE-Q14 | 시스템 글꼴, 4px 간격, 모서리 14px(추정값)                                     |
+| FE-Q15 | 시드 장소 이름은 명세(출근길 빵집)                                             |
+| FE-Q16 | Node 22, 버전은 `package-lock.json`으로 고정                                   |
+| FE-Q17 | 2단계 목업 시나리오 `claim-conflict`, `browse-empty`                           |
+| FE-Q18 | 공개 키 재사용은 `durationMs`를 뺀 본문 해시로 판단, 재전송은 처음 본문 그대로 |
+| FE-Q19 | 폼 값은 앞뒤 공백을 빼고 검증·전송, 글자 수는 코드 포인트                      |
+| FE-Q20 | 폼의 장소는 "고치기"(`/plans/new/place?index=n`)·"빼기"                        |
