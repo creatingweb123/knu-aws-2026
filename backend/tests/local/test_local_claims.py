@@ -15,7 +15,7 @@ pytestmark = pytest.mark.local
 
 
 def _plan(owner):
-    status, body = call("POST", "/plans", token=owner, body=plan_body(), headers={"Idempotency-Key": str(uuid.uuid4())})
+    status, _, body = call("POST", "/plans", token=owner, body=plan_body(), headers={"Idempotency-Key": str(uuid.uuid4())})
     assert status == 201
     return body["plan"]["planId"]
 
@@ -23,14 +23,14 @@ def _plan(owner):
 def test_claim_record_complete_flow():
     owner, runner = dev_token(f"u-{uuid.uuid4()}", "지연"), dev_token(f"u-{uuid.uuid4()}", "수현")
     pid = _plan(owner)
-    status, body = call("POST", f"/plans/{pid}/claims", token=runner)
+    status, _, body = call("POST", f"/plans/{pid}/claims", token=runner)
     assert status == 201
     cid = body["claim"]["claimId"]
     assert call("POST", f"/plans/{pid}/claims", token=runner)[0] == 200
-    status, body = call("GET", "/me/claims?status=ACTIVE", token=runner)
+    status, _, body = call("GET", "/me/claims?status=ACTIVE", token=runner)
     assert status == 200
     assert call("PUT", f"/claims/{cid}/record", token=runner, body={"letter": "다녀왔어요"})[0] == 200
-    status, body = call("POST", f"/claims/{cid}/complete", token=runner, body={"mode": "TEXT_ONLY"})
+    status, _, body = call("POST", f"/claims/{cid}/complete", token=runner, body={"mode": "TEXT_ONLY"})
     assert status == 200 and body["delivered"] is True
     assert call("POST", f"/claims/{cid}/complete", token=runner, body={"mode": "TEXT_ONLY"})[0] == 200
 
