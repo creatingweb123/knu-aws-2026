@@ -224,24 +224,24 @@
     - `pytest -m integration tests/integration --collect-only`, `pytest -m "integration and fault" tests/integration --collect-only` 수집 오류 없음(실행하지 않는다). `pytest tests/unit/test_integration_cleanup.py` 통과.
     - _Requirements: 14.5, 14.6_
 
-- [ ] 14. Checkpoint - 전체 회귀
+- [x] 14. Checkpoint - 전체 회귀
   - `pytest tests/unit`(+`-m slow`) 실패 0건, 1–4단계 회귀 전체 통과(G1–G4 관련 3단계 테스트, 4단계 묶음 A, `test_auth.py`, `test_integration_cleanup.py`), 12번 로컬 결과 유지, 통합 테스트 수집 성공.
   - _Requirements: 14.1, 14.8, 15.3 · G1–G4_
 
-- [ ] 15. 변경 범위 확인
+- [x] 15. 변경 범위 확인
   - 선행: 14
   - `git diff feat/be-4-inbox -- backend/src/domain/claim_service.py`에서 `claim_plan`·`abandon`·`complete_claim`·`complete_by_user`·`list_my_claims` 본문 변경 0줄, `put_record`는 Record Update 식의 사진 분기·반환 형태·ConditionCheck 헬퍼 추출뿐(식 동일)인지 확인한다. `common/ddb.py`는 `use_table` 추가뿐. docs/03 diff 0, `frontend/` diff 0. 결과를 PR 본문 초안에 적는다.
   - _Requirements: 15.1–15.3 · G1–G4_
 
-- [ ] 16. 인계 문서와 커밋
+- [x] 16. 인계 문서와 커밋
   - 선행: 15, 7.3
-  - [ ] 16.1 `backend/README.md`
+  - [x] 16.1 `backend/README.md`
     - 현황(5단계, 브랜치, 단위·로컬 결과, SAM 결과, AWS 판정 미실행), 배포 전 주의(`sam build --use-container`, 버킷 이름 고정, `Stage` 파라미터, `FaultInject`는 dev만·복원 절차, `UploadIfNoneMatch`는 프론트 승인 전 false), 함수별 IAM 표, 5단계 판정 실행표(T8–T11·T15, 재업로드, IAM/CORS, 주입 차단 검증, T9·지연 주입 절차, 판정 순서, T10·T15 미검증 = 재시험 필요, 회귀 `test_concurrency.py`), 테스트 실행 주체 추가 권한, 운영자 복구 런북(7.3), 알려진 한계(스위치 꺼짐 동안 원본 불변성 미보장, 고아 처리본, 강제 종료, 중첩 재시도), "로컬 미지원" 목록과 Floci 확인 결과(11.2), 지표 해석(`CompleteDuplicate`, BE-Q63), 미결 질문(BE-Q34·BE-Q42 해소, BE-Q49–BE-Q72), 묶음 B 의존·프론트 승인 의존 작업 목록.
     - _Requirements: 15.4, 15.5 · docs/07 §7.8_
-  - [ ] 16.2 `docs/08-open-questions.md`
+  - [x] 16.2 `docs/08-open-questions.md`
     - BE-Q34·BE-Q42 해소로 정리, BE-Q2를 BE-Q66과 함께 정리, BE-Q49–BE-Q72 추가(임시 결정·권장안 그대로, BE-Q51·BE-Q52·BE-Q65는 프론트 리뷰 대상 표시), §8.3 결정 시점 표에 5단계 행. BE-Q45·BE-Q46·BE-Q48은 바꾸지 않는다.
     - _Requirements: 15.7_
-  - [ ] 16.3 커밋 (push 안 함)
+  - [x] 16.3 커밋 (push 안 함)
     - spec, 공통·이미지, API, 처리 Lambda·복구 스크립트, 템플릿, 로컬, AWS 테스트, 문서 순서의 의미 단위 커밋. 프론트 트리·docs/03·기존 브랜치 무변경을 확인한다. push·PR은 사용자 확인 뒤(PR base `feat/be-4-inbox`, `f3626c0` 미포함, Requirement 15.6).
     - _Requirements: 15.6_
 

@@ -6,15 +6,18 @@ AWS 계정 없이 개발한 백엔드를 AWS 담당이 배포·판정할 수 있
 
 | 항목 | 상태 |
 |---|---|
-| 범위 | 백엔드 1·2단계(인증, `GET /me`, 계획 생성·목록·상세, 멱등 키, 원문 충실도·개인정보 함수), **3단계**(이어받기·포기·완료 트랜잭션, 방문 기록 글 저장 최소 구현, `GET /me/claims`, EMF 지표 3종), **4단계**(수신함 4종, `GET /me`의 `unreadInboxCount`, `InboxFunction`). 4단계의 `GET /claims/{claimId}/record`는 계약 변경 승인 대기(BE-Q46, 3.3절·8절) |
+| 범위 | 백엔드 1·2단계(인증, `GET /me`, 계획 생성·목록·상세, 멱등 키, 원문 충실도·개인정보 함수), **3단계**(이어받기·포기·완료 트랜잭션, 방문 기록 글 저장 최소 구현, `GET /me/claims`, EMF 지표 3종), **4단계**(수신함 4종, `GET /me`의 `unreadInboxCount`, `InboxFunction`), **5단계**(사진 업로드 URL·교체, 사진 처리 Lambda·큐·DLQ, 수신함 `photoUrl`·`photoCaption`, 운영자 복구 스크립트, 10절). 4단계의 `GET /claims/{claimId}/record`는 계약 변경 승인 대기(BE-Q46, 3.3절·8절) |
 | 브랜치 | 4단계 수신함: `feat/be-4-inbox`(`fix/be-3-local-verify` `8fcf239` 위, 이 PR). `GET /claims/{claimId}/record`는 이 브랜치에 없고 `feat/be-4-record-inbox`의 `f3626c0`에만 있다(BE-Q46 승인 전 PR 제외). 3단계까지: `feat/be-3-claim-transaction` ← `feat/be-1-2-foundation` ← `docs/monorepo-stage1-2-spec` |
-| spec | `.kiro/specs/backend-stage1-2-foundation/`, `.kiro/specs/backend-stage3-claim/`, `.kiro/specs/backend-stage4-record-inbox/` |
+| 브랜치(5단계) | `feat/be-5-photo-pipeline`(`feat/be-4-inbox` `dc3af68` 위, 커밋 8개). **push·PR 전**(사용자 확인 대기). 묶음 B(`f3626c0`)는 들어 있지 않다 |
+| spec | `.kiro/specs/backend-stage1-2-foundation/`, `.kiro/specs/backend-stage3-claim/`, `.kiro/specs/backend-stage4-record-inbox/`, `.kiro/specs/backend-stage5-photo-pipeline/` |
 | 단위 테스트 | `pytest tests/unit` 전부 통과(2026-11-25 로컬 검증: 289건, `_cleanup` 회귀 테스트 추가 후 296건). moto(인프로세스 DynamoDB 흉내)로 실제 조건식·갱신식·GSI 조회·트랜잭션 취소 사유를 확인. 3단계는 상태 전이 속성 테스트 포함 |
 | 단위 테스트(4단계) | 2026-11-25 수신함 묶음까지 385건 통과(속성 기반 Property 18–23 포함) |
-| SAM | `cfn-lint` 0건, `sam validate --lint` 통과, `sam build` 성공. **2026-11-25 AWS 담당이 `haru-dev`에 배포**(3.1절). 4단계 템플릿은 2026-11-25 개발 담당이 SAM CLI 1.174.1로 `sam validate --lint`·`sam build`까지 확인했고 배포하지 않았다 |
-| 로컬 환경(Docker) | **2026-11-25 첫 구동 성공**, `pytest -m local tests/local` 16건 통과(5절). 4단계 수신함 추가 후 23건 통과(5.4절). 판정 근거는 아니다(BE-Q15) |
+| 단위 테스트(5단계) | 2026-11-25 `pytest tests/unit` **625건 통과**, `pytest -m slow tests/unit` 2건 통과(40MP 메모리 측정). 속성 기반 Property 25–28 각 100예시 통과(P27은 600예시로 한 번 더 통과) |
+| SAM | `cfn-lint` 0건, `sam validate --lint` 통과, `sam build` 성공. **2026-11-25 AWS 담당이 `haru-dev`에 배포**(3.1절). 4단계 템플릿은 2026-11-25 개발 담당이 SAM CLI 1.174.1로 `sam validate --lint`·`sam build`까지 확인했고 배포하지 않았다. 5단계 템플릿은 `cfn-lint` 0건, `sam validate --lint` 통과, **`sam build --use-container` 성공**(Pillow 레이어, 10.2절), 배포하지 않았다 |
+| 로컬 환경(Docker) | **2026-11-25 첫 구동 성공**, `pytest -m local tests/local` 16건 통과(5절). 4단계 수신함 추가 후 23건 통과(5.4절). 5단계 추가 후 28건 통과·8건 사유 skip(5.5절). 판정 근거는 아니다(BE-Q15) |
 | AWS 판정 | T1·T13·T3·T4·T5·T6·T7·T14·T16 **15건 모두 통과**(2026-11-25, `haru-dev`, AWS 담당). 첫 실행에서 T1 액세스 토큰 1건이 실패해 `common/auth.py`를 고친 뒤 다시 통과했다(3.1절) |
 | AWS 판정(4단계) | T1 확장·T2·T17 테스트 코드 작성, **미실행**(3.3절). 배포와 실행은 AWS 담당 |
+| AWS 판정(5단계) | T8·T9·T10·T11·T15, 재업로드, IAM·CORS, 주입 차단 테스트 코드 작성, 수집만 확인하고 **미실행**(3.4절) |
 | 다음 단계 조건 | T3–T7이 AWS에서 통과해야 4단계를 시작한다(docs/07 §7.2). **2026-11-25 충족**. 4단계 이후 PR마다 `tests/integration/test_concurrency.py`를 다시 돌린다(docs/07 §7.2) |
 | PR | 2026-11-25 6개 열림(#1–#6), 병합 전(8절) |
 
@@ -31,6 +34,8 @@ AWS에서만 확인되는 것은 4절, 로컬 환경 구동 기록과 절차는 
 - **배포 전에 AWS Budgets 월 알림을 먼저 건다**(BE-Q11, 금액은 팀이 정한다).
 - 배포하는 IAM 주체에 필요한 권한: CloudFormation, IAM 역할 생성·연결(`CAPABILITY_IAM`), Lambda, API Gateway(HTTP API), Cognito User Pool, DynamoDB, S3(SAM 아티팩트 버킷, `resolve_s3`가 `aws-sam-cli-managed-default` 스택을 만든다), CloudWatch Logs.
 - 통합 테스트를 돌리는 주체에 필요한 권한: `cloudformation:DescribeStacks`, `cloudformation:DescribeStackResource`, `cognito-idp:AdminCreateUser`, `AdminSetUserPassword`, `AdminDeleteUser`, `dynamodb:GetItem`, `dynamodb:Query`, `dynamodb:UpdateItem`(T14의 `dueAt` 변경), `dynamodb:DeleteItem`(정리, 대상 테이블만).
+- 5단계에서 더 필요한 권한(테스트 실행 주체): 사진 버킷 `s3:ListBucket`(Claim prefix 조회), `s3:GetObject`·`s3:PutObject`(만료 URL 서명용)·`s3:DeleteObject`(정리, `photos/*`), `cloudformation:GetTemplate`(주입 차단 확인), `lambda:GetFunctionConfiguration`(처리 함수 환경 변수 확인), PhotoDLQ `sqs:ReceiveMessage`·`sqs:DeleteMessage`(T9, 테스트 메시지만), `cloudwatch:DescribeAlarms`(T9).
+- 배포 주체에는 S3 버킷·버킷 정책, SQS 큐·큐 정책, Lambda 레이어·이벤트 소스 매핑, CloudWatch 알람 생성 권한이 더 필요하다.
 
 ### 2.2 배포
 
@@ -163,6 +168,47 @@ T2 역할별 기대 결과(requirements Requirement 11.3). Planner(A)가 계획�
 - 4단계 테스트도 사용자는 `create_user`, 계획은 `create_plan`으로 만들어 `_cleanup`이 지운다(3.2절). `_cleanup`은 바꾸지 않았다.
 - 2026-11-25 개발 담당이 T2·T17 테스트 함수를 로컬 환경(`call`·`get_item`을 로컬 어댑터·Floci로 바꿔 끼움)에서 한 번 돌려 통과를 확인했다. 테스트 코드 점검용이며 판정 근거가 아니다(BE-Q15).
 
+### 3.4 5단계 판정 실행표 (미실행)
+
+5단계 테스트는 `tests/integration/test_photo.py`에 있다. 사진 Claim은 업로드 전에 정리 대상으로 등록되고, `_cleanup`은 DynamoDB를 지운 **뒤** 그 Claim의 `photos/original/{claimId}/`·`photos/processed/{claimId}/`만 지운다. 늦게 온 처리 Lambda가 만든 객체를 위해 30초 뒤 한 번 더 지우고 그때 지운 키를 `cleanup-late-objects-*.json`에 남긴다. 각 사진 테스트는 끝나기 전에 `wait_photo_settled`로 Record가 끝난 상태(전달·`FAILED`·`DISCARDED`)에서 30초 동안 바뀌지 않는지 확인한다(최대 5분, 안 되면 `cleanup_after_unsettled-*.json`). 버킷 전체 삭제·큐 purge는 하지 않는다.
+
+| T | 내용 | 테스트 | 배포 | 근거 로그 |
+|---|---|---|---|---|
+| T8 | 잘린 JPEG → `FAILED CORRUPT_IMAGE`, 글 유지, `TEXT_ONLY` 200, InboxItem `hasPhoto = false`, 처리본 0개 | `test_T8_corrupt_image` | 기본 | `T8-corrupt-image-*.json` |
+| T11 | GPS EXIF JPEG → 완료 → 계획자 `photoUrl`로 받은 처리본에 EXIF·GPS·XMP·ICC 없음 | `test_T11_gps_stripped` | 기본 | `T11-gps-stripped-*.json`(검사 도구 이름 포함. `exiftool`이 PATH에 있으면 쓰고 없으면 Pillow) |
+| T10 | `PROCESSING` 관측 → 즉시 `TEXT_ONLY` 완료 → `hasPhoto = false`, `DISCARDED`, 처리본 0개 | `test_T10_text_only_during_processing` | 기본(관측 시도) | `T10-text-only-during-processing-*.json` |
+| T15 | 빨간 사진 `PROCESSING` 관측 → 파란 사진으로 교체 → 수신함 사진이 파란색(평균 색), 처리본 1개 | `test_T15_replace_during_processing` | 기본(관측 시도) | `T15-replace-during-processing-*.json` |
+| T10·T15 | 위 둘을 지연 주입 아래에서 실행. **최종 판정 근거** | `test_T10_T15_with_delay`(`fault`) | `FaultInject=photo-slow` | `T10-T15-with-delay-*.json` |
+| T9 | 처리마다 예외 → 3번째 수신에 `FAILED RETRY_EXHAUSTED`(최대 10분) → DLQ에 그 Claim의 메시지 → `PhotoDLQNotEmpty` `ALARM`(최대 5분) → 그 메시지만 삭제 | `test_T9_dlq`(`fault`) | `FaultInject=photo` | `T9-dlq-*.json` |
+| 재업로드 | 같은 presigned URL로 두 번 PUT. 스위치 꺼짐: 둘 다 200, 전달 1회, 처리본 1개. 켜짐: 두 번째 412 | `test_photo_reupload` | 기본 | `photo-reupload-*.json` |
+| IAM·CORS | presigned PUT·GET 권한, `Origin: http://localhost:5173` preflight, 잘못된 `Content-Length`·만료 URL의 403과 그 응답의 `Access-Control-Allow-Origin`·S3 오류 코드 | `test_photo_iam_and_cors` | 기본 | `photo-iam-and-cors-*.json`(오류 응답 CORS 헤더는 판정이 아니라 기록. 프론트 403 처리의 근거) |
+| 주입 차단 | 처리 함수 이름이 스택 이름으로 시작, 처리된 템플릿에 `FaultAllowed`(실제 스택 이름 조건), `haru-dev`가 아닌 스택이면 `FAULT_INJECT = ""`·`FAULT_INJECT_ALLOWED = "false"`(읽기 전용) | `test_photo_fault_blocked` | 기본 | `photo-fault-blocked-*.json` |
+| 회귀 | T3·T4·T5·T14(`test_concurrency.py`), T6·T7·T16, 4단계 T1·T2·T17 | 기존 | 기본 | docs/07 §7.2 |
+
+**T10·T15 미검증 규칙**: `PROCESSING`을 관측하지 못했거나, 관측했어도 경쟁 요청이 사진 전달 뒤에 도착했으면(`TEXT_ONLY` 응답 `hasPhoto: true`, 교체 409) 결과 파일에 `"verdict": "unverified"`와 관측한 상태 열·사유(`processing_not_observed`/`race_lost`)를 남기고 사유 있는 skip으로 끝난다. **skip은 통과가 아니다.** 판정표에는 불합격과 같이 "재시험 필요"로 적고, 지연 주입 배포의 `test_T10_T15_with_delay` 결과로 판정한다. 단위 테스트의 순차 재현으로 판정을 대신하지 않는다.
+
+실행 순서(판정 순서: 4단계 → 5단계 기본 → 회귀 → 주입 → 복원 확인)
+
+```bash
+export STACK_NAME=haru-dev AWS_REGION=ap-northeast-2
+sam build --use-container && sam deploy --config-env dev               # 기본 배포
+pytest -m "integration and not fault" tests/integration -v              # 4단계·5단계 기본·회귀
+
+# 지연 주입(dev만). --parameter-overrides는 samconfig 값을 대신하므로 모든 값을 다시 적는다
+sam deploy --config-env dev --parameter-overrides "AllowedOrigins=http://localhost:5173 Stage=dev FaultInject=photo-slow"
+pytest -m "integration and fault" tests/integration -v -k with_delay
+sam deploy --config-env dev --parameter-overrides "AllowedOrigins=http://localhost:5173 Stage=dev FaultInject=photo"
+pytest -m "integration and fault" tests/integration -v -k T9
+
+sam deploy --config-env dev                                             # 복원(FaultInject 빈 값)
+pytest -m "integration and not fault" tests/integration/test_photo.py -v -k fault_blocked
+aws lambda get-function-configuration --function-name <PhotoProcessorFunction> --query 'Environment.Variables.FAULT_INJECT'   # "" 확인
+```
+
+- `pytest -m integration`만 주면 `fault` 테스트도 수집되지만 실행하지 않고 skip한다(`-m "integration and fault"`로만 돈다). `fault` 테스트는 처리 함수의 `FAULT_INJECT`가 기대값이 아니면 skip한다(잘못된 배포에서 판정하지 않는다).
+- 주입 배포 뒤에는 반드시 복원 배포를 한다. `demo` 스택(`haru-demo`)은 `Stage`·`FaultInject`를 무엇으로 넘겨도 함수에 주입 값이 들어가지 않는다(BE-Q59). 변경 세트로 `haru-demo`에 `Stage=demo FaultInject=photo`를 넘겨 `Rules`가 거부하는지는 AWS 담당이 수동으로 한 번 확인한다(실행하지 않고 변경 세트만 만든다).
+- `GET /claims/{claimId}/record`로 사진 상태를 폴링하는 사례는 묶음 B(BE-Q46)가 이 브랜치에 들어온 뒤 더한다(작업 17). 지금은 DynamoDB 직접 조회로 판정한다(BE-Q38).
+
 ## 4. AWS에서만 확인되는 것 (1·2단계 해당분, docs/02 §2.4.4)
 
 | # | 항목 | 확인 방법 |
@@ -242,8 +288,8 @@ pytest tests/unit
 | 파일 | 역할 | 단위 테스트 |
 |---|---|---|
 | `docker-compose.yml` | `aws`(floci/floci:2.5.0-compat), `api`(로컬 어댑터) | — |
-| `local/init/01_haru.py` | 테이블 2개, 유저 풀(ID 고정), 시드 사용자 3명 | `tests/unit/test_local_init.py` |
-| `local/adapter/app.py` | payload 2.0 변환, JWT 검증, `/dev/token`, CORS | `tests/unit/test_adapter.py` |
+| `local/init/01_haru.py` | 테이블 2개, 유저 풀(ID 고정), 시드 사용자 3명, 사진 DLQ·큐(가시성 180초, redrive 3)·버킷(CORS·수명 주기)·알림(5단계) | `tests/unit/test_local_init.py` |
+| `local/adapter/app.py` | payload 2.0 변환, JWT 검증, `/dev/token`, CORS, SQS 폴러(5단계, 사진 처리 핸들러 호출) | `tests/unit/test_adapter.py` |
 | `tests/local/` | 로컬 통합 테스트(`pytest -m local`) | — |
 
 실행하며 확인할 것:
@@ -269,14 +315,43 @@ Docker 없이 확인한 대체 수단: moto 테스트(`tests/unit/test_plan_serv
 
 - Floci에서 수신함의 조건부 `UpdateItem`(읽음 `attribute_exists(PK) AND ownerId = :me`, 답장 `ownerId = :me AND attribute_not_exists(reply)`)이 계약대로 돈다. T 판정 근거는 아니다(BE-Q15).
 
+### 5.5 5단계 로컬 환경과 결과 (2026-11-25, 개발 담당)
+
+구성: `aws`에 `FLOCI_AUTH_VALIDATE_SIGNATURES=true`(presigned PUT 서명 검사), init이 `haru-photo-dlq`·`haru-photo-queue`·`haru-photos-local`과 버킷 알림(prefix `photos/original/`)을 만든다. `api`는 presigned URL을 `PUBLIC_S3_ENDPOINT=http://localhost:4566`(브라우저 기준 주소)로 서명하고, `STAGE=local`이고 `PHOTO_QUEUE_URL`이 있을 때만 SQS 폴러 스레드가 `workers.photo_processor.handler`를 부른다(정상 반환이면 메시지 삭제, 예외면 남김). 사진 처리에 Pillow가 필요해 `local/adapter/requirements.txt`에 `Pillow==13.0.0`을 더했다.
+
+- 리눅스에서 umask가 `0077`이면 Floci init이 `local/init/01_haru.py`를 읽지 못해 `aws`가 unhealthy가 된다. `chmod -R go+rX local src` 후 띄운다.
+
+| 항목 | 값 |
+|---|---|
+| 기준 | `feat/be-5-photo-pipeline` `cfc65a7`(작업 11·12 커밋) |
+| 실행 | `docker compose up -d --build --force-recreate` 후 `pytest -m local tests/local` |
+| 결과 | **28건 통과, 8건 사유 skip**(기존 23건 + `test_local_photo.py` 5건). 서명 검사를 켠 상태에서 기존 23건이 그대로 통과했다 |
+| 조건부 사례 | 환경 변수를 바꿔 다시 띄워 한 번씩 통과: `PHOTO_UPLOAD_IF_NONE_MATCH=true`(두 번째 PUT 412, 버킷 CORS 허용 헤더에 `If-None-Match`), `FAULT_INJECT=photo-slow`(처리 중 `TEXT_ONLY` → `DISCARDED`·처리본 0개, 처리 중 교체 → 새 사진 전달·처리본 1개), `FAULT_INJECT=photo PHOTO_QUEUE_VISIBILITY_S=2`(수신 3회 → `FAILED RETRY_EXHAUSTED` → DLQ) |
+| 기본 사례 | 정상 업로드 → 폴러 → 전달 → 계획자 `photoUrl`로 받은 처리본에 EXIF·GPS·ICC 없음, 캡션 "출근길 빵집에서". 손상 파일 → `FAILED CORRUPT_IMAGE` → `TEXT_ONLY`. 업로드 전 교체 → 새 키로 전달, 이전 URL로 늦게 올린 원본은 무시. 잘못된 `Content-Length` → 403. 같은 URL 재업로드(스위치 꺼짐) → 둘 다 200, 전달 1회·처리본 1개 |
+
+Floci 2.5.0-compat 확인 결과(BE-Q64, 실제 구동으로 판단)
+
+| 항목 | 결과 |
+|---|---|
+| 버킷 알림(prefix 필터, `s3:TestEvent`, `eTag`) | 동작. init 직후 `s3:TestEvent`가 오고 처리 Lambda가 무시한다 |
+| presigned PUT `Content-Length` 서명 검사 | 서명 검사 켬: 잘못된 길이 403 |
+| presigned·SDK `If-None-Match: *` | 412 |
+| `HeadObject`·`GetObject` `IfMatch` | 일치 200, 불일치 412(따옴표 유무 모두) |
+| SQS redrive(`maxReceiveCount` 3), `ApproximateReceiveCount` | 동작. 수신 횟수 1→2→3, 그다음 DLQ |
+| 수명 주기·CORS 설정 | 수락(조회하면 같은 값) |
+| 버킷 정책 | 수락하지만 **강제하지 않는다**(PutObject Deny 정책에도 PUT 200) |
+
+로컬 미지원(로컬 테스트에서 사유를 출력하는 skip, AWS 판정 항목): 수명 주기 실제 만료(7일), 브라우저 CORS preflight·오류 응답의 CORS 헤더, 버킷 정책 강제(TLS·`s3:if-none-match`), 실제 SQS 이벤트 소스 매핑·Lambda 강제 종료·DLQ 알람. 알림이 동작하므로 로컬 전용 우회(어댑터가 이벤트를 넣는 방식)는 쓰지 않는다.
+
 ## 6. 함수별 IAM 권한
 
 | 함수 | 권한 | 이유 |
 |---|---|---|
 | `MeFunction` | `HaruTable`과 `index/*`에 `dynamodb:GetItem`, `Query` | `GET /me/claims`(GSI2 조회 + Plan·Record 읽기), `GET /me`의 미확인 수(기본 테이블 Query, `ConsistentRead`). 권한은 3단계 그대로다 |
 | `PlansFunction` | `HaruTable`과 `index/*`에 `dynamodb:GetItem`, `PutItem`, `UpdateItem`, `Query` | 생성(Plan + 멱등 키 트랜잭션), 상세(ConsistentRead), 목록(GSI1), 내 Claim 조회, 이어받기(Plan Update + Claim·ClaimLookup Put + 이전 Claim Update) |
-| `ClaimsFunction` | `HaruTable`에 `dynamodb:GetItem`, `PutItem`, `UpdateItem`, `ConditionCheckItem` | 포기·기록·완료 트랜잭션(Update, InboxItem Put, 기록 저장의 ConditionCheck)과 ConsistentRead |
-| `InboxFunction`(4단계) | `HaruTable`에 `dynamodb:GetItem`, `Query`, `UpdateItem`(`index/*` 없음) | 수신함 Query, 상세의 InboxItem·Plan·Record GetItem(ConsistentRead), 읽음·답장의 조건부 UpdateItem. InboxItem을 만들거나 지우지 않는다 |
+| `ClaimsFunction` | `HaruTable`에 `dynamodb:GetItem`, `PutItem`, `UpdateItem`, `ConditionCheckItem`. 5단계: 사진 버킷 `photos/original/*`에 `s3:PutObject` | 포기·기록·완료 트랜잭션(Update, InboxItem Put, 기록 저장의 ConditionCheck)과 ConsistentRead. S3 권한은 presigned PUT 서명용이다(함수가 직접 올리지 않는다) |
+| `InboxFunction`(4단계) | `HaruTable`에 `dynamodb:GetItem`, `Query`, `UpdateItem`(`index/*` 없음). 5단계: 사진 버킷 `photos/processed/*`에 `s3:GetObject` | 수신함 Query, 상세의 InboxItem·Plan·Record GetItem(ConsistentRead), 읽음·답장의 조건부 UpdateItem. InboxItem을 만들거나 지우지 않는다. S3 권한은 `photoUrl`(15분 presigned GET) 서명용 |
+| `PhotoProcessorFunction`(5단계) | `HaruTable`에 `dynamodb:GetItem`, `PutItem`, `UpdateItem`(`index/*` 없음). 사진 버킷 `photos/original/*`에 `s3:GetObject`(HeadObject 포함), `photos/processed/*`에 `s3:PutObject`·`s3:DeleteObject`. `PhotoQueue`에만 `sqs:ReceiveMessage`·`DeleteMessage`·`GetQueueAttributes`(인라인) | 사진 상태 갱신과 3단계 `complete_claim`(트랜잭션 Update 3·Put 1, ConditionCheck 없음). 원본 읽기, 처리본 쓰기·자기 처리본 삭제. SAM의 `SQS` 이벤트는 관리형 `AWSLambdaSQSQueueExecutionRole`(Resource `*`)을 붙이므로 쓰지 않고 `PhotoProcessorQueueMapping`(`AWS::Lambda::EventSourceMapping`, BatchSize 1)을 직접 둔다. `s3:ListBucket`이 없어 없는 원본의 HeadObject는 403이다(BE-Q70) |
 | `PreSignUpFunction` | 없음 | 이벤트만 바꾼다. Cognito 호출 권한은 `PreSignUpInvokePermission`(SourceArn은 순환 참조를 피하려고 `userpool/*`) |
 
 권한 오류(`AccessDeniedException`)가 나면 CloudWatch Logs의 예외 유형과 이 표를 대조한다. 로그에는 예외 유형만 남긴다(응답에는 500 `INTERNAL_ERROR`).
@@ -298,7 +373,7 @@ Docker 없이 확인한 대체 수단: moto 테스트(`tests/unit/test_plan_serv
 | BE-Q1 | `GET /claims/{claimId}/record`를 실행자가 아닌 사람이 부르면 403 `FORBIDDEN`(BE-Q46 묶음) |
 | BE-Q30 | 앞부분(4단계 전 0 고정)은 **해소**: 4단계부터 BE-AUTH-05대로 센다. `nickname` 클레임이 없을 때는 BE-Q17로 넘겼다 |
 | BE-Q33 | `currentClaimId`는 응답에 내보내지 않음 |
-| BE-Q34 | 3단계 `PUT /record`에 `photo`가 오면 400(`details.photo`). 5단계에서 해제 |
+| BE-Q34 | **5단계에서 해소**: `photo`가 오면 업로드 URL을 발급한다 |
 | BE-Q35 | `GET /me/claims`의 `status` 누락·잘못된 값은 400 |
 | BE-Q36 | `claimId = clm_ + ULID`, 실행자 닉네임 속성 `claimerNickname` |
 | BE-Q37 | EMF는 라이브러리 없이 직접 출력, 네임스페이스 `Haru`, 차원 없음 |
@@ -306,7 +381,7 @@ Docker 없이 확인한 대체 수단: moto 테스트(`tests/unit/test_plan_serv
 | BE-Q39 | `COMPLETED` 계획 이어받기는 409 `ALREADY_CLAIMED` |
 | BE-Q40 | 완료 Record 조건에 방어 조건 2개 추가(`deliveredAt` 없음, 읽은 `photoStatus` 일치) |
 | BE-Q41 | `GET /me/claims`는 GSI2라 방금 이어받은 Claim이 잠깐 빠질 수 있음 |
-| BE-Q42 | `GET /inbox/{itemId}`의 `photoUrl`·`photoCaption`은 5단계 전까지 null |
+| BE-Q42 | **5단계에서 해소**: `photoUrl`(15분 presigned GET)·`photoCaption`(마지막 장소 + "에서") |
 | BE-Q43 | InboxItem 응답에 `ownerId`를 내보내지 않음 |
 | BE-Q44 | 이미 읽은 항목의 읽음 재요청도 204 |
 | BE-Q45 | InboxItem `claimerNickname`은 null일 수 있다(프론트 타입은 `string`). 계약·프론트 타입은 바꾸지 않았고 팀이 정한다 |
@@ -319,12 +394,9 @@ Docker 없이 확인한 대체 수단: moto 테스트(`tests/unit/test_plan_serv
 - 지금 쓸 수 있는 것: `GET /me`(`unreadInboxCount` 계산), `GET /me/claims`, `PUT /claims/{claimId}/record`(글만), `POST /claims/{claimId}/complete`, `POST /claims/{claimId}/abandon`, `GET /inbox`, `GET /inbox/{itemId}`, `POST /inbox/{itemId}/read`, `POST /inbox/{itemId}/reply`.
 - 승인 대기: `GET /claims/{claimId}/record`(BE-Q46). 503 `TRY_AGAIN`이 나올 수 있어 프론트 처리 확인이 필요하다(8절).
 
-### 5단계로 넘기는 것
+### 5단계에서 넘겨받은 것
 
-- 4단계에서 끝낸 것: 수신함 API, `unreadInboxCount`. `GET /claims/{claimId}/record`는 BE-Q46 결정 뒤 반영한다.
-- `GET /inbox/{itemId}`의 `photoUrl`(15분 presigned GET)·`photoCaption`(BE-Q42 해제).
-- 5단계: `PUT /record`의 `photo`(BE-Q34 해제), 사진 교체, 사진 처리 Lambda는 `claim_service.complete_claim(claim_id, "WITH_PHOTO", key, processed_key)`를 부른다. 사진 키가 다르거나 `PROCESSING`이 아니면 `CLAIM_NOT_ACTIVE`가 오므로 "무시하고 처리본 삭제"로 처리한다(docs/02 §2.7).
-- 5단계 주의: 포기 트랜잭션 직전에 생긴 Record와 기한 지난 대체(`EXPIRED`)는 Record의 `photoStatus`를 `DISCARDED`로 바꾸지 않는다. 사진 처리는 Claim 상태를 확인하므로 전달되지는 않는다.
+4단계에서 넘긴 항목(BE-Q34·BE-Q42 해제, 사진 처리 Lambda의 `complete_claim` 호출)은 5단계에서 구현했다(10절). 포기·기한 대체 뒤의 Record `photoStatus`는 여전히 `DISCARDED`로 바꾸지 않고, 처리 Lambda가 Claim 상태(`ABANDONED`·`EXPIRED`)를 보고 "전달 안 됨"으로 끝낸다. 5단계 미결 질문은 10.6절.
 
 ## 8. 리뷰가 필요한 것과 PR
 
@@ -340,6 +412,7 @@ Docker 없이 확인한 대체 수단: moto 테스트(`tests/unit/test_plan_serv
 | 6 | [#1](https://github.com/creatingweb123/knu-aws-2026/pull/1) | `feat/be-4-inbox` → `fix/be-3-local-verify` | 4단계 수신함(묶음 A, 계약 변경 없음) | 385 passed | 미실행(3.3절) |
 
 - 묶음 B(`GET /claims/{claimId}/record`, `feat/be-4-record-inbox`의 `f3626c0`)는 PR을 열지 않았다. BE-Q46 승인과 docs/03 §3.4 수정 PR이 먼저다.
+- 5단계(`feat/be-5-photo-pipeline`, base 예정 `feat/be-4-inbox`)는 **push·PR 전**이다. 사용자 확인 뒤 연다(작업 19). PR 본문에는 10.8절 변경 범위 확인 결과를 넣는다.
 - 모든 PR의 `cfn-lint`는 0건이다.
 
 비교 링크: `https://github.com/creatingweb123/knu-aws-2026/compare/<기준>...<브랜치>`
@@ -368,3 +441,89 @@ Docker 없이 확인한 대체 수단: moto 테스트(`tests/unit/test_plan_serv
 - 경로 목록은 `src/handlers/routes.py` 한 곳에 있다. `template.yaml`·로컬 어댑터와 일치하는지 `tests/unit/test_template.py`가 확인한다.
 - 시간은 `common.responses.iso_utc`(밀리초 고정 UTC). 저장한 시각을 문자열로 비교하므로 다른 형식을 섞지 않는다.
 - Lambda 의존성은 `src/requirements.txt`(sam build가 CodeUri `src/`에서 읽는다). 개발 의존성은 `requirements-dev.txt`.
+
+## 10. 5단계 사진 파이프라인
+
+spec: `.kiro/specs/backend-stage5-photo-pipeline/`(requirements·design·tasks). 흐름은 docs/02 §2.7: `PUT /record`(photo) → presigned PUT → S3 알림 → `PhotoQueue` → `PhotoProcessorFunction` → 3단계 `complete_claim(WITH_PHOTO)`. 전달 1회는 3단계 완료 트랜잭션이 지킨다(G2·G4). 처리 Lambda는 그 앞에서 처리해도 되는지 거르고, 뒤에서 `ConsistentRead`로 결과를 확인해 자기 처리본만 정리한다.
+
+### 10.1 현황 (2026-11-25)
+
+| 항목 | 상태 |
+|---|---|
+| 브랜치·커밋 | `feat/be-5-photo-pipeline`: `819dcfb` spec, `74c92dd` 공통·이미지, `430dc8f` API, `593a8f6` 처리 Lambda, `6cd4178` 복구 스크립트, `25ded68` 템플릿, `cfc65a7` 로컬, `40a767f` AWS 테스트, 이 문서 커밋. push 안 함 |
+| 단위 테스트 | 625건 통과, `-m slow` 2건 통과. Property 25(처리본 규칙)·26(거부 사유)·27(전달 1회·현재 사진)·28(업로드 URL·교체) 각 100예시 |
+| 이미지 측정(`test_photo_memory.py`, 별도 프로세스) | 40MP JPEG 최대 상주 104.8MB·303ms, 40MP PNG 325.3MB·947ms. 한도 717MB(1024MB의 70%) 안(BE-Q56) |
+| 중첩 재시도 상한(`test_photo_retry_budget.py`) | 완료 호출 1번이 최대 GetItem 16회·TransactWriteItems 12회(합 28회), SDK 총 시도 2회면 56회. 시간 guard는 완료를 시작할지만 정한다(BE-Q71) |
+| SAM | `cfn-lint` 0건, `sam validate --lint` 통과, `sam build --use-container` 성공. 레이어에 Pillow 13.0.0 cp312 manylinux x86_64. Lambda 빌드 이미지 안에서 `process_image`(EXIF 제거)와 핸들러 import 확인. 다른 함수 빌드 결과에 Pillow 없음 |
+| 로컬 | 5.5절 |
+| AWS 판정 | 미실행(3.4절) |
+
+### 10.2 배포 전 주의
+
+- **`sam build --use-container`로 빌드한다.** Pillow 레이어(`layers/pillow/requirements.txt`)는 Lambda 빌드 이미지(python3.12, x86_64)에서 받아야 한다. 로컬 Docker가 없는 환경을 위해 `samconfig.toml`에는 넣지 않았다.
+- 사진 버킷 이름은 `{스택 이름}-photos-{계정 ID}`로 고정이다. 스택 이름은 소문자·하이픈이어야 한다. 같은 이름의 버킷이 남아 있으면 배포가 실패한다. `sam delete` 전에 버킷을 비워야 한다(CloudFormation은 빈 버킷만 지운다. 비우는 것은 데이터 삭제이므로 AWS 담당이 확인 뒤 한다).
+- `Stage` 파라미터: `samconfig.toml`의 dev는 `Stage=dev`, demo는 `Stage=demo`. 템플릿 기본값은 `demo`라 주입이 기본으로 막힌다.
+- `FaultInject`는 `haru-dev`에서 판정할 때만 넘기고 판정 뒤 복원 배포한다(3.4절). 세 겹 차단(BE-Q59): `Rules FaultInjectOnlyInDev`, 조건 `FaultAllowed`(`Stage = dev` ∧ 실제 스택 이름 `haru-dev`), 런타임(`FAULT_INJECT_ALLOWED = "true"`이고 함수 이름이 `haru-dev-`로 시작). 다른 이름의 개인 dev 스택에서는 주입이 켜지지 않는다.
+- `UploadIfNoneMatch`는 **프론트엔드 승인 전까지 `false`**다(BE-Q65). 켜면 `upload.headers`에 `If-None-Match: *`, 버킷 CORS 허용 헤더, 헤더 없는 원본 PUT을 거부하는 버킷 정책이 함께 켜진다.
+- `PhotoDLQNotEmpty` 알람에는 알림 대상이 없다(BE-Q62). 콘솔·API로 상태를 본다.
+
+### 10.3 운영자 복구 런북 (PhotoDLQ, BE-Q68)
+
+DLQ 처리 Lambda는 없다. 강제 종료 등으로 DLQ에 간 메시지의 Record는 `PROCESSING`으로 남을 수 있다. 실행자는 그동안에도 사진 교체나 글로 완료로 스스로 끝낼 수 있다.
+
+```bash
+python scripts/photo_dlq_recover.py --stack haru-dev            # dry-run(기본). 아무것도 쓰지 않는다
+python scripts/photo_dlq_recover.py --stack haru-dev --apply    # 복구 대상만 조건부 FAILED RETRY_EXHAUSTED
+```
+
+- 스크립트는 DLQ를 `ReceiveMessage(VisibilityTimeout=60)`로 읽기만 한다. 메시지 삭제·redrive·가시성 변경·이벤트 소스 매핑 변경을 하지 않는다. 출력에 키·사용자 ID·URL이 없다(`claimId`는 앞 8자).
+- 판정: `photoKey` 일치·`PROCESSING`·미전달 → 복구 대상(`--apply` 때 조건 `photoKey = :key AND photoStatus = PROCESSING AND attribute_not_exists(deliveredAt)`로 씀, 조건 실패는 "그새 바뀜"). 이미 `FAILED` → 없음. 키 불일치·전달됨·`DISCARDED`·Record 없음 → 지난 메시지. `UPLOAD_PENDING` → 처리 전 실패(사용자가 교체·글로 완료). `READY`·미전달 → 비정상(BE-Q66), 개발 담당에게 넘긴다.
+- **DLQ에 메시지가 있어도 같은 사진을 처리하는 Lambda가 실행 중일 수 있다**(같은 키의 중복 이벤트, 가시성 타임아웃 직후 재전달과 DLQ 이동의 겹침). `--apply` 전에 스크립트의 안전 확인에서 `PhotoQueue`의 처리 중 메시지가 0이고, DLQ 메시지가 들어온 뒤 180초(가시성 타임아웃) 이상 지났는지 본다.
+- SQS 메시지 수는 근사값이다. 처리 중인 실행이 없음을 확실히 해야 하면 이벤트 소스 매핑을 끄고 실행 종료를 확인한 뒤 복구한다.
+  1. `aws lambda list-event-source-mappings --function-name <PhotoProcessorFunction>`으로 PhotoQueue 매핑 UUID를 찾는다.
+  2. `aws lambda update-event-source-mapping --uuid <UUID> --no-enabled`, `get-event-source-mapping`의 `State`가 `Disabled`가 될 때까지 기다린다.
+  3. 실행 종료 확인: 함수 타임아웃(30초)보다 길게(최소 60초) 기다린 뒤 CloudWatch `AWS/Lambda` `ConcurrentExecutions`(함수 차원) 최근 1분 최대값이 0이고 함수 로그에 새 `START` 줄이 없는지 본다.
+  4. `photo_dlq_recover.py`(dry-run → `--apply`).
+  5. `aws lambda update-event-source-mapping --uuid <UUID> --enabled`, `State = Enabled` 확인. 꺼 둔 동안 들어온 메시지는 큐에 남아 있다가 처리된다.
+  - 매핑 끄기·켜기는 운영 변경이다. AWS 담당이 하고 시각을 기록한다.
+- 확인을 건너뛰고 `--apply`해도 데이터는 깨지지 않는다. 진행 중이던 Lambda의 완료는 `PROCESSING` 조건이 맞지 않아 거부되고 그 Lambda는 자기 처리본만 지운다. 다만 성공했을 사진이 `FAILED`로 보일 수 있다.
+- 복구 뒤 메시지: "복구 대상(적용됨)·이미 실패·지난 메시지"는 운영자가 판정을 확인한 뒤 직접 지운다. "비정상"은 남겨 개발 담당에게 넘긴다. redrive는 원인을 고친 뒤 운영자가 판단해 한다(redrive된 메시지는 무시 조건으로 안전하게 끝난다).
+- 운영자 권한: PhotoDLQ `sqs:ReceiveMessage`, PhotoQueue `sqs:GetQueueAttributes`, HaruTable `dynamodb:GetItem`·`UpdateItem`, `cloudformation:DescribeStacks`·`DescribeStackResource`, `cloudwatch:GetMetricStatistics`(선택). 매핑 절차에는 `lambda:ListEventSourceMappings`·`GetEventSourceMapping`·`UpdateEventSourceMapping`.
+
+### 10.4 알려진 한계
+
+- **스위치 꺼짐 동안 원본 불변성 미보장**(BE-Q65): presigned URL 유효 10분 동안 같은 키를 다시 PUT할 수 있다. 처리 Lambda의 ETag `IfMatch`는 "읽은 바이트 = 그 이벤트가 가리킨 객체"만 보장한다. 그래서 전달 뒤 원본이 다른 내용으로 바뀌어 있을 수 있고(원본은 응답에 나가지 않는다), 나중에 올린 사진이 아니라 먼저 올린 사진이 전달될 수 있다. 서명이 `Content-Type`·`Content-Length`를 고정하므로 길이가 같은 내용으로만 덮어쓸 수 있다. 스위치를 켜야 없어진다.
+- **고아 처리본**(BE-Q67): 완료 결과가 불확실한 시도, 강제 종료, 진 시도의 삭제 실패로 `photos/processed/`에 전달되지 않은 객체가 남을 수 있다. 수신함에는 보이지 않는다. 자동 정리와 `processed/` 일괄 만료는 두지 않았다(전달된 처리본을 지우지 않기 위해). 확인하려면 Claim prefix의 객체 목록을 Record `processedKey`와 대조한다.
+- **강제 종료**: Lambda 타임아웃·메모리 부족이면 코드가 `FAILED`를 쓰지 못한다. 3회 뒤 DLQ로 가고 Record는 `PROCESSING`으로 남는다(10.3절).
+- **중첩 재시도**(BE-Q71): `complete_claim` 루프 × `transact_with_retry` × SDK 재시도로 완료 호출 1번이 시간 예산을 크게 넘을 수 있다. guard는 완료를 시작할지만 정하므로 이 경우 Lambda가 타임아웃으로 끝날 수 있다(결과는 재전달 뒤 재조회로 판정). 3단계 코드는 바꾸지 않았다.
+- presigned URL은 Lambda 역할의 임시 자격 증명으로 서명하므로 실제 유효 시간이 10분보다 짧을 수 있다(BE-Q72). 업로드 403이면 `POST /record/photo`로 새 URL을 받는다.
+
+### 10.5 지표 해석
+
+- `PhotoProcessingMs`(단위 Milliseconds): 전달에 성공한 처리 시도의 소요 시간(무시·실패·미전달 시도는 기록하지 않는다). `PhotoFailed`(Count): 조건부 `FAILED`를 실제로 쓴 횟수(검사 실패, `RETRY_EXHAUSTED`).
+- **`CompleteDuplicate`는 API 중복 완료와 처리 Lambda 경로가 섞인다**(BE-Q63). 처리 Lambda가 이미 완료된 Claim에 `complete_claim`을 부르면(같은 원본 이벤트의 중복 실행, 처리 중 `TEXT_ONLY` 완료 등) 3단계 동작대로 1 오른다. 이 값만으로 사용자 재시도 횟수를 판단하지 않는다.
+
+### 10.6 미결 질문 (5단계)
+
+전체는 [docs/08](../docs/08-open-questions.md) §8.1. BE-Q34·BE-Q42는 해소, BE-Q2는 BE-Q66과 함께 정리했다. BE-Q45·BE-Q46·BE-Q48은 바꾸지 않았다.
+
+| # | 상태 |
+|---|---|
+| BE-Q49, BE-Q50, BE-Q53–BE-Q58, BE-Q60–BE-Q63 | 임시 결정으로 구현 |
+| **BE-Q51, BE-Q52** | 권장안(`{ upload }` 200, Record 없으면 400 `RECORD_REQUIRED`)으로 구현, **프론트엔드 리뷰 대기** |
+| BE-Q59, BE-Q66–BE-Q69 | 설계 확정으로 구현 |
+| BE-Q64 | 로컬 구동으로 확인(5.5절) |
+| **BE-Q65** | 스위치 뒤 구현, 기본 꺼짐, **프론트엔드 승인 대기** |
+| BE-Q70, BE-Q71, BE-Q72 | AWS 판정·측정 뒤 정한다 |
+
+### 10.7 대기 중인 작업
+
+- 묶음 B 의존(작업 17, BE-Q46 승인과 묶음 B 병합 뒤): `GET /claims/{claimId}/record`로 `photoStatus`(`UPLOAD_PENDING` → `PROCESSING`/`FAILED`/`READY`)·`delivered`·`claimStatus` 폴링 확인(로컬·AWS), S3 연동 지점을 프론트에 전달.
+- 프론트엔드 승인 의존(작업 18): BE-Q51·BE-Q52를 docs/03 §3.4에 적기, BE-Q65 승인 시 docs/03 `upload.headers`·업로드 실패 처리 반영과 dev `UploadIfNoneMatch=true`(AWS 담당과 함께). 거부되면 스위치를 끈 채 10.4절 첫 항목을 영구 한계로 적는다.
+- 5단계 PR(작업 19): 사용자 확인 뒤 push·PR.
+
+### 10.8 변경 범위 확인 (`git diff feat/be-4-inbox`, PR 본문용)
+
+- `src/domain/claim_service.py`: `claim_plan`·`abandon`·`complete_claim`·`complete_by_user`·`list_my_claims`·`_lookup`은 AST가 같다(본문 변경 0). 바뀐 함수는 `put_record`뿐이고 새 함수는 `_write_record`·`_active_claim_checks`(헬퍼 추출)·`put_record_with_photo`·`replace_photo`·`photo_status_update`. 사진 없는 `put_record`가 보내는 TransactWriteItems 항목은 변경 전과 같다(같은 입력으로 비교).
+- `src/common/ddb.py`: `use_table` 추가뿐. `transact_with_retry` 변경 없음.
+- `docs/03-api-contract.md`, `frontend/`: diff 0.
