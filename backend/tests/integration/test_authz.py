@@ -1,9 +1,10 @@
-"""T1: 토큰 없이(또는 잘못된 토큰으로) 모든 경로를 호출하면 401 (AWS 스택 대상).
+"""T1: 토큰 없이(또는 잘못된 토큰으로) 모든 경로를 호출하면 401, T2: 역할별 권한 (AWS 스택 대상).
 
 판정 기준은 HTTP 상태 코드 401이다. API Gateway JWT authorizer가 거부한 401은 본문이
 `{"message":"Unauthorized"}`로 계약의 에러 형식과 다르다(requirements 1.7 참고). 프론트는 401을 상태 코드로 처리한다.
 
 Property 1 / Validates: Requirements 1.6, 1.7, 7.2, 14.1
+T2 / Validates: spec backend-stage4-record-inbox Requirements 3.4, 3.5, 4.3, 5.2, 6.2, 8.7, 11.3, 11.8
 """
 
 import time
@@ -13,14 +14,20 @@ import pytest
 from cryptography.hazmat.primitives.asymmetric import rsa
 
 from handlers.routes import ROUTES
-from tests.integration.conftest import call, create_user, save_result
+import json
+
+from tests.integration.conftest import call, create_plan, create_user, get_item, query_items, save_result
 
 pytestmark = pytest.mark.integration
 
 
 def _concrete(route_key: str) -> tuple[str, str]:
     method, path = route_key.split(" ", 1)
-    return method, path.replace("{planId}", "pln_00000000000000000000000000").replace("{claimId}", "clm_00000000000000000000000000")
+    return method, (
+        path.replace("{planId}", "pln_00000000000000000000000000")
+        .replace("{claimId}", "clm_00000000000000000000000000")
+        .replace("{itemId}", "clm_00000000000000000000000000")
+    )
 
 
 def _foreign_token(stack) -> str:
@@ -66,8 +73,12 @@ def test_all_routes_reject_missing_or_bad_tokens(stack):
     assert failures == [], f"401이 아닌 응답 {len(failures)}건 (로그: {path})"
 
 
+# 액세스 토큰으로 확인하는 경로. Auth_Guard(get_user)가 DB 조회 전에 거부하므로 ID는 없는 값이어도 된다.
+ACCESS_TOKEN_ROUTES = ["GET /me", "GET /inbox", "GET /inbox/{itemId}", "POST /inbox/{itemId}/read", "POST /inbox/{itemId}/reply"]
+
+
 def test_access_token_is_rejected(stack):
-    """ID 토큰만 받는다. 액세스 토큰에는 aud가 없어 authorizer가 401로 거부해야 한다."""
+    """ID 토큰만 받는다. authorizer가 통과시킨 액세스 토큰도 핸들러가 401 UNAUTHORIZED(계약 형식)로 거부한다."""
     import boto3
 
     from tests.integration.conftest import REGION, new_password
@@ -84,5 +95,133 @@ def test_access_token_is_rejected(stack):
     access = idp.initiate_auth(
         ClientId=stack.client_id, AuthFlow="USER_PASSWORD_AUTH", AuthParameters={"USERNAME": email, "PASSWORD": password}
     )["AuthenticationResult"]["AccessToken"]
-    status, _ = call(stack, "GET", "/me", token=access)
-    assert status == 401
+    results = []
+    for route_key in ACCESS_TOKEN_ROUTES:
+        method, path = _concrete(route_key)
+        status, body = call(stack, method, path, token=access, body={"text": "x"} if method == "POST" else None)
+        results.append({"route": route_key, "status": status, "body": body})
+    log = save_result("T1-access-token", {"results": results})
+    failures = [r for r in results if r["status"] != 401 or (r["body"] or {}).get("error", {}).get("code") != "UNAUTHORIZED"]
+    assert failures == [], f"401 UNAUTHORIZED가 아닌 응답 {len(failures)}건 (로그: {log})"
+
+
+# --------------------------------------------------------------------------- T2
+
+
+def _error_only(body, code: str) -> bool:
+    return isinstance(body, dict) and set(body) == {"error"} and body["error"].get("code") == code and set(body["error"]) == {"code", "message"}
+
+
+def _leaks(body, secrets: list[str]) -> list[str]:
+    text = json.dumps(body, ensure_ascii=False)
+    return [s for s in secrets if s in text]
+
+
+def test_T2_role_based_access(stack):
+    """T2 역할별 기대 결과(requirements.md Requirement 11.3 표). `GET /claims/{claimId}/record` 행은 BE-Q46 묶음에서 확인한다.
+
+    Planner(A)가 계획을 만들고 Claimer(C)가 이어받는다. Claim이 ACTIVE일 때 A·B의 Claim 쓰기 경로를 먼저 확인하고,
+    C가 글을 저장·완료해 InboxItem을 만든 뒤 수신함 경로를 확인한다. 상태 확인은 DynamoDB ConsistentRead(BE-Q38).
+    """
+    a_sub, a = create_user(stack, "T2지연")
+    c_sub, c = create_user(stack, "T2수현")
+    _, b = create_user(stack, "T2민준")
+    title = "T2 권한 확인 산책"
+    pid = create_plan(stack, a, title)
+    status, body = call(stack, "POST", f"/plans/{pid}/claims", token=c)
+    assert status == 201, body
+    cid = body["claim"]["claimId"]
+    letter, reply_text = "T2 실행자의 비공개 글", "T2 계획자의 답장"
+    secrets = [letter, reply_text, title]
+    rows: list[dict] = []
+    failures: list[str] = []
+
+    def check(role: str, method: str, path: str, expect: int, code: str | None = None, body=None):
+        status, resp = call(stack, method, path, token={"A": a, "B": b, "C": c}[role], body=body)
+        ok = status == expect and (code is None or _error_only(resp, code))
+        if code is not None and _leaks(resp, secrets):
+            ok = False
+        rows.append({"role": role, "route": f"{method} {path}", "status": status, "expected": expect, "code": code, "ok": ok})
+        if not ok:
+            failures.append(f"{role} {method} {path}: {status} {resp}")
+        return status, resp
+
+    # Claim 경로: ACTIVE에서 A·B는 403
+    for role in ("A", "B"):
+        check(role, "PUT", f"/claims/{cid}/record", 403, "FORBIDDEN", body={"letter": "가로채기"})
+        check(role, "POST", f"/claims/{cid}/complete", 403, "FORBIDDEN", body={"mode": "TEXT_ONLY"})
+        check(role, "POST", f"/claims/{cid}/abandon", 403, "FORBIDDEN")
+    assert get_item(stack, f"PLAN#{pid}", f"CLAIM#{cid}")["status"] == "ACTIVE"
+    assert get_item(stack, f"PLAN#{pid}", f"RECORD#{cid}") is None
+
+    check("C", "PUT", f"/claims/{cid}/record", 200, body={"letter": letter})
+    for role in ("A", "B"):
+        check(role, "PUT", f"/claims/{cid}/record", 403, "FORBIDDEN", body={"letter": "덮어쓰기"})
+    record = get_item(stack, f"PLAN#{pid}", f"RECORD#{cid}")
+    assert record["letter"] == letter and "deliveredAt" not in record
+
+    # 포기 200은 별도 Claim으로 확인한다
+    pid2 = create_plan(stack, a, "T2 포기 확인")
+    status, body = call(stack, "POST", f"/plans/{pid2}/claims", token=c)
+    assert status == 201, body
+    check("C", "POST", f"/claims/{body['claim']['claimId']}/abandon", 200)
+
+    check("C", "POST", f"/claims/{cid}/complete", 200, body={"mode": "TEXT_ONLY"})
+    for role in ("A", "B"):
+        check(role, "POST", f"/claims/{cid}/complete", 403, "FORBIDDEN", body={"mode": "TEXT_ONLY"})
+    delivered_at = get_item(stack, f"PLAN#{pid}", f"RECORD#{cid}")["deliveredAt"]
+    assert get_item(stack, f"PLAN#{pid}", f"CLAIM#{cid}")["status"] == "COMPLETED"
+
+    # 수신함 경로
+    _, me_a = check("A", "GET", "/me", 200)
+    if me_a.get("unreadInboxCount") != 1:
+        failures.append(f"A unreadInboxCount {me_a}")
+    for role in ("B", "C"):
+        _, me_x = check(role, "GET", "/me", 200)
+        if me_x.get("unreadInboxCount") != 0:
+            failures.append(f"{role} unreadInboxCount {me_x}")
+    _, listed = check("A", "GET", "/inbox", 200)
+    if cid not in [i["itemId"] for i in listed.get("items", [])]:
+        failures.append("A의 GET /inbox에 InboxItem이 없음")
+    for role in ("B", "C"):
+        _, other = check(role, "GET", "/inbox", 200)
+        if cid in [i["itemId"] for i in other.get("items", [])]:
+            failures.append(f"{role}의 GET /inbox에 A의 InboxItem이 보임")
+
+    def inbox_item():
+        return get_item(stack, f"USER#{a_sub}", f"INBOX#{cid}")
+
+    for role in ("B", "C"):  # C는 itemId(= claimId)를 알고 있다
+        check(role, "GET", f"/inbox/{cid}", 404, "NOT_FOUND")
+        check(role, "POST", f"/inbox/{cid}/read", 404, "NOT_FOUND")
+        check(role, "POST", f"/inbox/{cid}/reply", 404, "NOT_FOUND", body={"text": "가로채기"})
+    item = inbox_item()
+    assert item["read"] is False and "reply" not in item
+
+    check("A", "GET", f"/inbox/{cid}", 200)
+    check("A", "POST", f"/inbox/{cid}/read", 204)
+    check("A", "POST", f"/inbox/{cid}/reply", 201, body={"text": reply_text})
+    for role in ("B", "C"):  # 답장이 있어도 남에게는 404이고 답장 내용이 보이지 않는다
+        check(role, "GET", f"/inbox/{cid}", 404, "NOT_FOUND")
+        check(role, "POST", f"/inbox/{cid}/reply", 404, "NOT_FOUND", body={"text": "덮어쓰기"})
+    item = inbox_item()
+    assert item["read"] is True and item["reply"]["text"] == reply_text
+    assert get_item(stack, f"PLAN#{pid}", f"RECORD#{cid}")["deliveredAt"] == delivered_at
+    _, me_a = check("A", "GET", "/me", 200)
+    if me_a.get("unreadInboxCount") != 0:
+        failures.append(f"A unreadInboxCount after read {me_a}")
+
+    # 없는 ID는 모든 역할에서 404
+    none = "clm_00000000000000000000000000"
+    for role in ("A", "B", "C"):
+        check(role, "GET", f"/inbox/{none}", 404, "NOT_FOUND")
+        check(role, "POST", f"/inbox/{none}/read", 404, "NOT_FOUND")
+        check(role, "POST", f"/inbox/{none}/reply", 404, "NOT_FOUND", body={"text": "t"})
+        check(role, "PUT", f"/claims/{none}/record", 404, "NOT_FOUND", body={"letter": "t"})
+        check(role, "POST", f"/claims/{none}/abandon", 404, "NOT_FOUND")
+        check(role, "POST", f"/claims/{none}/complete", 404, "NOT_FOUND", body={"mode": "TEXT_ONLY"})
+    for sub in (a_sub, c_sub):
+        assert query_items(stack, f"USER#{sub}", f"INBOX#{none}") == []  # 404 요청이 항목을 만들지 않았다
+
+    log = save_result("T2-role-access", {"planId": pid, "claimId": cid, "rows": rows})
+    assert failures == [], f"T2 기대와 다른 응답 {len(failures)}건 (로그: {log}): {failures[:5]}"

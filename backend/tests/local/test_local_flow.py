@@ -60,8 +60,10 @@ def test_seed_user_login_and_me_nickname():
 
 
 def test_me_with_dev_jwt():
-    status, _, body = call("GET", "/me", token=dev_token("u-local-1", "수현"))
-    assert status == 200 and body == {"userId": "u-local-1", "nickname": "수현", "unreadInboxCount": 0}
+    # 4단계부터 unreadInboxCount는 계산값이다(BE-AUTH-05). 수신함이 빈 새 사용자로 0을 확인한다.
+    user = f"u-local-{uuid.uuid4()}"
+    status, _, body = call("GET", "/me", token=dev_token(user, "수현"))
+    assert status == 200 and body == {"userId": user, "nickname": "수현", "unreadInboxCount": 0}
 
 
 def test_plan_create_detail_list():
