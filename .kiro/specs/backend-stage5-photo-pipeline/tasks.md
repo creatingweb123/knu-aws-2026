@@ -183,24 +183,24 @@
   - `cfn-lint` 0건, `sam validate --lint` 통과, `sam build --use-container` 성공, `pytest tests/unit/test_template.py` 통과. 미실행 항목이 있으면 사유와 함께 묻는다.
   - _Requirements: 14.7_
 
-- [ ] 11. 로컬 환경 (`local/`, `docker-compose.yml`)
+- [x] 11. 로컬 환경 (`local/`, `docker-compose.yml`)
   - 선행: 6.3, 10
-  - [ ] 11.1 init·compose·어댑터
+  - [x] 11.1 init·compose·어댑터
     - `local/init/01_haru.py`: `create_photo_dlq`, `create_photo_queue`, `create_photo_bucket`(CORS, 수명 주기), `put_photo_notification`(멱등, `ok step=`). `tests/unit/test_local_init.py`에 단계 사례 추가.
     - `docker-compose.yml`: `aws`에 `FLOCI_AUTH_VALIDATE_SIGNATURES: "true"`, `api`에 `PHOTO_BUCKET`, `PHOTO_QUEUE_URL`, `PUBLIC_S3_ENDPOINT`, `FAULT_INJECT`, `FAULT_INJECT_ALLOWED: "true"`, `PHOTO_UPLOAD_IF_NONE_MATCH`. 이미지 태그 고정 그대로.
     - 어댑터: SQS 폴러 스레드(`STAGE=local`이고 `PHOTO_QUEUE_URL`이 있을 때만), Lambda SQS 이벤트 형태, 성공 시 삭제·예외 시 남김. `local/adapter/requirements.txt`에 `Pillow==13.0.0`. `tests/unit/test_adapter.py`에 폴러 사례(가짜 SQS 클라이언트: 성공 삭제, 예외 유지, 꺼짐 조건) 추가.
     - _Requirements: 13.1–13.5 · BE-INFRA-08_
-  - [ ] 11.2 Floci 기능 재확인 (BE-Q64, 실제 구동 결과로 판단)
+  - [x] 11.2 Floci 기능 재확인 (BE-Q64, 실제 구동 결과로 판단)
     - `docker compose up -d --build`로 직접 띄워(서명 검사 켬) 항목별로 확인하고 결과를 기록한다: 버킷 알림(prefix·`s3:TestEvent`·`eTag`), presigned PUT `Content-Length` 서명 검사(403), presigned·SDK `If-None-Match`(412), `IfMatch`(412), SQS redrive(`maxReceiveCount` 3 → DLQ)와 `ApproximateReceiveCount` 증가, 수명 주기 설정 수락, CORS 설정 수락. 서명 검사를 켠 상태에서 기존 로컬 23건이 그대로 도는지.
     - 결과로 "로컬 미지원" 목록을 확정한다. 최소 후보: 수명 주기 실제 만료, 브라우저 CORS preflight·오류 응답 CORS 헤더, 버킷 정책(TLS·`s3:if-none-match` 강제), Lambda 강제 종료·실제 SQS 이벤트 소스 매핑·DLQ 알람. redrive가 안 되면 재시도 소진 분기도 추가한다. 서명 검사로 기존 테스트가 깨지면 끄고 `Content-Length` 사례를 미지원으로 옮긴다.
     - 알림이 동작하지 않는 것으로 바뀌었으면 그때만 로컬 전용 우회(어댑터가 이벤트를 넣음)를 더하고 README에 적는다.
     - _Requirements: 13.6, 13.7 · BE-Q64_
-  - [ ] 11.3 로컬 통합 테스트 (`tests/local/test_local_photo.py`, 마커 `local`)
+  - [x] 11.3 로컬 통합 테스트 (`tests/local/test_local_photo.py`, 마커 `local`)
     - 정상: 업로드(presigned URL, `localhost:4566`) → 폴러 → 처리 → 완료 → 계획자 상세 `photoUrl`로 처리본을 받아 EXIF·GPS 없음. 손상 파일 → `FAILED CORRUPT_IMAGE` → `TEXT_ONLY` 완료. 처리 전 교체 → 새 사진으로 완료, 처리본 1개. 잘못된 `Content-Length` → 403. 같은 URL 재업로드(스위치 꺼짐) → 전달 1회·처리본 1개. 스위치 켜짐(`PHOTO_UPLOAD_IF_NONE_MATCH=true`일 때만 도는 사례) → 두 번째 PUT 412. `FAULT_INJECT=photo-slow`일 때만 도는 사례: `PROCESSING` 관측 뒤 `TEXT_ONLY` 완료·교체 경합(로컬 확인용, 판정 근거 아님). redrive가 지원되면 `FAULT_INJECT=photo`로 DLQ 이동·`FAILED RETRY_EXHAUSTED`.
     - 상태 확인은 DynamoDB 직접 조회(200ms 간격, 최대 20초). "로컬 미지원" 항목은 사유를 출력하는 skip.
     - _Requirements: 14.3 · BE-Q15, BE-Q64_
 
-- [ ] 12. Checkpoint - 로컬 통합 테스트
+- [x] 12. Checkpoint - 로컬 통합 테스트
   - `docker compose up -d --build` 후 `pytest -m local tests/local`: 기존 23건(묶음 A) + 5단계 추가분 전부 통과(조건부 사례는 해당 환경 변수로 한 번씩 다시 기동해 실행). 건수·날짜·기준 커밋·Floci 확인 결과를 기록한다. T 판정 근거는 아니다(BE-Q15).
   - _Requirements: 13.6, 14.3_
 

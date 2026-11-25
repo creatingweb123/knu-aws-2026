@@ -3,11 +3,12 @@
 #   docker compose up -d --build
 #   docker compose logs aws     # init 출력(풀 ID, 클라이언트 ID, LOCAL_JWT_ISSUER)
 #   docker compose down         # 데이터는 floci-data 볼륨에 남는다(-v로 지운다)
-# 이번 범위(1·2단계)에는 SQS·S3·ollama를 넣지 않는다.
+# 5단계부터 사진 버킷·큐·DLQ(S3·SQS)를 같은 aws 컨테이너에서 띄운다. ollama는 넣지 않는다.
+# 조건부 로컬 사례: FAULT_INJECT=photo-slow 또는 PHOTO_UPLOAD_IF_NONE_MATCH=true를 셸에 두고 다시 띄운다.
 name: haru
 
 services:
-  aws: # DynamoDB, Cognito User Pool
+  aws: # DynamoDB, Cognito User Pool, S3(사진 버킷), SQS(사진 큐·DLQ)
     image: floci/floci:2.5.0-compat # 태그 고정, latest 금지. init에서 boto3를 쓰려면 -compat
     ports: ["4566:4566"]
     env_file:
@@ -19,6 +20,12 @@ services:
       FLOCI_STORAGE_MODE: hybrid # 재시작해도 데이터 유지
       FLOCI_STORAGE_PERSISTENT_PATH: /var/lib/floci
       FLOCI_INIT_HOOKS_TIMEOUT_SECONDS: "120"
+      # presigned PUT의 Content-Length 서명 검사(잘못된 크기 → 403, BE-Q64)
+      FLOCI_AUTH_VALIDATE_SIGNATURES: "true"
+      PHOTO_BUCKET: haru-photos-local
+      CORS_ALLOWED_ORIGIN: http://localhost:5173
+      PHOTO_UPLOAD_IF_NONE_MATCH: ${PHOTO_UPLOAD_IF_NONE_MATCH:-false}
+      PHOTO_QUEUE_VISIBILITY_S: ${PHOTO_QUEUE_VISIBILITY_S:-180} # 로컬 redrive 사례만 줄인다
     volumes:
       - ./local/init:/etc/floci/init/ready.d:ro
       - floci-data:/var/lib/floci
@@ -56,6 +63,13 @@ services:
       LOCAL_JWT_ISSUER: ${LOCAL_JWT_ISSUER:-http://localhost:4566/ap-northeast-2_haruLocal}
       LOCAL_JWKS_URL: ${LOCAL_JWKS_URL:-http://aws:4566/ap-northeast-2_haruLocal/.well-known/jwks.json}
       CORS_ALLOWED_ORIGIN: http://localhost:5173
+      # 5단계 사진 파이프라인. presigned URL은 브라우저가 닿는 주소로 서명한다.
+      PHOTO_BUCKET: haru-photos-local
+      PHOTO_QUEUE_URL: http://aws:4566/000000000000/haru-photo-queue
+      PUBLIC_S3_ENDPOINT: http://localhost:4566
+      PHOTO_UPLOAD_IF_NONE_MATCH: ${PHOTO_UPLOAD_IF_NONE_MATCH:-false}
+      FAULT_INJECT: ${FAULT_INJECT:-}
+      FAULT_INJECT_ALLOWED: "true"
     depends_on:
       aws:
         condition: service_healthy

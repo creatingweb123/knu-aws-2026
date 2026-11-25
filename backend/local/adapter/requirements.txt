@@ -3,3 +3,5 @@ PyJWT==2.15.1
 cryptography==50.0.2
 # Lambda 런타임에 내장된 boto3를 로컬 컨테이너에서는 직접 설치한다
 boto3==1.44.10
+# 사진 처리 Lambda를 폴러가 같은 컨테이너에서 부른다(AWS에서는 PillowLayer, layers/pillow/requirements.txt와 같은 버전)
+Pillow==13.0.0

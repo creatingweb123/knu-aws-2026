@@ -11,6 +11,7 @@ http://localhost:4566 으로 미리 설정되어 있다. FLOCI_STORAGE_MODE=hybr
 
 from __future__ import annotations
 
+import json
 import os
 import sys
 import time
@@ -20,6 +21,7 @@ from typing import Any
 
 TABLE_NAME = os.environ.get("TABLE_NAME", "HaruTable")
 CHECKPOINT_TABLE = os.environ.get("CHECKPOINT_TABLE", "HaruAgentCheckpoints")
+REGION = os.environ.get("AWS_DEFAULT_REGION", "ap-northeast-2")
 POOL_NAME = "haru-local"
 # Floci 전용 태그로 ID를 고정해 .env 값을 매번 바꾸지 않게 한다(앱 코드·SAM 템플릿에는 쓰지 않는다).
 POOL_ID = os.environ.get("LOCAL_USER_POOL_ID", "ap-northeast-2_haruLocal")
@@ -27,6 +29,14 @@ CLIENT_NAME = os.environ.get("LOCAL_USER_POOL_CLIENT_ID", "haruLocalWebClient")
 # 토큰 iss는 FLOCI_BASE_URL(브라우저 기준 주소) + 풀 ID, JWKS는 컨테이너 사이 주소로 받는다.
 PUBLIC_BASE = os.environ.get("FLOCI_BASE_URL", "http://localhost:4566").rstrip("/")
 INTERNAL_BASE = os.environ.get("LOCAL_INTERNAL_BASE_URL", "http://aws:4566").rstrip("/")
+# 5단계 사진 파이프라인(template.yaml PhotoBucket·PhotoQueue·PhotoDLQ와 같은 설정)
+PHOTO_BUCKET = os.environ.get("PHOTO_BUCKET", "haru-photos-local")
+PHOTO_QUEUE = os.environ.get("PHOTO_QUEUE_NAME", "haru-photo-queue")
+PHOTO_DLQ = os.environ.get("PHOTO_DLQ_NAME", "haru-photo-dlq")
+PHOTO_PREFIX = "photos/original/"
+# template.yaml과 같은 180초. 로컬 redrive 사례(FAULT_INJECT=photo)만 짧게 줄여 띄운다(판정 근거 아님).
+PHOTO_QUEUE_VISIBILITY_S = os.environ.get("PHOTO_QUEUE_VISIBILITY_S", "180")
+CORS_ORIGIN = os.environ.get("CORS_ALLOWED_ORIGIN", "http://localhost:5173")
 DONE_MARKER = Path(os.environ.get("HARU_INIT_DONE_MARKER", "/tmp/haru-init-done"))
 
 SEED_PASSWORD = os.environ.get("SEED_PASSWORD", "LocalOnly-Passw0rd!")
@@ -172,6 +182,84 @@ def ensure_seed_users(idp: Any, pool_id: str) -> int:
     return created
 
 
+def _queue_url(sqs: Any, name: str) -> str | None:
+    try:
+        return sqs.get_queue_url(QueueName=name)["QueueUrl"]
+    except Exception as e:  # noqa: BLE001
+        if _code(e) in ("AWS.SimpleQueueService.NonExistentQueue", "QueueDoesNotExist"):
+            return None
+        raise
+
+
+def _queue_arn(sqs: Any, url: str) -> str:
+    return sqs.get_queue_attributes(QueueUrl=url, AttributeNames=["QueueArn"])["Attributes"]["QueueArn"]
+
+
+def create_photo_dlq(sqs: Any) -> str:
+    """PhotoDLQ: 보존 14일(BE-Q53). 큐 URL을 돌려준다."""
+    url = _queue_url(sqs, PHOTO_DLQ)
+    if url:
+        return url
+    return sqs.create_queue(QueueName=PHOTO_DLQ, Attributes={"MessageRetentionPeriod": "1209600"})["QueueUrl"]
+
+
+def create_photo_queue(sqs: Any, dlq_url: str) -> str:
+    """PhotoQueue: 가시성 180초(PHOTO_QUEUE_VISIBILITY_S), maxReceiveCount 3 → PhotoDLQ. 이미 있으면 속성만 맞춘다."""
+    attrs = {
+        "VisibilityTimeout": PHOTO_QUEUE_VISIBILITY_S,
+        "RedrivePolicy": json.dumps({"deadLetterTargetArn": _queue_arn(sqs, dlq_url), "maxReceiveCount": 3}),
+    }
+    url = _queue_url(sqs, PHOTO_QUEUE)
+    if url:
+        sqs.set_queue_attributes(QueueUrl=url, Attributes=attrs)
+        return url
+    return sqs.create_queue(QueueName=PHOTO_QUEUE, Attributes=attrs)["QueueUrl"]
+
+
+def create_photo_bucket(s3: Any) -> str:
+    """PhotoBucket: CORS(PUT·GET, Content-Type), 원본 7일 만료. 설정은 매번 다시 넣는다(멱등)."""
+    result = "exists"
+    try:
+        s3.head_bucket(Bucket=PHOTO_BUCKET)
+    except Exception as e:  # noqa: BLE001
+        if _code(e) not in ("404", "NoSuchBucket", "NotFound"):
+            raise
+        s3.create_bucket(Bucket=PHOTO_BUCKET, CreateBucketConfiguration={"LocationConstraint": REGION})
+        result = "created"
+    allowed_headers = ["Content-Type", "If-None-Match"] if os.environ.get("PHOTO_UPLOAD_IF_NONE_MATCH") == "true" else ["Content-Type"]
+    s3.put_bucket_cors(
+        Bucket=PHOTO_BUCKET,
+        CORSConfiguration={"CORSRules": [{"AllowedOrigins": [CORS_ORIGIN], "AllowedMethods": ["PUT", "GET"], "AllowedHeaders": allowed_headers, "MaxAgeSeconds": 3000}]},
+    )
+    s3.put_bucket_lifecycle_configuration(
+        Bucket=PHOTO_BUCKET,
+        LifecycleConfiguration={
+            "Rules": [
+                {"ID": "ExpireOriginals", "Status": "Enabled", "Filter": {"Prefix": PHOTO_PREFIX}, "Expiration": {"Days": 7}},
+                {"ID": "AbortIncompleteUploads", "Status": "Enabled", "Filter": {"Prefix": "photos/"}, "AbortIncompleteMultipartUpload": {"DaysAfterInitiation": 1}},
+            ]
+        },
+    )
+    return result
+
+
+def put_photo_notification(s3: Any, sqs: Any, queue_url: str) -> str:
+    """photos/original/ 아래 ObjectCreated → PhotoQueue. 같은 설정을 덮어쓰므로 멱등이다."""
+    s3.put_bucket_notification_configuration(
+        Bucket=PHOTO_BUCKET,
+        NotificationConfiguration={
+            "QueueConfigurations": [
+                {
+                    "QueueArn": _queue_arn(sqs, queue_url),
+                    "Events": ["s3:ObjectCreated:*"],
+                    "Filter": {"Key": {"FilterRules": [{"Name": "prefix", "Value": PHOTO_PREFIX}]}},
+                }
+            ]
+        },
+    )
+    return "ok"
+
+
 def run_step(name: str, fn: Callable[[], Any]) -> Any:
     try:
         result = fn()
@@ -182,24 +270,33 @@ def run_step(name: str, fn: Callable[[], Any]) -> Any:
     return result
 
 
-def main(ddb: Any = None, idp: Any = None) -> dict[str, str]:
-    if ddb is None or idp is None:
+def main(ddb: Any = None, idp: Any = None, sqs: Any = None, s3: Any = None) -> dict[str, str]:
+    if ddb is None or idp is None or sqs is None or s3 is None:
         import boto3
 
         ddb = ddb or boto3.client("dynamodb")
         idp = idp or boto3.client("cognito-idp")
+        sqs = sqs or boto3.client("sqs")
+        s3 = s3 or boto3.client("s3")
     DONE_MARKER.unlink(missing_ok=True)
     run_step("create_haru_table", lambda: create_haru_table(ddb))
     run_step("create_checkpoint_table", lambda: create_checkpoint_table(ddb))
     pool_id = run_step("ensure_user_pool", lambda: ensure_user_pool(idp))
     client_id = run_step("ensure_user_pool_client", lambda: ensure_client(idp, pool_id))
     run_step("ensure_seed_users", lambda: ensure_seed_users(idp, pool_id))
+    dlq_url = run_step("create_photo_dlq", lambda: create_photo_dlq(sqs))
+    queue_url = run_step("create_photo_queue", lambda: create_photo_queue(sqs, dlq_url))
+    run_step("create_photo_bucket", lambda: create_photo_bucket(s3))
+    run_step("put_photo_notification", lambda: put_photo_notification(s3, sqs, queue_url))
 
     values = {
         "LOCAL_USER_POOL_ID": pool_id,
         "LOCAL_USER_POOL_CLIENT_ID": client_id,
         "LOCAL_JWT_ISSUER": f"{PUBLIC_BASE}/{pool_id}",
         "LOCAL_JWKS_URL": f"{INTERNAL_BASE}/{pool_id}/.well-known/jwks.json",
+        "PHOTO_BUCKET": PHOTO_BUCKET,
+        "PHOTO_QUEUE_URL": queue_url,
+        "PHOTO_DLQ_URL": dlq_url,
     }
     for k, v in values.items():
         print(f"{k}={v}", flush=True)
