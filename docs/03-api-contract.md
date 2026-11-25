@@ -386,7 +386,7 @@ flowchart TD
 |---|---|---|
 | 400 | `VALIDATION_ERROR` | 입력 형식/길이 오류 (`details`에 필드별 사유) |
 | 400 | `RECORD_REQUIRED` | 기록 없이 완료 요청 |
-| 401 | `UNAUTHORIZED` | 토큰 없음/만료 (API Gateway authorizer). authorizer가 거부한 401은 본문이 `{"message":"Unauthorized"}`라 이 에러 형식이 아니다. 클라이언트는 401을 상태 코드로 판단한다 |
+| 401 | `UNAUTHORIZED` | 토큰 없음/만료/서명 오류는 API Gateway authorizer가 거부하고, 본문이 `{"message":"Unauthorized"}`라 이 에러 형식이 아니다. ID 토큰이 아닌 토큰(Cognito 액세스 토큰 등, `token_use != "id"`)은 authorizer를 통과하므로 Lambda가 이 형식으로 거부한다(2026-11-25 AWS 판정). 클라이언트는 401을 상태 코드로 판단한다 |
 | 403 | `FORBIDDEN` | 남의 Claim/Record에 쓰기 시도 |
 | 404 | `NOT_FOUND` | 없거나 볼 권한이 없는 리소스 |
 | 409 | `ALREADY_CLAIMED` | 다른 사람이 먼저 이어받음 |
