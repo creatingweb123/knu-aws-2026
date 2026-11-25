@@ -40,12 +40,28 @@ class PlanCreate(BaseModel):
     authoring: AuthoringIn
 
 
+class PhotoIn(BaseModel):
+    """사진 메타데이터. PUT /record의 `photo`와 POST /record/photo 본문이 같이 쓴다(docs/02 §2.10 PhotoRequest).
+
+    크기는 1–10,485,760바이트 정수(strict라 True·1.5·"10"을 받지 않는다, BE-Q50).
+    """
+
+    model_config = _STRICT
+
+    contentType: Literal["image/jpeg", "image/png"]
+    size: Annotated[int, Field(ge=1, le=10_485_760)]
+
+
+PhotoRequest = PhotoIn
+
+
 class RecordPut(BaseModel):
-    """PUT /claims/{claimId}/record (3단계: 글만). `photo`는 핸들러가 따로 거부한다(BE-Q34)."""
+    """PUT /claims/{claimId}/record. `photo`가 있으면 업로드 URL을 발급한다(5단계, BE-Q34 해소)."""
 
     model_config = _STRICT
 
     letter: Annotated[str, Field(min_length=1, max_length=1000)]
+    photo: PhotoIn | None = None
 
 
 class CompleteIn(BaseModel):
@@ -82,6 +98,9 @@ _FIELD_MESSAGES: dict[str, str] = {
     "story": "1–1000자로 입력해 주세요.",
     "letter": "1–1000자로 입력해 주세요.",
     "text": "1–100자로 입력해 주세요.",
+    "contentType": "image/jpeg 또는 image/png여야 해요.",
+    "size": "1–10,485,760바이트여야 해요.",
+    "photo": "사진 정보가 올바르지 않아요.",
 }
 # 같은 필드 이름이 모델마다 뜻이 다를 때는 전체 경로로 먼저 찾는다.
 _PATH_MESSAGES: dict[str, str] = {

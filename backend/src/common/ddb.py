@@ -29,6 +29,16 @@ def table() -> Any:
     return _table
 
 
+def use_table(t: Any) -> None:
+    """이 실행 환경의 HaruTable 리소스를 바꾼다.
+
+    사진 처리 Lambda가 자기 SDK 설정(짧은 타임아웃·재시도, design "처리 Lambda 알고리즘")의 리소스를 꽂을 때만 쓴다.
+    다른 함수는 부르지 않으므로 기본 SDK 설정 그대로다(BE-Q48 미결 유지).
+    """
+    global _table
+    _table = t
+
+
 class ConditionFailed(Exception):
     """모든 실패 사유가 ConditionalCheckFailed인 트랜잭션 취소. 서비스 계층이 재조회해 분기한다."""
 
