@@ -24,6 +24,8 @@
 
 ## Tasks
 
+> 이 브랜치(`feat/be-4-inbox`)는 묶음 A(작업 1–12)만 완료·검증한 상태다. 작업 13–19(`GET /record`)는 `feat/be-4-record-inbox`의 `f3626c0`에 구현돼 있고 여기서는 미완료로 둔다. 작업 20은 승인 대기다.
+
 ### 묶음 A: 수신함·미확인 수 (계약 변경 없음)
 
 - [x] 1. 공통 모듈 확장 (`src/common`)
@@ -199,7 +201,7 @@
     - 리뷰 필요 항목: docs/03 §3.4 `GET /record`에 503 `TRY_AGAIN` 명시(BE-Q46), 스로틀링·섞인 사유를 503으로 볼지, 거부 시 대안 A. 프론트 담당 전달 항목(design "프론트엔드 연동 주의사항 (S2)" 요약), InboxItem `claimerNickname` null 가능(BE-Q45).
     - _Requirements: 11.6 · BE-Q45, BE-Q46, S2_
 
-- [ ] 12. 묶음 A 커밋
+- [x] 12. 묶음 A 커밋
   - 선행: 11
   - 변경을 의미 단위로 커밋한다(push 안 함). `git status`로 프론트 트리와 무관한 파일만 들어갔는지 확인한다.
 

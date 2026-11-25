@@ -7,7 +7,7 @@ AWS 계정 없이 개발한 백엔드를 AWS 담당이 배포·판정할 수 있
 | 항목 | 상태 |
 |---|---|
 | 범위 | 백엔드 1·2단계(인증, `GET /me`, 계획 생성·목록·상세, 멱등 키, 원문 충실도·개인정보 함수), **3단계**(이어받기·포기·완료 트랜잭션, 방문 기록 글 저장 최소 구현, `GET /me/claims`, EMF 지표 3종), **4단계**(수신함 4종, `GET /me`의 `unreadInboxCount`, `InboxFunction`). 4단계의 `GET /claims/{claimId}/record`는 계약 변경 승인 대기(BE-Q46, 3.3절·8절) |
-| 브랜치 | 4단계: `feat/be-4-record-inbox`(`fix/be-3-local-verify` `8fcf239` 위). 3단계까지: `feat/be-3-claim-transaction` ← `feat/be-1-2-foundation` ← `docs/monorepo-stage1-2-spec` |
+| 브랜치 | 4단계 수신함: `feat/be-4-inbox`(`fix/be-3-local-verify` `8fcf239` 위, 이 PR). `GET /claims/{claimId}/record`는 이 브랜치에 없고 `feat/be-4-record-inbox`의 `f3626c0`에만 있다(BE-Q46 승인 전 PR 제외). 3단계까지: `feat/be-3-claim-transaction` ← `feat/be-1-2-foundation` ← `docs/monorepo-stage1-2-spec` |
 | spec | `.kiro/specs/backend-stage1-2-foundation/`, `.kiro/specs/backend-stage3-claim/`, `.kiro/specs/backend-stage4-record-inbox/` |
 | 단위 테스트 | `pytest tests/unit` 전부 통과(2026-11-25 로컬 검증: 289건, `_cleanup` 회귀 테스트 추가 후 296건). moto(인프로세스 DynamoDB 흉내)로 실제 조건식·갱신식·GSI 조회·트랜잭션 취소 사유를 확인. 3단계는 상태 전이 속성 테스트 포함 |
 | 단위 테스트(4단계) | 2026-11-25 수신함 묶음까지 385건 통과(속성 기반 Property 18–23 포함) |
@@ -336,7 +336,7 @@ PR은 아직 열지 않았다. 리뷰할 때 아래 순서로 연다.
 4. `fix/be-3-aws-verify` → `feat/be-3-claim-transaction`: AWS 판정 중 고친 `token_use` 확인과 판정 기록(3.1절)
 5. `fix/be-3-local-verify` → `fix/be-3-aws-verify`: 로컬 테스트 수정, `_cleanup` 보완(3.2절), 로컬 구동 기록(5절)
 
-6. (4단계) `feat/be-4-record-inbox` → `fix/be-3-local-verify`: 수신함 묶음(계약 변경 없음). `GET /claims/{claimId}/record` 커밋은 BE-Q46 승인 전에는 이 PR에 넣지 않는다
+6. (4단계) `feat/be-4-inbox` → `fix/be-3-local-verify`: 수신함 묶음(계약 변경 없음). `GET /claims/{claimId}/record` 구현(`feat/be-4-record-inbox`의 `f3626c0`)은 BE-Q46 승인 전에는 이 PR에 넣지 않는다
 
 비교 링크: `https://github.com/creatingweb123/knu-aws-2026/compare/<기준>...<브랜치>`
 
