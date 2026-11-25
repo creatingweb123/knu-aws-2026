@@ -26,105 +26,105 @@
 
 ### 묶음 P: 계약 변경·묶음 B 없이 하는 작업
 
-- [ ] 1. 공통 모듈 (`src/common`)
+- [x] 1. 공통 모듈 (`src/common`)
   - 선행: 없음
-  - [ ] 1.1 `common/s3.py` 신규
+  - [x] 1.1 `common/s3.py` 신규
     - `ORIGINAL_PREFIX`, `PROCESSED_PREFIX`, `EXT`, `photo_bucket()`, `new_original_key()`, `parse_original_key()`(형식 밖이면 `None`, BE-Q54), `new_processed_key()`(`attemptUuid`, BE-Q57), `quote_etag()`, `presign_put()`(Upload_Descriptor, `ContentType`·`ContentLength` 서명, 스위치가 켜지면 `IfNoneMatch="*"`와 `headers["If-None-Match"]`), `presign_get(key, 900)`.
     - presign 클라이언트는 `PUBLIC_S3_ENDPOINT`가 있으면 그 주소와 경로 방식, 없으면 기본 엔드포인트(가상 호스트 방식), `signature_version="s3v4"`. 스위치는 환경 변수 `PHOTO_UPLOAD_IF_NONE_MATCH == "true"`.
     - _Requirements: 2.2, 2.3, 2.5, 5.4, 7.5, 10.1, 13.3 · BE-REC-02, BE-Q54, BE-Q57, BE-Q65_
-  - [ ] 1.2 `common/validation.py`: `PhotoIn`(`contentType` 2종, `size` 1–10,485,760 strict 정수), `PhotoRequest = PhotoIn`, `RecordPut.photo: PhotoIn | None`, `_FIELD_MESSAGES`에 `contentType`·`size`.
+  - [x] 1.2 `common/validation.py`: `PhotoIn`(`contentType` 2종, `size` 1–10,485,760 strict 정수), `PhotoRequest = PhotoIn`, `RecordPut.photo: PhotoIn | None`, `_FIELD_MESSAGES`에 `contentType`·`size`.
     - _Requirements: 2.6, 3.5 · BE-Q50_
-  - [ ] 1.3 `common/metrics.py`: `emf_line(..., unit="Count")`, `emit(..., unit="Count")`, 상수 `PHOTO_PROCESSING_MS`·`PHOTO_FAILED`. 기존 3종 출력 불변.
+  - [x] 1.3 `common/metrics.py`: `emf_line(..., unit="Count")`, `emit(..., unit="Count")`, 상수 `PHOTO_PROCESSING_MS`·`PHOTO_FAILED`. 기존 3종 출력 불변.
     - _Requirements: 12.1–12.3 · BE-OBS-01, BE-Q37_
-  - [ ] 1.4 `common/ddb.py`: `use_table(t)`만 추가. 나머지는 diff 0.
+  - [x] 1.4 `common/ddb.py`: `use_table(t)`만 추가. 나머지는 diff 0.
     - _Requirements: 8.8, 9.3 · BE-Q48(미결 유지), BE-Q71_
-  - [ ] 1.5 공통 모듈 단위 테스트
+  - [x] 1.5 공통 모듈 단위 테스트
     - `tests/unit/test_photo_s3.py`(신규): 키 생성·해석(정상, 다른 prefix, `clm_` 아님, uuid 형식 아님, 확장자 3종), `quote_etag`, presign 인자 스파이(`ContentType`, `ContentLength`, `ExpiresIn=600`/`900`, 스위치 꺼짐에 `IfNoneMatch` 없음·켜짐에 있음, `headers`가 각각 `{Content-Type}` / `{Content-Type, If-None-Match}`), 생성 URL의 `X-Amz-SignedHeaders`에 `content-length;content-type;host`(+`if-none-match`), `expiresAt` 밀리초 UTC, 로컬 엔드포인트가 URL 호스트에 들어감.
     - `tests/unit/test_validation.py`: `PhotoIn` 경계(contentType 2종·그 외, size 0·1·10,485,760·10,485,761·`True`·`1.5`·`"10"`), `RecordPut`의 `details` 키 `photo.contentType`·`photo.size`·`photo`, `PhotoRequest`의 `contentType`·`size`·`body`.
     - `tests/unit/test_errors.py`: `emf_line` 단위 지정과 기존 `test_emf_line_format` 불변.
     - **S3 조건부 요청 지원 확인(moto)**: moto 5.2.6에서 `PutObject(IfNoneMatch="*")` 두 번째 412, `GetObject`/`HeadObject(IfMatch=…)` 불일치 412를 확인하는 테스트를 먼저 둔다. 지원하지 않는 조합은 이후 테스트에서 Stubber 주입으로 대신한다는 표시(마커·주석)를 남긴다.
     - _Requirements: 2.3, 2.6, 5.9, 7.5, 12.3, 14.1 · BE-Q50, BE-Q65_
 
-- [ ] 2. 이미지 순수 함수 (`domain/photo_image.py`)
+- [x] 2. 이미지 순수 함수 (`domain/photo_image.py`)
   - 선행: 1.3(없어도 되지만 같은 브랜치 순서)
-  - [ ] 2.1 `photo_image.py` 구현
+  - [x] 2.1 `photo_image.py` 구현
     - `MAX_BYTES`, `MAX_PIXELS = 40_000_000`, `LONG_EDGE = 1600`, `JPEG_QUALITY = 85`, `PhotoRejected(code)`, `ProcessedImage`, `sniff_format`, `process_image`를 design "`domain/photo_image.py`" 절차 1–8대로 만든다.
     - `DecompressionBombWarning`은 함수 안에서만 오류로 바꾸고 `MAX_IMAGE_PIXELS`는 `try/finally`로 원래 값을 되돌린다. JPEG은 `draft("RGB", (1600, 1600))`. 메타데이터는 픽셀만 새 이미지로 옮겨 없앤다. 투명은 흰 배경 합성.
     - _Requirements: 7.1–7.6, 7.8 · BE-PHOTO-04, BE-PHOTO-05, G7, BE-Q55, BE-Q56, BE-Q58_
-  - [ ] 2.2 이미지 단위 테스트 (`tests/unit/test_photo_image.py`)
+  - [x] 2.2 이미지 단위 테스트 (`tests/unit/test_photo_image.py`)
     - 정상 JPEG·PNG(투명 포함)·그레이스케일·팔레트·CMYK, 1600px 초과·이하·정확히 1600, Orientation 1–8 각각의 결과 크기·픽셀 방향(모서리에 색 점을 찍어 회전·반전 확인).
     - 메타데이터: GPS IFD(`0x8825`)·Orientation·ICC(`ImageCms.createProfile("sRGB")`)·XMP·주석이 있는 입력 → 처리본을 Pillow로 다시 열어 `getexif()` 비어 있음, `info`에 `exif`·`icc_profile`·`xmp`·`comment` 없음, JPEG 세그먼트 직접 스캔으로 APP1·APP2·APP13·COM 마커 없음.
     - 거부: 잘린 JPEG·PNG, 헤더만 있는 파일, 0바이트, GIF·WebP·BMP, 확장자만 jpg인 다른 형식, 매직 바이트는 JPEG인데 내용이 PNG, 10,485,761바이트 → 각각 정해진 `PhotoRejected` 코드.
     - 압축 폭탄: 헤더상 픽셀 수가 `MAX_PIXELS` 초과(작은 실제 데이터로 헤더만 크게 만든 PNG) → `TOO_MANY_PIXELS`(디코딩 전), `MAX_PIXELS` 초과 ~ 2배 이하에서 `DecompressionBombWarning` 경로, 2배 초과에서 `DecompressionBombError` 경로가 모두 `TOO_MANY_PIXELS`. `warnings.catch_warnings(record=True)`로 경고가 함수 밖으로 새지 않음, 호출 뒤 `Image.MAX_IMAGE_PIXELS`와 경고 필터가 원래 값.
     - _Requirements: 7.1–7.6, 14.1 · BE-Q55, BE-Q56, T8, T11_
-  - [ ] 2.3 메모리·시간 측정 (`tests/unit/test_photo_memory.py`, 마커 `slow`)
+  - [x] 2.3 메모리·시간 측정 (`tests/unit/test_photo_memory.py`, 마커 `slow`)
     - 40,000,000픽셀 이하 최대 크기의 JPEG·PNG를 `subprocess`로 처리해 `ru_maxrss`를 출력하고 717MB(1024MB의 70%) 이하인지 단언한다. 처리 시간도 출력한다(`PRE_PROCESS_MS` 근거, BE-Q71). `pytest.ini`에 `slow` 마커를 등록한다. 기본 실행에서는 빠지지만 Checkpoint 5·16에서는 `-m slow`로 반드시 실행한다.
     - _Requirements: 7.3, 14.1 · BE-Q56, BE-Q71_
-  - [ ] 2.4 Write property test for 처리본 규칙 (`tests/unit/test_photo_properties.py`)
+  - [x] 2.4 Write property test for 처리본 규칙 (`tests/unit/test_photo_properties.py`)
     - **Property 25: 처리본은 크기·형식 규칙을 지키고 메타데이터가 없다**
     - 생성기: 크기 1×1 ~ 4000×4000, 모드 RGB·RGBA·L·P, Orientation 1–8, GPS EXIF·ICC 유무, 저장 형식 JPEG·PNG.
     - **Validates: Requirements 7.4, 7.5, 7.6**
-  - [ ] 2.5 Write property test for 거부 사유 (`tests/unit/test_photo_properties.py`)
+  - [x] 2.5 Write property test for 거부 사유 (`tests/unit/test_photo_properties.py`)
     - **Property 26: 거부 사유는 입력 결함과 일치하고 예외가 새지 않는다**
     - 생성기: 무작위 바이트, 정상 이미지를 임의 위치에서 자른 것, 매직 바이트 변조, 헤더 픽셀 수 변조.
     - **Validates: Requirements 7.1, 7.2, 7.3**
 
-- [ ] 3. 사진 업로드 URL·교체 API (`claim_service`, `handlers/claims.py`)
+- [x] 3. 사진 업로드 URL·교체 API (`claim_service`, `handlers/claims.py`)
   - 선행: 1.1, 1.2
-  - [ ] 3.1 `claim_service.put_record`의 사진 분기
+  - [x] 3.1 `claim_service.put_record`의 사진 분기
     - `put_record(claim_id, user, letter, now=None) -> record`는 3단계 그대로 두고 `put_record_with_photo(..., photo, now=None) -> (record, upload)`를 더한다(내부 `_write_record` 공유, 3단계 호출부 무변경). 사진이 있으면 Record Update를 `SET …, photoKey = :key, photoStatus = :pending REMOVE processedKey, photoError`로 바꾸고, Transaction 성공·재조회 뒤에만 `presign_put`. 사진이 없으면 3단계 식 그대로, `upload=None`.
     - Plan·Claim ConditionCheck 두 항목 생성은 비공개 헬퍼로 뽑되 식은 그대로 둔다(작업 15에서 diff로 확인).
     - _Requirements: 2.1–2.5, 2.7, 2.9, 2.10, 15.3 · BE-REC-02, BE-REC-03, G3_
-  - [ ] 3.2 `claim_service.replace_photo` 신규
+  - [x] 3.2 `claim_service.replace_photo` 신규
     - Transaction: Plan CC + Claim CC + Record Update(`attribute_exists(PK) AND attribute_not_exists(deliveredAt)`, `SET photoKey, photoStatus REMOVE processedKey, photoError`). `ConditionFailed`면 재조회: 끝난 이어받기 → 409 `CLAIM_NOT_ACTIVE`(+`StaleRequestRejected`), Record 없음 → 400 `RECORD_REQUIRED`(BE-Q52 권장안), 전달된 Record → 409. 성공 뒤에만 `presign_put`. `letter`·`updatedAt` 불변.
     - `photo_status_update(plan_id, claim_id, *, key, to, allowed_from, error=None) -> bool` 헬퍼(처리 Lambda·복구 스크립트 공용).
     - _Requirements: 3.1–3.6, 15.3 · BE-REC-04, BE-Q52, T15_
-  - [ ] 3.3 핸들러·라우트
+  - [x] 3.3 핸들러·라우트
     - `_put_record`: BE-Q34의 `photo` 400 분기를 지우고 `RecordPut`(photo 포함)으로 검증, `{record, upload}`. `_replace_photo`: `PhotoRequest` 검증, 200 `{upload}`(BE-Q51 권장안). 모든 함수 첫 줄 `get_user`.
     - `handlers/routes.py`에 `"POST /claims/{claimId}/record/photo": "handlers.claims.handler"`. 어댑터는 `ROUTES`에서 경로를 만든다.
     - _Requirements: 2.8, 3.2, 3.5 · BE-Q34(해소), BE-Q51, BE-AUTH-04_
-  - [ ] 3.4 API 단위 테스트 (`tests/unit/test_photo_api.py` 신규, `test_handlers_claims.py`·`test_claim_service_moto.py` 수정)
+  - [x] 3.4 API 단위 테스트 (`tests/unit/test_photo_api.py` 신규, `test_handlers_claims.py`·`test_claim_service_moto.py` 수정)
     - `PUT /record` 사진 성공: 200 `{record, upload}`, `upload` 형태·`expiresAt`, Record `UPLOAD_PENDING`·새 `photoKey`·`processedKey`·`photoError` 없음, 응답 `record`에 `photoKey` 없음. 같은 Claim에 두 번 → 키가 다름.
     - 검증 경계는 DB·presign 호출 없이 400. 끝난 이어받기·전달된 Record·남·없음·`token_use != "id"` → 409·409·403·404·401이고 presign 미호출. Transaction 503 → presign 미호출.
     - 사진 없는 저장 → 사진 속성 불변(`UPLOAD_PENDING`·`PROCESSING`·`FAILED` 각각에서).
     - `POST /record/photo`: 성공 `{upload}` 200, `letter`·`updatedAt` 불변, `processedKey`·`photoError` 제거, `NONE`·`UPLOAD_PENDING`·`PROCESSING`·`FAILED`에서 허용, Record 없음 400 `RECORD_REQUIRED`, Record 없음 + 끝난 이어받기 → 409(순서), 전달됨 409, 남 403, 없음 404.
     - 3단계 기존 사례 수정: `test_record_validation`의 BE-Q34 사례를 새 동작(200 + `upload`)으로 바꾼다. 그 밖의 3단계 사례 기대값은 그대로.
     - _Requirements: 2.1–2.10, 3.1–3.6, 14.1 · BE-Q34, BE-Q50–BE-Q52_
-  - [ ] 3.5 Write property test for 업로드 URL·교체 (`tests/unit/test_photo_properties.py`)
+  - [x] 3.5 Write property test for 업로드 URL·교체 (`tests/unit/test_photo_properties.py`)
     - **Property 28: 업로드 URL 발급·교체는 글과 전달 상태를 지킨다**
     - 생성기: 3단계 연산열(이어받기·포기·기록·완료·기한 경과) + 사진 업로드·교체 요청, 임의 요청자.
     - **Validates: Requirements 2, 3**
 
-- [ ] 4. 수신함 상세의 사진 (`handlers/inbox.py`, `responses.py`)
+- [x] 4. 수신함 상세의 사진 (`handlers/inbox.py`, `responses.py`)
   - 선행: 1.1
-  - [ ] 4.1 `serialize_inbox_record(record, *, photo_url=None, caption=None)`, `_detail`이 `hasPhoto`·`processedKey`가 있으면 `presign_get(processedKey, 900)`와 마지막 장소 + "에서"를 넣는다. `hasPhoto = true`·`processedKey` 없음은 `null` + 경고 로그 `inbox_photo_missing`(BE-Q60). presign은 4단계 소유자 확인 뒤에만.
+  - [x] 4.1 `serialize_inbox_record(record, *, photo_url=None, caption=None)`, `_detail`이 `hasPhoto`·`processedKey`가 있으면 `presign_get(processedKey, 900)`와 마지막 장소 + "에서"를 넣는다. `hasPhoto = true`·`processedKey` 없음은 `null` + 경고 로그 `inbox_photo_missing`(BE-Q60). presign은 4단계 소유자 확인 뒤에만.
     - _Requirements: 10.1–10.6 · BE-INBOX-02, BE-Q42(해소), BE-Q60_
-  - [ ] 4.2 단위 테스트 (`test_handlers_inbox.py`, `test_serialization.py` 수정)
+  - [x] 4.2 단위 테스트 (`test_handlers_inbox.py`, `test_serialization.py` 수정)
     - 사진 있음 → `photoUrl`(presign 인자 `ExpiresIn=900`, 키 = `processedKey`)·`photoCaption`, 장소 이름 빔 → caption `null`, 사진 없음 → 둘 다 `null`, `hasPhoto`·`processedKey` 불일치 → 둘 다 `null`·로그에 키 없음. 남·없음 404에서 presign 미호출. 4단계 Property 22의 사진 필드 단언을 새 규칙으로 고친다(사진 없는 항목은 여전히 `null`).
     - _Requirements: 10.1–10.6, 14.1_
 
-- [ ] 5. Checkpoint - API·이미지 단위 테스트와 회귀
+- [x] 5. Checkpoint - API·이미지 단위 테스트와 회귀
   - `pytest tests/unit`과 `pytest tests/unit -m slow` 실패 0건. 1–4단계 기존 단위 테스트 전체(3단계 Property 12–15, 4단계 묶음 A Property 18–23 포함)가 통과해야 한다.
   - _Requirements: 14.1, 15.3 · G1–G4_
 
-- [ ] 6. 사진 처리 Lambda (`workers/photo_processor.py`)
+- [x] 6. 사진 처리 Lambda (`workers/photo_processor.py`)
   - 선행: 2.1, 3.2, 5
-  - [ ] 6.1 초기화·입력 해석·무시 조건
+  - [x] 6.1 초기화·입력 해석·무시 조건
     - 콜드 스타트: `Config(connect_timeout=2, read_timeout=5, retries={"mode": "standard", "total_max_attempts": 2})`(환경 변수로 조정), 그 설정의 S3 클라이언트, `ddb.use_table(...)`.
     - 핸들러: 레코드 순회, JSON 아님·`Records` 없음·`s3:TestEvent` 무시, `unquote_plus`, `parse_original_key`, ClaimLookup·Record `ConsistentRead`, 전달됨·`DISCARDED`·키 불일치 무시, `READY`·미전달 → 경고 `photo_unexpected_ready`·무시(BE-Q66), `HeadObject(IfMatch)` 412·404 → 무시, 403 → 재시도 대상(BE-Q70).
     - _Requirements: 5.1–5.9 · BE-PHOTO-02, BE-PHOTO-03, BE-Q2, BE-Q54, BE-Q66, BE-Q70_
-  - [ ] 6.2 상태 전이·처리·업로드·완료·정리
+  - [x] 6.2 상태 전이·처리·업로드·완료·정리
     - `PROCESSING` 조건부 전환(실패 → 무시), 크기 초과 `FAILED TOO_LARGE`, `GetObject(IfMatch)`(10MB+1바이트까지만 읽음), `process_image` 거부 → 조건부 `FAILED code`·`PhotoFailed`.
     - 처리본 `PutObject(attempt_key, IfNoneMatch="*")`: 200이면 `created = True`. 412 → 자기 객체 아님, 건드리지 않고 새 키로 1회 다시, 그래도 412면 예외. 타임아웃·연결 오류 → `created = False`로 두고 예외(완료 미호출, 삭제 없음).
     - `complete_claim(WITH_PHOTO)` → `CLAIM_NOT_ACTIVE`·`RECORD_REQUIRED`·`NOT_FOUND`는 판정으로 넘김, `TRY_AGAIN`·SDK 오류는 결과 불확실.
     - 확인 재조회 → `settle` → `delivered`(지표) / `not_delivered`(`created`일 때만 자기 처리본 삭제, 삭제 실패는 로그만) / `uncertain`(삭제 없이 예외). 재조회 실패 → 삭제 없이 예외.
     - _Requirements: 6.1–6.7, 7.1, 7.5, 7.7, 8.1–8.7 · BE-PHOTO-04, BE-PHOTO-06, G2, G4, BE-Q57, BE-Q67_
-  - [ ] 6.3 재시도·시간 guard·장애 주입
+  - [x] 6.3 재시도·시간 guard·장애 주입
     - 재시도 대상 예외에서 `receive_count >= 3`이면 먼저 조건부 `FAILED RETRY_EXHAUSTED`·`PhotoFailed`, 쓰기 실패여도 원래 예외. guard(`PHOTO_RESERVE_MS` + 단계별 예산, 환경 변수): 부족하면 `TimeBudgetExceeded`, 완료 전 부족이면 `created`인 처리본만 지우고 예외.
     - 주입: `FAULT_INJECT`가 `photo`면 `PROCESSING` 직후 예외, `photo-slow`면 `FAULT_DELAY_S`(1–10, 기본 5)초 대기. 허용은 `FAULT_INJECT_ALLOWED == "true"` **그리고** (`AWS_LAMBDA_FUNCTION_NAME`이 `haru-dev-`로 시작 **또는** 그 변수가 없고 `STAGE == "local"`)일 때만. 아니면 무시하고 콜드 스타트에 `fault_inject_blocked` 1회.
     - 로그는 결과·사유 코드만, EMF `PhotoProcessingMs`(Milliseconds)·`PhotoFailed`(Count).
     - _Requirements: 9.1–9.7, 12.1, 12.2, 12.6 · BE-PHOTO-07, BE-Q59, BE-Q69, BE-Q71, T9_
-  - [ ] 6.4 처리 Lambda 단위 테스트 (`tests/unit/test_photo_processor.py`, moto S3·DynamoDB)
+  - [x] 6.4 처리 Lambda 단위 테스트 (`tests/unit/test_photo_processor.py`, moto S3·DynamoDB)
     - 분기: Requirement 14.1 "핸들러 분기"의 모든 사례. 정상 경로에서 처리본 키가 `photos/processed/{claimId}/{32hex}.jpg`, Record `READY`·`processedKey = 그 키`, InboxItem `hasPhoto = true`.
     - **S3 조건부 요청**: `HeadObject`/`GetObject` ETag 불일치 → 무시·처리본 없음, 원본 없음 404 → 무시, 403 → 예외. 처리본 `PutObject` 412(미리 같은 키에 객체를 넣거나 Stubber) → 그 키를 지우지 않고 새 키 1회, 두 번 412 → 예외·삭제 없음. `PutObject` 타임아웃 → 완료 미호출·삭제 없음·예외.
     - **경합(순차 재현)**: S2 같은 메시지 두 번(두 시도가 완료 직전까지 간 뒤 차례로 완료) → 전달 1회, 이긴 처리본 남음, 진 처리본만 삭제. S3 재업로드(ETag 다른 두 이벤트). S4 처리 중 `TEXT_ONLY` 완료. S5 처리 중 교체. S6 처리 중 포기, 기한 지난 대체(`EXPIRED`). 각 사례에서 InboxItem 1건 이하, Record 상태, 남은 처리본 목록을 단언한다.
@@ -132,54 +132,54 @@
     - 재시도·시간·주입: `ApproximateReceiveCount` 1·2 → 예외만, 3 → `FAILED RETRY_EXHAUSTED` 후 예외, `FAILED` 쓰기 실패여도 원래 예외. 가짜 context로 각 guard 지점의 부족 → 예외, 완료 전 부족 → `created` 처리본만 삭제. `FAULT_INJECT=photo`·`photo-slow`(sleep 스파이).
     - 로그: `caplog`로 키·`claimId`·사용자 ID·URL이 없음.
     - _Requirements: 5–9, 12.6, 14.1 · T8, T10, T15의 순차판(판정 대체 아님)_
-  - [ ] 6.5 중첩 재시도 상한 테스트 (`tests/unit/test_photo_retry_budget.py`)
+  - [x] 6.5 중첩 재시도 상한 테스트 (`tests/unit/test_photo_retry_budget.py`)
     - 처리 Lambda 설정의 `Config`가 `standard`·`total_max_attempts=2`·connect 2·read 5인지 확인. Stubber·moto 래퍼로 `TransactionConflict`·`ConditionFailed`·스로틀링을 주입해 `complete_claim` 1회의 API 호출 수가 설계 상한(GetItem 16 + TransactWriteItems 12 = 28회, SDK 시도 포함 56회) 이하이고, 전 반복이 충돌·조건 실패인 최악 경로에서 정확히 GetItem 16·TransactWriteItems 12인지, `transact_with_retry` 대기 합이 1.05초 이하인지 센다. 지연 주입 가짜 클라이언트로 guard가 완료 시작 전에는 멈추고 시작 뒤에는 멈추지 못한다(끝까지 진행한다)는 사실을 고정한다. 결과 호출 수를 출력해 BE-Q71 근거로 남긴다.
     - _Requirements: 9.3 · BE-Q71_
-  - [ ] 6.6 장애 주입 차단 테스트 (`tests/unit/test_photo_fault_guard.py`)
+  - [x] 6.6 장애 주입 차단 테스트 (`tests/unit/test_photo_fault_guard.py`)
     - **런타임 검증**: `FAULT_INJECT_ALLOWED`(true/false/없음) × `AWS_LAMBDA_FUNCTION_NAME`(`haru-dev-PhotoProcessorFunction-x` / `haru-demo-…` / 없음) × `STAGE`(local/없음) 조합별 허용 여부, 차단 시 `fault_inject_blocked` 1회, 차단 상태에서 `photo`·`photo-slow`가 아무 효과 없음.
     - **Rules 검증**: 템플릿 `Rules`의 단언 식을 파싱해 (`Stage`, `FaultInject`) 조합 6개에 대해 평가기로 계산한다. `dev`+임의 값은 허용, `demo`+빈 값은 허용, `demo`+`photo`/`photo-slow`는 거부.
     - **Conditions 검증(실제 스택 이름)**: `FaultAllowed` 조건 식을 파싱해 (`Stage`, `AWS::StackName`) 조합(`dev`/`haru-dev`, `dev`/`haru-demo`, `demo`/`haru-dev`, `demo`/`haru-demo`, `dev`/`other`)으로 평가하고, 참일 때만 `FAULT_INJECT`·`FAULT_INJECT_ALLOWED`가 주입 값·`true`로 렌더링되는지 확인한다(`!If` 해석). `dev`/`haru-demo`(Rules 우회 시나리오)에서 거짓이어야 한다.
     - _Requirements: 9.4, 9.5 · BE-Q59_
-  - [ ] 6.7 Write property test for 전달 1회와 현재 사진 (`tests/unit/test_photo_properties.py`)
+  - [x] 6.7 Write property test for 전달 1회와 현재 사진 (`tests/unit/test_photo_properties.py`)
     - **Property 27: 사진 전달은 최대 한 번이고 전달된 사진은 그 시점의 현재 사진이다**
     - moto + 상태 기계. 처리 시도를 단계별 제너레이터(무시 판정 → `PROCESSING` → 처리 → 업로드 → 완료 → 확인)로 쪼개고, 메시지 큐를 테스트가 쥔다. 연산: 사진 업로드, 원본 재업로드, 교체, 메시지 전달·중복·지연, 시도 한 단계 진행, 완료 직후 오류 주입, `TEXT_ONLY` 완료, 포기, 기한 경과 + 다른 사용자 이어받기. 끝에 남은 메시지·시도를 모두 진행하고 design의 불변식 5개를 확인한다.
     - **Validates: Requirements 5, 6, 8, 9.7, 14.2**
 
-- [ ] 7. 운영자 복구 스크립트 (`backend/scripts/photo_dlq_recover.py`)
+- [x] 7. 운영자 복구 스크립트 (`backend/scripts/photo_dlq_recover.py`)
   - 선행: 3.2(`photo_status_update`)
-  - [ ] 7.1 스크립트 구현
+  - [x] 7.1 스크립트 구현
     - 기본 dry-run, `--apply`일 때만 조건부 `FAILED RETRY_EXHAUSTED`(조건 `photoKey = :key AND photoStatus = PROCESSING AND attribute_not_exists(deliveredAt)`). DLQ는 `ReceiveMessage(VisibilityTimeout=60)`로 읽기만 하고 `DeleteMessage`·`SendMessage`·`ChangeMessageVisibility`·redrive를 부르지 않는다. 안전 확인 출력(`PhotoQueue` 처리 중 메시지 수, 처리 Lambda 최근 동시 실행). 판정표 5종(design "운영자 복구 절차"), 결과 요약. 출력에 키·사용자 ID·URL 없음(`claimId` 앞 8자만).
     - _Requirements: 9.3 · BE-Q68_
-  - [ ] 7.2 스크립트 단위 테스트 (`tests/unit/test_photo_dlq_recover.py`, moto SQS·DynamoDB)
+  - [x] 7.2 스크립트 단위 테스트 (`tests/unit/test_photo_dlq_recover.py`, moto SQS·DynamoDB)
     - 판정표 각 줄, dry-run이 테이블·큐를 바꾸지 않음(전후 스냅샷), `--apply`의 조건 실패("그새 바뀜") 처리, 금지 API 미호출(스파이), 처리 중 메시지가 있을 때 경고, 출력에 키·사용자 ID 없음.
     - _Requirements: 9.3, 14.1 · BE-Q68_
-  - [ ] 7.3 런북 초안 (`backend/README.md`에 넣을 절, 작업 16에서 반영)
+  - [x] 7.3 런북 초안 (`backend/README.md`에 넣을 절, 작업 16에서 반영)
     - "DLQ에 메시지가 있어도 같은 사진을 처리하는 Lambda가 실행 중일 수 있다", `--apply` 전 확인(처리 중 메시지 0, 가시성 180초 경과), SQS 메시지 수는 근사값이므로 필요하면 이벤트 소스 매핑을 끄고(`update-event-source-mapping --no-enabled`) 실행 종료(`ConcurrentExecutions` 0, 새 `START` 로그 없음)를 확인한 뒤 복구하고 다시 켜는 절차, 메시지 삭제·redrive는 운영자가 판정 확인 뒤 수동, 사용자 복구 경로, 필요한 권한.
     - _Requirements: 9.3, 15.4 · BE-Q68_
 
-- [ ] 8. Checkpoint - 처리 Lambda·복구 스크립트와 회귀
+- [x] 8. Checkpoint - 처리 Lambda·복구 스크립트와 회귀
   - `pytest tests/unit`, `pytest tests/unit -m slow` 실패 0건. Property 25–28 각각 100회 이상 통과. 1–4단계 회귀 전체 통과.
   - _Requirements: 14.1, 14.2 · G1–G4_
 
-- [ ] 9. SAM 템플릿 (`template.yaml`, `samconfig.toml`, `layers/pillow`)
+- [x] 9. SAM 템플릿 (`template.yaml`, `samconfig.toml`, `layers/pillow`)
   - 선행: 3.3, 6.3, 8
-  - [ ] 9.1 Parameters·Conditions·Rules
+  - [x] 9.1 Parameters·Conditions·Rules
     - `Stage`(dev/demo, 기본 demo), `FaultInject`(""/photo/photo-slow), `UploadIfNoneMatch`("false"/"true", 기본 false). `IsDev`, `FaultAllowed = IsDev ∧ AWS::StackName = haru-dev`, `UseIfNoneMatch`. Rule `FaultInjectOnlyInDev`. `samconfig.toml` dev에 `Stage=dev`, demo에 `Stage=demo`(다른 값은 넣지 않는다).
     - _Requirements: 9.5 · BE-Q59, BE-Q65_
-  - [ ] 9.2 버킷·정책·큐·DLQ·알람
+  - [x] 9.2 버킷·정책·큐·DLQ·알람
     - `PhotoQueuePolicy`(문자열 SourceArn, SourceAccount), `PhotoBucket`(`DependsOn: PhotoQueuePolicy`, 이름 고정, 퍼블릭 차단 4개, `BucketOwnerEnforced`, AES256, CORS(`!If UseIfNoneMatch`로 허용 헤더), 수명 주기 원본 7일 + MPU 중단 1일, 알림 prefix `photos/original/`), `PhotoBucketPolicy`(TLS 강제, `UseIfNoneMatch`일 때 `s3:if-none-match` 없는 원본 PUT 거부), `PhotoDLQ`(14일, SSE-SQS), `PhotoQueue`(가시성 180, redrive 3, SSE-SQS), `PhotoDLQNotEmpty`(알림 대상 없음).
     - _Requirements: 1.1–1.6, 4.1–4.6, 12.4, 12.5 · BE-PHOTO-01, BE-PHOTO-08, BE-PHOTO-09, BE-Q49, BE-Q53, BE-Q62, BE-Q65_
-  - [ ] 9.3 레이어·함수·권한
-    - `PillowLayer`(`layers/pillow/requirements.txt`에 `Pillow==13.0.0`, `BuildMethod: python3.12`, x86_64). `PhotoProcessorFunction`(30s·1024MB·x86_64, SQS 이벤트 batch 1, 환경 변수: `PHOTO_BUCKET`, `FAULT_INJECT: !If [FaultAllowed, !Ref FaultInject, ""]`, `FAULT_INJECT_ALLOWED: !If [FaultAllowed, "true", "false"]`, `FAULT_DELAY_S`, SDK·시간 예산 값, 정책 문장 DynamoDB 1 + S3 1). `ClaimsFunction`에 `ReplacePhoto` 이벤트·`s3:PutObject`(original)·환경 변수, `InboxFunction`에 `s3:GetObject`(processed)·환경 변수. 다른 함수는 불변. Outputs 불변.
+  - [x] 9.3 레이어·함수·권한
+    - `PillowLayer`(`layers/pillow/requirements.txt`에 `Pillow==13.0.0`, `BuildMethod: python3.12`, x86_64). `PhotoProcessorFunction`(30s·1024MB·x86_64, 이벤트는 `AWS::Lambda::EventSourceMapping` batch 1 — SAM `SQS` 이벤트의 관리형 정책이 Resource `*`라 쓰지 않는다, SQS 권한은 인라인으로 PhotoQueue만, 환경 변수: `PHOTO_BUCKET`, `FAULT_INJECT: !If [FaultAllowed, !Ref FaultInject, ""]`, `FAULT_INJECT_ALLOWED: !If [FaultAllowed, "true", "false"]`, `FAULT_DELAY_S`, SDK·시간 예산 값, 정책 문장 DynamoDB 1 + S3 1). `ClaimsFunction`에 `ReplacePhoto` 이벤트·`s3:PutObject`(original)·환경 변수, `InboxFunction`에 `s3:GetObject`(processed)·환경 변수. 다른 함수는 불변. Outputs 불변.
     - _Requirements: 5.1, 11.1–11.5 · BE-INFRA-06, BE-Q59, BE-Q71_
-  - [ ] 9.4 템플릿 단위 테스트 (`tests/unit/test_template.py`)
+  - [x] 9.4 템플릿 단위 테스트 (`tests/unit/test_template.py`)
     - 라우트 일치(새 경로 포함), 함수별 정책 Action·Resource 집합 정확 일치(ClaimsFunction·InboxFunction은 기존 DynamoDB 문장 그대로 + S3 문장, PhotoProcessorFunction 신규), `*`·DynamoDB `DeleteItem`·`Scan` 금지, 버킷 속성(이름, 퍼블릭 차단, 소유권, 암호화, CORS의 `!If`, 수명 주기, 알림 prefix, `DependsOn`), 큐 정책 조건, 큐·DLQ 속성, 알람 속성, 레이어 속성, Rules 단언 식, `FaultAllowed`가 `AWS::StackName`을 비교하고 `FAULT_INJECT`·`FAULT_INJECT_ALLOWED`가 `!If FaultAllowed`로 감싸였는지, `test_no_stage3_dependencies`(src/requirements.txt에 Pillow 없음) 유지, samconfig에 `Stage`만 더해졌는지.
     - _Requirements: 11.6, 14.1, 14.9 · BE-Q59_
-  - [ ] 9.5 검사·빌드
+  - [x] 9.5 검사·빌드
     - `cfn-lint template.yaml` 0건, `sam validate --lint`, `sam build --use-container`(Docker 필요, Pillow 레이어가 Lambda 빌드 이미지에서 빌드). 산출물에서 `PhotoProcessorFunction`·`PillowLayer`의 Pillow가 `cp312`·`x86_64`(manylinux) wheel인지, 다른 함수 산출물에 Pillow·langgraph·langchain이 없는지 확인한다. `sam deploy`는 하지 않는다. Docker를 쓸 수 없으면 사유와 대안(`manylinux2014_x86_64` wheel 다운로드)을 보고하고 묻는다.
     - _Requirements: 14.7 · docs/07 §7.3 5단계 위험_
 
-- [ ] 10. Checkpoint - SAM 검증
+- [x] 10. Checkpoint - SAM 검증
   - `cfn-lint` 0건, `sam validate --lint` 통과, `sam build --use-container` 성공, `pytest tests/unit/test_template.py` 통과. 미실행 항목이 있으면 사유와 함께 묻는다.
   - _Requirements: 14.7_
 

@@ -677,7 +677,7 @@ Rules:
 | `PhotoDLQ` | `MessageRetentionPeriod: 1209600`(14일), `SqsManagedSseEnabled: true` |
 | `PhotoQueue` | `VisibilityTimeout: 180`, `RedrivePolicy: { deadLetterTargetArn: !GetAtt PhotoDLQ.Arn, maxReceiveCount: 3 }`, `SqsManagedSseEnabled: true` |
 | `PillowLayer` | `AWS::Serverless::LayerVersion`, `ContentUri: layers/pillow/`, `CompatibleRuntimes: [python3.12]`, `CompatibleArchitectures: [x86_64]`, `Metadata: { BuildMethod: python3.12, BuildArchitecture: x86_64 }` |
-| `PhotoProcessorFunction` | `Handler: workers.photo_processor.handler`, `Timeout: 30`, `MemorySize: 1024`, `Architectures: [x86_64]`, `Layers: [!Ref PillowLayer]`, Events `PhotoQueueEvent: { Type: SQS, Properties: { Queue: !GetAtt PhotoQueue.Arn, BatchSize: 1 } }`, 환경 변수 `PHOTO_BUCKET`, `FAULT_INJECT: !If [FaultAllowed, !Ref FaultInject, ""]`, `FAULT_INJECT_ALLOWED: !If [FaultAllowed, "true", "false"]`, `FAULT_DELAY_S: "5"`, `PHOTO_SDK_*`, `PHOTO_RESERVE_MS` 등 시간 예산 |
+| `PhotoProcessorFunction` | `Handler: workers.photo_processor.handler`, `Timeout: 30`, `MemorySize: 1024`, `Architectures: [x86_64]`, `Layers: [!Ref PillowLayer]`, 이벤트는 별도 `PhotoProcessorQueueMapping`(`AWS::Lambda::EventSourceMapping`, BatchSize 1), 환경 변수 `PHOTO_BUCKET`, `FAULT_INJECT: !If [FaultAllowed, !Ref FaultInject, ""]`, `FAULT_INJECT_ALLOWED: !If [FaultAllowed, "true", "false"]`, `FAULT_DELAY_S: "5"`, `PHOTO_SDK_*`, `PHOTO_RESERVE_MS` 등 시간 예산 |
 | `PhotoDLQNotEmpty` | `AWS::CloudWatch::Alarm`, `Namespace: AWS/SQS`, `MetricName: ApproximateNumberOfMessagesVisible`, `Dimensions: QueueName = !GetAtt PhotoDLQ.QueueName`, `Statistic: Maximum`, `Period: 60`, `EvaluationPeriods: 1`, `Threshold: 0`, `ComparisonOperator: GreaterThanThreshold`, `TreatMissingData: notBreaching`, `AlarmActions` 없음(BE-Q62) |
 | `ClaimsFunction` | 이벤트 `ReplacePhoto` 추가, 정책 문장 추가(아래), 환경 변수 `PHOTO_BUCKET`, `PUBLIC_S3_ENDPOINT: ""`, `PHOTO_UPLOAD_IF_NONE_MATCH: !If [UseIfNoneMatch, "true", "false"]` |
 | `InboxFunction` | 정책 문장 추가(아래), 환경 변수 `PHOTO_BUCKET`, `PUBLIC_S3_ENDPOINT: ""` |
@@ -694,7 +694,7 @@ Rules:
 |---|---|---|---|
 | `ClaimsFunction` | `GetItem`, `PutItem`, `UpdateItem`, `ConditionCheckItem` (3단계 그대로) | `s3:PutObject` on `photos/original/*` (presign PUT 서명용) | — |
 | `InboxFunction` | `GetItem`, `Query`, `UpdateItem` (4단계 그대로) | `s3:GetObject` on `photos/processed/*` (presign GET 서명용) | — |
-| `PhotoProcessorFunction`(신규) | `GetItem`, `PutItem`, `UpdateItem` on 테이블 ARN만(`index/*` 없음) | `s3:GetObject` on `photos/original/*` (HeadObject 포함), `s3:PutObject`·`s3:DeleteObject` on `photos/processed/*` | SAM `SQS` 이벤트가 만드는 `ReceiveMessage`·`DeleteMessage`·`GetQueueAttributes`(PhotoQueue만) |
+| `PhotoProcessorFunction`(신규) | `GetItem`, `PutItem`, `UpdateItem` on 테이블 ARN만(`index/*` 없음) | `s3:GetObject` on `photos/original/*` (HeadObject 포함), `s3:PutObject`·`s3:DeleteObject` on `photos/processed/*` | 인라인 `ReceiveMessage`·`DeleteMessage`·`GetQueueAttributes`(PhotoQueue ARN만). SAM의 `SQS` 이벤트는 관리형 `AWSLambdaSQSQueueExecutionRole`(Resource `*`)을 붙이므로(구현 중 samtranslator로 확인) 쓰지 않고 `AWS::Lambda::EventSourceMapping`(`PhotoProcessorQueueMapping`, BatchSize 1)을 직접 둔다 |
 | `MeFunction`, `PlansFunction`, `PreSignUpFunction` | 변경 없음 | 없음 | 없음 |
 
 - 처리 Lambda의 DynamoDB 권한: `complete_claim`은 트랜잭션에서 Update 3개·Put 1개, 트랜잭션 전후로 GetItem을 쓴다. `ConditionCheck`를 쓰지 않으므로 `ConditionCheckItem`이 필요 없다(Req 11.5). AWS 판정에서 `AccessDenied`가 나오면 그 작업에 필요한 최소 권한만 더하고 근거를 남긴다.
