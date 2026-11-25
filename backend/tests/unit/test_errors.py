@@ -45,7 +45,7 @@ def test_status_must_match_contract():
 
 
 def test_contract_code_status_pairs():
-    """docs/03 §3.6과 같은 조합(1–3단계 범위)."""
+    """docs/03 §3.6과 같은 조합(1–4단계 범위)."""
     assert CODE_STATUS == {
         "VALIDATION_ERROR": 400,
         "RECORD_REQUIRED": 400,
@@ -56,6 +56,7 @@ def test_contract_code_status_pairs():
         "CANNOT_CLAIM_OWN_PLAN": 409,
         "CLAIM_NOT_ACTIVE": 409,
         "IDEMPOTENCY_CONFLICT": 409,
+        "REPLY_ALREADY_SENT": 409,  # 4단계
         "TRY_AGAIN": 503,
         "INTERNAL_ERROR": 500,  # BE-Q23 임시
     }
@@ -108,3 +109,10 @@ def test_iso_utc_string_order_matches_time_order(a, b):
 def test_plan_id_format():
     a, b = new_plan_id(), new_plan_id()
     assert a.startswith("pln_") and len(a) == 4 + 26 and a != b
+
+
+def test_reply_already_sent_body():
+    """spec backend-stage4-record-inbox Requirement 10.2: §3.6과 같은 409, details 없음."""
+    body = json.loads(error_response(ApiError("REPLY_ALREADY_SENT")).get("body"))
+    assert error_response(ApiError("REPLY_ALREADY_SENT"))["statusCode"] == 409
+    assert body == {"error": {"code": "REPLY_ALREADY_SENT", "message": "이미 답장을 보냈어요."}}

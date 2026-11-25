@@ -119,6 +119,10 @@ def test_iam_least_privilege(template):
     me = _only_statement(fns["MeFunction"])
     assert set(me["Action"]) == {"dynamodb:GetItem", "dynamodb:Query"}
     assert me["Resource"] == WITH_INDEX
+    inbox = _only_statement(fns["InboxFunction"])  # spec backend-stage4-record-inbox Requirement 9.2
+    assert set(inbox["Action"]) == {"dynamodb:GetItem", "dynamodb:Query", "dynamodb:UpdateItem"}
+    assert inbox["Resource"] == {"!GetAtt": "HaruTable.Arn"}  # index/* 없음
+    assert "Condition" not in inbox
     for props in fns.values():
         for stmt in (s for p in props.get("Policies", []) for s in p["Statement"]):
             assert not any(a.endswith(("*", "DeleteItem", "Scan")) for a in stmt["Action"])

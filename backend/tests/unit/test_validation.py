@@ -10,7 +10,7 @@ from hypothesis import given
 from hypothesis import strategies as st
 from pydantic import ValidationError
 
-from common.validation import PlanCreate, loc_to_path, to_details
+from common.validation import PlanCreate, Reply, loc_to_path, to_details
 
 
 def valid_body() -> dict:
@@ -136,3 +136,39 @@ def test_loc_to_path():
     assert loc_to_path(("places", 0, "name")) == "places[0].name"
     assert loc_to_path(("authoring", "story")) == "authoring.story"
     assert loc_to_path(()) == "body"
+
+
+# ---------------------------------------------------------------- 답장 (4단계, Requirement 6.4)
+
+
+def reply_details(body):
+    with pytest.raises(ValidationError) as exc:
+        Reply.model_validate(body)
+    return to_details(exc.value)
+
+
+@pytest.mark.parametrize("n,ok", [(0, False), (1, True), (100, True), (101, False)])
+def test_reply_text_length(n, ok):
+    body = {"text": "가" * n}
+    if ok:
+        assert Reply.model_validate(body).text == "가" * n
+    else:
+        assert reply_details(body) == {"text": "1–100자로 입력해 주세요."}
+
+
+def test_reply_length_counts_code_points():
+    assert Reply.model_validate({"text": "😀" * 100}).text == "😀" * 100  # 프론트 [...text].length와 같은 기준
+    assert set(reply_details({"text": "😀" * 101})) == {"text"}
+
+
+def test_reply_keeps_surrounding_spaces():
+    assert Reply.model_validate({"text": "  고마워요  "}).text == "  고마워요  "  # FE-Q19
+    assert Reply.model_validate({"text": " "}).text == " "
+
+
+@pytest.mark.parametrize("body,key,message", [({}, "text", "필수 항목이에요."), ({"text": 5}, "text", None), ({"text": None}, "text", None), (None, "body", None), ([], "body", None), ("글", "body", None)])
+def test_reply_invalid(body, key, message):
+    details = reply_details(body)
+    assert set(details) == {key}
+    if message:
+        assert details[key] == message

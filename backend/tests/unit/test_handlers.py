@@ -18,7 +18,7 @@ from hypothesis import strategies as st
 
 from common import ddb
 from domain import plan_service
-from handlers import me, plans, pre_signup
+from handlers import inbox, me, plans, pre_signup
 from handlers.routes import ROUTES
 from tests.unit.fake_table import FakeTable
 from tests.unit.test_plan_service import plan_item
@@ -95,13 +95,18 @@ def test_property11_pre_signup(extra, resp_extra, flags):
 # ------------------------------------------------------------------------ GET /me
 
 
-def test_me_returns_claims_without_db(no_db):
+def test_me_returns_claims_and_empty_inbox_count(table):
+    """4단계부터 GET /me는 수신함을 Query한다(BE-AUTH-05). 수신함이 비면 0이고, 본문의 userId는 무시한다."""
     resp = me.handler(event("GET /me", OWNER, body={"userId": "someone-else"}), None)
     assert resp["statusCode"] == 200
     assert body_of(resp) == {"userId": "u-owner", "nickname": "지연", "unreadInboxCount": 0}
 
 
-@pytest.mark.parametrize("handler,route", [(me.handler, "GET /me"), (plans.handler, "GET /plans"), (plans.handler, "POST /plans"), (plans.handler, "GET /plans/{planId}")])
+@pytest.mark.parametrize(
+    "handler,route",
+    [(me.handler, "GET /me"), (plans.handler, "GET /plans"), (plans.handler, "POST /plans"), (plans.handler, "GET /plans/{planId}")]
+    + [(inbox.handler, r) for r in ("GET /inbox", "GET /inbox/{itemId}", "POST /inbox/{itemId}/read", "POST /inbox/{itemId}/reply")],
+)
 def test_missing_sub_is_401_without_db(no_db, handler, route):
     for claims in (None, {}, {"nickname": "지연"}):
         resp = handler(event(route, claims, query={"status": "OPEN"}, path={"planId": "p1"}, body=VALID, headers={"idempotency-key": "k"}), None)
@@ -218,9 +223,10 @@ def test_detail_times_are_iso_utc(table):
     assert ISO_UTC.match(p["createdAt"])
 
 
-def test_routes_cover_stage_1_to_3():
+def test_routes_cover_implemented_stages():
     assert set(ROUTES) == {
         "GET /me", "GET /me/claims",
         "POST /plans", "GET /plans", "GET /plans/{planId}", "POST /plans/{planId}/claims",
         "POST /claims/{claimId}/abandon", "PUT /claims/{claimId}/record", "POST /claims/{claimId}/complete",
+        "GET /inbox", "GET /inbox/{itemId}", "POST /inbox/{itemId}/read", "POST /inbox/{itemId}/reply",  # 4단계
     }

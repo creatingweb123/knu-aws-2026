@@ -1,19 +1,20 @@
 """GET /me (BE-AUTH-05), GET /me/claims (BE-CLAIM-07).
 
-4단계(수신함) 전까지 GET /me의 unreadInboxCount는 0 고정이고 HaruTable을 읽지 않는다(BE-Q30).
+GET /me의 unreadInboxCount는 요청자 수신함의 안 읽은 항목 수다(HaruTable 기본 테이블 Query, ConsistentRead).
+nickname 클레임이 없을 때의 응답은 BE-Q17을 따른다.
 """
 
 from typing import Any
 
 from common.auth import get_user
 from common.responses import api_handler, ok
-from domain import claim_service
+from domain import claim_service, inbox_service
 from handlers._http import dispatch, query_param
 
 
 def _me(event: dict[str, Any]) -> dict[str, Any]:
     user = get_user(event)
-    return ok(200, {"userId": user.id, "nickname": user.nickname, "unreadInboxCount": 0})
+    return ok(200, {"userId": user.id, "nickname": user.nickname, "unreadInboxCount": inbox_service.unread_count(user)})
 
 
 def _my_claims(event: dict[str, Any]) -> dict[str, Any]:

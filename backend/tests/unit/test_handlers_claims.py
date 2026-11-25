@@ -156,10 +156,8 @@ def test_no_sub_401(handler, route, path):
     assert status == 401 and body["error"]["code"] == "UNAUTHORIZED"
 
 
-def test_me_still_reads_no_db(monkeypatch):
-    from common import ddb
-
-    monkeypatch.setattr(ddb, "table", lambda: (_ for _ in ()).throw(AssertionError("DB 접근 금지")))
+def test_me_counts_empty_inbox():
+    """4단계부터 GET /me는 수신함을 Query한다(BE-AUTH-05, BE-Q30 앞부분 해소). 수신함이 빈 사용자는 0."""
     status, body = call(me.handler, "GET /me", SUHYUN)
     assert status == 200 and body["unreadInboxCount"] == 0
     resp = me.handler({"requestContext": {"authorizer": {"jwt": {"claims": {"token_use": "id", **SUHYUN}}}}}, None)  # routeKey 없는 이전 이벤트

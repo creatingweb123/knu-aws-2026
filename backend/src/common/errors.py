@@ -16,6 +16,8 @@ ALREADY_CLAIMED = "ALREADY_CLAIMED"
 CANNOT_CLAIM_OWN_PLAN = "CANNOT_CLAIM_OWN_PLAN"
 CLAIM_NOT_ACTIVE = "CLAIM_NOT_ACTIVE"
 RECORD_REQUIRED = "RECORD_REQUIRED"
+# 4단계(수신함)
+REPLY_ALREADY_SENT = "REPLY_ALREADY_SENT"
 # BE-Q23: 예기치 못한 서버 오류의 코드가 §3.6에 없다. 확정 전까지 임시로 쓴다.
 INTERNAL_ERROR = "INTERNAL_ERROR"
 
@@ -30,6 +32,7 @@ CODE_STATUS: dict[str, int] = {
     CANNOT_CLAIM_OWN_PLAN: 409,
     CLAIM_NOT_ACTIVE: 409,
     IDEMPOTENCY_CONFLICT: 409,
+    REPLY_ALREADY_SENT: 409,
     TRY_AGAIN: 503,
     INTERNAL_ERROR: 500,
 }
@@ -44,6 +47,7 @@ DEFAULT_MESSAGES: dict[str, str] = {
     CANNOT_CLAIM_OWN_PLAN: "내가 남긴 하루는 이어받을 수 없어요.",
     CLAIM_NOT_ACTIVE: "이미 종료된 이어받기예요.",
     IDEMPOTENCY_CONFLICT: "같은 요청 키로 다른 내용을 보냈어요.",
+    REPLY_ALREADY_SENT: "이미 답장을 보냈어요.",
     TRY_AGAIN: "잠시 후 다시 시도해 주세요.",
     INTERNAL_ERROR: "일시적인 오류가 발생했어요.",
 }

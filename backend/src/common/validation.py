@@ -56,6 +56,14 @@ class CompleteIn(BaseModel):
     mode: Literal["TEXT_ONLY"]
 
 
+class Reply(BaseModel):
+    """POST /inbox/{itemId}/reply (BE-INBOX-04). 길이는 코드 포인트 수, 앞뒤 공백은 자르지 않는다(FE-Q19)."""
+
+    model_config = _STRICT
+
+    text: Annotated[str, Field(min_length=1, max_length=100)]
+
+
 # 필드 이름(경로의 마지막 이름 요소)별 사유 메시지
 _FIELD_MESSAGES: dict[str, str] = {
     "title": "1–40자로 입력해 주세요.",
@@ -73,6 +81,7 @@ _FIELD_MESSAGES: dict[str, str] = {
     "aiSessionId": "문자열이어야 해요.",
     "story": "1–1000자로 입력해 주세요.",
     "letter": "1–1000자로 입력해 주세요.",
+    "text": "1–100자로 입력해 주세요.",
 }
 # 같은 필드 이름이 모델마다 뜻이 다를 때는 전체 경로로 먼저 찾는다.
 _PATH_MESSAGES: dict[str, str] = {
