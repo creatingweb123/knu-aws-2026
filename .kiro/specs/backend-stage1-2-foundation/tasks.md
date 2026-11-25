@@ -151,45 +151,48 @@
     - `sam validate --lint`를 실행해 종료 코드 0을 확인하고, `sam build` 산출물에 langgraph·langchain·Pillow가 없는지 확인한다.
     - _Requirements: 12.6, 12.7, 12.9_
 
-- [ ] 9. 로컬 개발 환경 (`docker-compose.yml`, `local/`)
-  - [ ] 9.1 docker compose와 init 스크립트 작성
+- [x] 9. 로컬 개발 환경 (`docker-compose.yml`, `local/`)
+  - [x] 9.1 docker compose와 init 스크립트 작성
     - `docker-compose.yml`: `aws`(`floci/floci:2.5.0-compat` 태그 고정, 4566, init 마운트 `./local/init:/etc/floci/init/ready.d`), `api`(`./local/adapter` 빌드, 3000, `.env`). `LANGSMITH_TRACING=false`, `LANGCHAIN_TRACING_V2=false` 명시. SQS·S3·ollama는 넣지 않는다.
     - init: `HaruTable`(GSI1·GSI2·TTL `ttl`), `HaruAgentCheckpoints`(PK/SK, TTL `ttl`, 테이블만), 유저 풀·앱 클라이언트, 시드 사용자 3명(지연, 수현, 민준: 로컬 전용 예시 값, BE-Q28), 마지막에 `LOCAL_JWT_ISSUER`, `LOCAL_JWKS_URL`, 풀 ID, 클라이언트 ID 출력. 단계 실패 시 단계 이름을 출력하고 0이 아닌 코드로 종료.
     - _Requirements: 13.1, 13.2, 13.3, 13.10, 13.11_
-    - 상태: 작성 완료(`docker-compose.yml`, `local/init/01_haru.py`, 단위 테스트 `test_local_init.py` 통과). **Docker 실행은 미확인**: 개발 PC에서 이미지 다운로드가 멈췄다. 첫 실행 확인은 `backend/README.md` "로컬 환경 첫 실행 확인 필요"를 따른다.
+    - 상태: 작성 완료(`docker-compose.yml`, `local/init/01_haru.py`, 단위 테스트 `test_local_init.py` 통과). **2026-11-25 Docker 실행 확인**(WSL2 Ubuntu, Docker 29.9.2, Compose v5.6.1): `floci/floci:2.5.0-compat` 이미지를 받았고 init 로그에 `ok step=` 5줄과 고정 ID(`ap-northeast-2_haruLocal`, `haruLocalWebClient`)가 나왔다. healthcheck 통과.
 
-  - [ ] 9.2 로컬 HTTP 어댑터 구현
+  - [x] 9.2 로컬 HTTP 어댑터 구현
     - `local/adapter/Dockerfile`, `app.py`: 요청을 payload 2.0 이벤트로 변환하고 ID 토큰의 `iss`, `aud`, `exp`, `token_use=id`, 서명을 검증한 뒤 `requestContext.authorizer.jwt.claims`를 주입해 같은 핸들러를 호출(`FakeContext(remaining_ms=27000)`). 실패 시 핸들러 호출 없이 에러 형식 401 `UNAUTHORIZED`.
     - `STAGE=local`에서만 `POST /dev/token {userId, nickname}` → `{idToken}`을 등록하고, 그 외에는 등록하지 않는다. CORS preflight `OPTIONS`는 인증 없이 `http://localhost:5173`에 204. 라우팅은 `routes.py`를 사용한다. SQS 폴러는 넣지 않는다. 어댑터는 SAM 배포물에 포함하지 않는다.
     - _Requirements: 13.4, 13.5, 13.6, 13.7, 13.8_
-    - 상태: 작성 완료(`local/adapter/`, 단위 테스트 `test_adapter.py` 통과, 실제 HTTP 서버 포함). **Docker 실행은 미확인**(9.1과 같다).
+    - 상태: 작성 완료(`local/adapter/`, 단위 테스트 `test_adapter.py` 통과, 실제 HTTP 서버 포함). **2026-11-25 Docker 실행 확인**: `listening port=3000 stage=local dev_token=True`. 401 경로, `/dev/token`, preflight 204는 10.1 로컬 통합 테스트로 확인했다.
 
   - [x]* 9.3 Write test for 라우트 목록 일치
     - `template.yaml`의 이벤트 경로와 어댑터가 쓰는 `routes.py` 목록이 한쪽에만 있는 경로 없이 일치하는지 단위 테스트한다. 한쪽에만 있으면 실패해야 한다.
     - _Requirements: 13.9_
 
-- [ ] 10. 로컬 통합 테스트
-  - [ ]* 10.1 Write local integration tests (`tests/local/`)
+- [x] 10. 로컬 통합 테스트
+  - [x]* 10.1 Write local integration tests (`tests/local/`)
     - 시드 사용자 토큰(또는 dev JWT)으로 `GET /me` 닉네임이 시드 값과 같은지 확인한다(BE-Q17, 결과는 PR에 기록).
     - `POST /plans` → `GET /plans/{id}` → `GET /plans`, 같은 키 3회 호출 시 Plan 1건. 어댑터 401 경로와 `/dev/token`, preflight 204. `HaruAgentCheckpoints` 테이블 존재와 TTL만 확인한다.
     - 이 결과는 T 시나리오 합격 근거로 쓰지 않는다(BE-Q15).
     - _Requirements: 13.12, 13.13, 2.4, 4.5, 13.5, 13.8_
-    - 상태: 테스트 코드 작성(`tests/local/test_local_flow.py`, 마커 `local`). **실행은 미확인**(Docker). 대신 실제 DynamoDB 조건식은 moto 테스트(`tests/unit/test_plan_service_moto.py`)로 확인했다. moto도 실제 병렬성은 재현하지 않는다.
+    - 상태: 테스트 코드 작성(`tests/local/test_local_flow.py`, 마커 `local`). **2026-11-25 실행 확인**: `pytest -m local tests/local` 16건 통과(1·2단계 `test_local_flow.py` 13건, 3단계 `test_local_claims.py` 3건). 3단계 파일은 `call()` 반환값 언패킹 오류로 처음에 3건이 실패해 테스트 코드만 고쳤다. BE-Q17 결과(Floci ID 토큰에 `nickname`·`aud`·`token_use` 있음)는 docs/08에 적었다. 이 결과는 T 시나리오 합격 근거가 아니다(BE-Q15).
 
 - [ ] 11. 배포 스택 통합 테스트 (`tests/integration/`)
-  - [ ] 11.1 T1 권한 테스트 작성 (`test_authz.py`)
+  - [x] 11.1 T1 권한 테스트 작성 (`test_authz.py`)
     - 환경 변수(`API_URL` 등)로 `dev` 스택을 가리키고, `GET /me`, `POST /plans`, `GET /plans`, `GET /plans/{planId}`를 `Authorization` 없이 호출해 모두 401 `UNAUTHORIZED`이고 실패 0건임을 확인한다. 만료·잘못된 토큰 사례도 포함한다.
     - **Property 1: 등록된 모든 경로가 인증 없이 401. 판정은 AWS 스택에서만 한다. Validates: Requirements 1.6, 1.7, 7.2, 14.1**
     - _Requirements: 1.6, 1.7, 7.2, 14.1, 14.6_
+    - 상태: 2026-11-25 `haru-dev`에서 3건 통과(AWS 담당, `backend/README.md` 3.1절). 첫 실행에서 액세스 토큰이 200으로 통과해 `common/auth.py`를 고친 뒤 다시 통과했다.
 
   - [ ] 11.2 T13 멱등 테스트와 가입 직후 로그인 테스트 작성 (`test_idempotency.py`)
     - `AdminCreateUser`로 테스트 사용자를 만들고 ID 토큰을 발급해, 같은 `Idempotency-Key`·같은 본문 `POST /plans` 3회가 모두 같은 `planId`를 반환하고 `GET /plans/{id}`와 DynamoDB 항목 수로 Plan 1건임을 확인한다. 같은 키·다른 본문은 409 `IDEMPOTENCY_CONFLICT`이고 처음 Plan이 변하지 않음을 확인한다. 동시 호출 사례도 포함한다.
     - `SignUp`(이메일, 비밀번호, `nickname`) 후 인증 코드 없이 `InitiateAuth`가 성공하고 ID 토큰 `nickname`이 가입 값과 같은지 확인한다. 테스트가 만든 사용자·항목은 정리한다.
     - **Property 2: 임의 유효 본문·키에 대해 n회 호출해도 Plan 1건, 다른 본문은 409. Validates: Requirements 4.5, 4.7, 4.8, 14.2, 14.3**
     - _Requirements: 1.5, 4.5, 4.7, 4.8, 14.2, 14.3, 14.4, 14.6_
+    - 상태: 2026-11-25 `haru-dev`에서 T13 3건, 가입 2건 통과(AWS 담당). **미완료 사유: "테스트가 만든 사용자·항목은 정리한다"를 충족하지 못했다.** 판정 뒤 Cognito 사용자 15명과 `HaruTable` 항목 30개(`IDEM#` 14건 포함)가 남았다. `_cleanup`을 보완하고 회귀 테스트(`tests/unit/test_integration_cleanup.py`)를 추가했지만 AWS에서 다시 실행하지 않았다. AWS 담당이 다시 실행해 `cleanup-failures-*.json`이 생기지 않으면 완료로 바꾼다.
 
-- [ ] 12. Checkpoint - 배포 전 전체 테스트 확인
+- [x] 12. Checkpoint - 배포 전 전체 테스트 확인
   - `pytest tests/unit`과 `sam validate --lint`가 통과하는지 확인하고, 로컬 환경을 쓰는 경우 `tests/local`도 확인한다. 질문이 있으면 사용자에게 묻는다.
+  - 상태: 2026-11-25 배포 전 AWS 담당이 `pytest tests/unit` 284건, `sam validate --lint`, `sam build`를 확인했다. 같은 날 로컬 검증에서 `pytest tests/unit` 296건, `cfn-lint template.yaml` 0건(SAM CLI 미설치라 같은 검사기로 대신), `pytest -m local tests/local` 16건이 통과했다.
 
 - [ ] 13. Checkpoint - dev 스택 배포와 T1·T13 판정 (사용자 승인 필요)
   - 실행 담당: AWS 담당(docs/07 §7.8). 개발 담당은 계정이 없으므로 배포하지 않는다. 절차는 `backend/README.md`의 배포 런북과 판정 실행표를 따른다.
@@ -198,6 +201,7 @@
   - 사용자가 실행한 `tests/integration/test_authz.py`(T1)와 `tests/integration/test_idempotency.py`(T13) 결과가 모두 통과하는지 확인한다. 통과 결과는 `dev` 스택 기준으로만 인정한다(BE-Q15).
   - `docs/08-open-questions.md`에 등록된 BE-Q22–BE-Q33 중 이번 구현으로 확정할 항목이 있는지 사용자에게 확인한다. 계약 변경(BE-Q23, BE-Q24, BE-Q29, BE-Q33)은 §7.2 절차(프론트엔드 리뷰)를 따른다.
   - _Requirements: 12.3, 14.1, 14.2, 14.3, 14.4, 14.6, 14.7_
+  - 상태: 배포(`haru-dev`, 2026-11-25), 출력값 3개 기록, T1·T13 통과까지 충족(`backend/README.md` 3.1절). **미완료 사유**: (1) 11.2의 정리 요구가 남았다. (2) BE-Q22–BE-Q33 중 확정할 항목을 사용자에게 확인하는 단계가 아직이다(README 7절은 모두 임시 결정 상태).
 
 ## Notes
 
