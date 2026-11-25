@@ -1,0 +1,46 @@
+.screen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: var(--space-8) 0 var(--space-4);
+  text-align: center;
+}
+
+.icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 72px;
+  height: 72px;
+  margin-bottom: var(--space-5);
+  border-radius: var(--radius-pill);
+  background: var(--color-record);
+  color: var(--color-primary);
+}
+
+.alert {
+  background: var(--color-danger-bg);
+  color: var(--color-danger);
+}
+
+.title {
+  font-size: var(--font-size-title);
+  line-height: var(--line-height-title);
+  font-weight: 700;
+  color: var(--color-primary);
+}
+
+.description {
+  margin-top: var(--space-2);
+  color: var(--color-text-sub);
+}
+
+.summary {
+  width: 100%;
+  margin-top: var(--space-6);
+  padding: var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-card);
+  text-align: left;
+}
