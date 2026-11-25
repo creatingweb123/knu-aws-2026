@@ -162,7 +162,7 @@ def test_photo_happy_path_strips_metadata():
 
 
 def test_corrupt_photo_fails_then_text_only():
-    owner, owner_id, runner, pid, cid = claimed()
+    _, owner_id, runner, pid, cid = claimed()
     data = b"\xff\xd8\xff not really a jpeg" * 10
     upload = put_record_with_photo(runner, cid, data)
     assert put(upload, data) == 200
@@ -177,7 +177,7 @@ def test_corrupt_photo_fails_then_text_only():
 
 
 def test_replace_before_upload_uses_new_photo_only():
-    owner, owner_id, runner, pid, cid = claimed()
+    _, owner_id, runner, pid, cid = claimed()
     first = jpeg_with_gps()
     old = put_record_with_photo(runner, cid, first)
     old_key = record(pid, cid)["photoKey"]

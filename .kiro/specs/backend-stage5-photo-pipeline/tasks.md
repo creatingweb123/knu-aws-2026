@@ -204,23 +204,23 @@
   - `docker compose up -d --build` 후 `pytest -m local tests/local`: 기존 23건(묶음 A) + 5단계 추가분 전부 통과(조건부 사례는 해당 환경 변수로 한 번씩 다시 기동해 실행). 건수·날짜·기준 커밋·Floci 확인 결과를 기록한다. T 판정 근거는 아니다(BE-Q15).
   - _Requirements: 13.6, 14.3_
 
-- [ ] 13. AWS 통합 테스트 작성 (`tests/integration/test_photo.py`, 실행·판정은 AWS 담당)
+- [x] 13. AWS 통합 테스트 작성 (`tests/integration/test_photo.py`, 실행·판정은 AWS 담당)
   - 선행: 9.3, 12
-  - [ ] 13.1 공통 헬퍼와 정리 확장 (`tests/integration/conftest.py`)
+  - [x] 13.1 공통 헬퍼와 정리 확장 (`tests/integration/conftest.py`)
     - 사진 버킷·큐·DLQ·알람 이름을 `DescribeStackResource`로 읽는 헬퍼, presigned PUT 업로드 헬퍼(결과에 URL을 남기지 않음), Record 상태 대기(`ConsistentRead` 폴링), 처리본 목록(Claim prefix).
     - 정리 전 대기 `wait_photo_settled(claim_id)`: 각 사진 테스트가 끝나기 전에 부른다. Record가 전달·`FAILED`·`DISCARDED`이고 30초 동안 Record와 처리본 목록이 바뀌지 않을 때까지 기다린다(최대 5분, 안 되면 `cleanup_after_unsettled` 기록).
     - `_cleanup`: 기존 Cognito·`PLAN#`·`USER#`·ClaimLookup·멱등 키 정리를 그대로 두고, DynamoDB 정리 **뒤에** `created_photo_claim_ids`의 `photos/original/{id}/`·`photos/processed/{id}/` prefix만 `ListObjectsV2`(페이지) → `DeleteObject`. 지연된 Lambda가 정리 뒤 처리본을 만드는 좁은 구간을 위해 prefix 삭제를 30초 뒤 한 번 더 하고 새로 생긴 객체를 `cleanup-late-objects`로 기록한다. 실패는 `cleanup-failures-*.json`(종류 `s3_prefix`). 버킷 전체 삭제·큐 purge 없음. 업로드 전에 `claimId`를 등록한다.
     - `tests/unit/test_integration_cleanup.py`: moto S3로 prefix 정리, 다른 Claim 객체가 남는지, 페이지 이어 읽기, S3 실패 기록과 DynamoDB·Cognito 정리의 독립성, DynamoDB 정리가 S3보다 먼저인 순서, 두 번째 prefix 삭제가 늦게 생긴 객체를 지우고 기록하는지(대기는 주입한 `sleep`), `wait_photo_settled`의 안정 판정과 시간 초과.
     - _Requirements: 14.5, 14.6 · BE-Q38_
-  - [ ] 13.2 기본 배포 대상 테스트
+  - [x] 13.2 기본 배포 대상 테스트
     - `test_T8_corrupt_image`, `test_T11_gps_stripped`(`exiftool` 있으면 사용, 없으면 Pillow, 도구 이름 기록), `test_T10_text_only_during_processing`, `test_T15_replace_during_processing`(두 원본을 다른 단색으로 만들어 처리본 픽셀로 구분), `test_photo_reupload`, `test_photo_iam_and_cors`(preflight, 오류 응답의 CORS 헤더·오류 코드 기록), `test_photo_fault_blocked`(함수 이름 접두사, 처리된 템플릿의 조건, 읽기 전용).
     - **T10·T15 판정 규칙**: `PROCESSING`을 관측하지 못하면 결과 파일에 `"verdict": "unverified"`와 관측한 상태 열을 남기고 사유 있는 `skip`("PROCESSING 미관측, 미검증, 재시험 필요")으로 끝낸다. `xfail`·통과로 처리하지 않는다. README 판정 실행표에서 미검증은 불합격과 같이 "재시험 필요"로 적는다.
     - _Requirements: 14.5 · T8, T10, T11, T15, BE-Q65, BE-Q70, BE-Q72_
-  - [ ] 13.3 장애·지연 주입 배포 대상 테스트 (`@pytest.mark.fault`, dev만)
+  - [x] 13.3 장애·지연 주입 배포 대상 테스트 (`@pytest.mark.fault`, dev만)
     - `test_T10_T15_with_delay`(`FaultInject=photo-slow`, 최종 판정 근거), `test_T9_dlq`(`FaultInject=photo`: `FAILED RETRY_EXHAUSTED` 대기 최대 10분, DLQ에서 그 키의 메시지 확인, `PhotoDLQNotEmpty` `ALARM` 대기 최대 5분, 그 메시지만 삭제). 테스트 시작 때 함수 환경의 `FAULT_INJECT`가 기대값인지 확인하고 아니면 skip(잘못된 배포에서 판정하지 않음).
     - `pytest.ini`에 `fault` 마커 등록. 기본 실행(`-m integration`)과 분리해 `-m "integration and fault"`로만 돈다.
     - _Requirements: 9.4, 9.5, 14.5 · T9, T10, T15, BE-Q59, BE-Q69_
-  - [ ] 13.4 수집 확인
+  - [x] 13.4 수집 확인
     - `pytest -m integration tests/integration --collect-only`, `pytest -m "integration and fault" tests/integration --collect-only` 수집 오류 없음(실행하지 않는다). `pytest tests/unit/test_integration_cleanup.py` 통과.
     - _Requirements: 14.5, 14.6_
 
