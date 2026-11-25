@@ -11,7 +11,7 @@ from concurrent.futures import ThreadPoolExecutor
 import boto3
 import pytest
 
-from tests.integration.conftest import REGION, call, create_user, login, new_password, plan_body, save_result
+from tests.integration.conftest import REGION, call, create_user, login, new_password, plan_body, register_idem_key, save_result
 
 pytestmark = pytest.mark.integration
 
@@ -40,6 +40,7 @@ def plans_of(stack, owner_sub):
 def test_same_key_same_body_three_times(stack):
     sub, token = create_user(stack, "T13지연")
     key = str(uuid.uuid4())
+    register_idem_key(stack, token, key)
     responses = [call(stack, "POST", "/plans", token=token, body=plan_body(), headers={"Idempotency-Key": key}) for _ in range(3)]
     ids = {b["plan"]["planId"] for s, b in responses if s == 201}
     stack.created_plan_ids.extend(ids)
@@ -55,6 +56,7 @@ def test_same_key_same_body_three_times(stack):
 def test_same_key_other_body_conflicts(stack):
     _, token = create_user(stack, "T13수현")
     key = str(uuid.uuid4())
+    register_idem_key(stack, token, key)
     s1, first = call(stack, "POST", "/plans", token=token, body=plan_body(), headers={"Idempotency-Key": key})
     assert s1 == 201
     plan_id = first["plan"]["planId"]
@@ -68,6 +70,7 @@ def test_same_key_other_body_conflicts(stack):
 def test_same_key_concurrent(stack):
     sub, token = create_user(stack, "T13민준")
     key = str(uuid.uuid4())
+    register_idem_key(stack, token, key)
     with ThreadPoolExecutor(10) as ex:
         responses = list(ex.map(lambda _: call(stack, "POST", "/plans", token=token, body=plan_body(), headers={"Idempotency-Key": key}), range(10)))
     ids = {b["plan"]["planId"] for s, b in responses if s == 201}

@@ -6,7 +6,8 @@
 - AWS 자격 증명: 보통의 AWS CLI 프로필(AWS_PROFILE 등). 테스트 사용자 생성·삭제와 테이블 조회에 쓴다.
 
 스택 출력(ApiUrl, UserPoolId, UserPoolClientId)과 테이블 이름은 CloudFormation에서 읽는다.
-STACK_NAME이 없으면 모든 테스트를 건너뛴다. 테스트가 만든 사용자와 항목은 끝나면 지운다.
+STACK_NAME이 없으면 모든 테스트를 건너뛴다. 테스트가 만든 사용자와 항목은 끝나면 지운다(`_cleanup`).
+정리에 실패한 대상은 `test-results/cleanup-failures-*.json`에 남기고 세션 끝에 오류로 알린다.
 """
 
 from __future__ import annotations
@@ -37,12 +38,21 @@ class Stack:
     created_users: list[str] = field(default_factory=list)
     created_subs: list[str] = field(default_factory=list)
     created_plan_ids: list[str] = field(default_factory=list)
+    # 멱등 키 항목의 PK(`IDEM#{sub}#{key}`). 키마다 파티션이 따로라 USER#·PLAN# 파티션 조회로는 찾을 수 없다.
+    created_idem_pks: list[str] = field(default_factory=list)
 
 
-def _boto(service: str):
+def _boto(service: str, config=None):
     import boto3
 
-    return boto3.client(service, region_name=REGION)
+    return boto3.client(service, region_name=REGION, config=config)
+
+
+def _cleanup_config():
+    """정리용 클라이언트: 스로틀(TooManyRequests 등)을 적응형 재시도로 흡수한다."""
+    from botocore.config import Config
+
+    return Config(retries={"max_attempts": 10, "mode": "adaptive"})
 
 
 @pytest.fixture(scope="session")
@@ -57,24 +67,86 @@ def stack() -> Stack:
     _cleanup(s)
 
 
-def _cleanup(s: Stack) -> None:
-    idp, ddb = _boto("cognito-idp"), _boto("dynamodb")
-    for username in s.created_users:
-        try:
-            idp.admin_delete_user(UserPoolId=s.pool_id, Username=username)
-        except Exception:  # noqa: BLE001
-            pass
-    def delete_partition(pk: str) -> None:
-        items = ddb.query(TableName=s.table_name, KeyConditionExpression="PK = :pk", ExpressionAttributeValues={":pk": {"S": pk}})["Items"]
-        for item in items:
-            ddb.delete_item(TableName=s.table_name, Key={"PK": item["PK"], "SK": item["SK"]})
-            if item["SK"]["S"].startswith("CLAIM#"):  # ClaimLookup
-                ddb.delete_item(TableName=s.table_name, Key={"PK": {"S": item["SK"]["S"]}, "SK": {"S": "META"}})
+def _error_code(exc: Exception) -> str:
+    response = getattr(exc, "response", None)
+    if isinstance(response, dict):
+        return str(response.get("Error", {}).get("Code") or type(exc).__name__)
+    return type(exc).__name__
 
-    for plan_id in s.created_plan_ids:
-        delete_partition(f"PLAN#{plan_id}")
-    for sub in s.created_subs:  # 수신함(USER#{owner}/INBOX#)과 멱등 키(IDEM#{sub}#…)는 남겨도 TTL·사용자 삭제로 정리되지만 지운다
-        delete_partition(f"USER#{sub}")
+
+def _delete_user(idp, pool_id: str, username: str) -> None:
+    try:
+        idp.admin_delete_user(UserPoolId=pool_id, Username=username)
+    except Exception as e:  # noqa: BLE001
+        if _error_code(e) != "UserNotFoundException":  # 이미 없으면 정리된 것으로 본다
+            raise
+
+
+def _delete_partition(ddb, table_name: str, pk: str) -> None:
+    """파티션의 모든 항목과, Claim이 있으면 짝인 ClaimLookup(`CLAIM#{id}`/META)을 지운다."""
+    start: dict[str, Any] | None = None
+    while True:
+        kwargs: dict[str, Any] = {
+            "TableName": table_name,
+            "KeyConditionExpression": "PK = :pk",
+            "ExpressionAttributeValues": {":pk": {"S": pk}},
+            "ConsistentRead": True,
+        }
+        if start:
+            kwargs["ExclusiveStartKey"] = start
+        page = ddb.query(**kwargs)
+        for item in page["Items"]:
+            ddb.delete_item(TableName=table_name, Key={"PK": item["PK"], "SK": item["SK"]})
+            if item["SK"]["S"].startswith("CLAIM#"):  # ClaimLookup
+                ddb.delete_item(TableName=table_name, Key={"PK": {"S": item["SK"]["S"]}, "SK": {"S": "META"}})
+        start = page.get("LastEvaluatedKey")
+        if not start:
+            return
+
+
+def _cleanup(s: Stack, idp=None, ddb=None) -> None:
+    """테스트가 등록한 대상만 지운다(테이블 스캔 없음).
+
+    대상마다 따로 시도해 하나가 실패해도 나머지를 계속한다. 실패는 삼키지 않고 모아서
+    `cleanup-failures-*.json`에 남긴 뒤 RuntimeError로 알린다(세션 teardown 오류로 보인다. 개별 T 판정과는 별개).
+    """
+    idp = idp or _boto("cognito-idp", _cleanup_config())
+    ddb = ddb or _boto("dynamodb", _cleanup_config())
+    failures: list[dict[str, str]] = []
+
+    def attempt(kind: str, target: str, fn) -> None:
+        try:
+            fn()
+        except Exception as e:  # noqa: BLE001
+            failures.append({"kind": kind, "target": target, "error": _error_code(e)})
+
+    for username in dict.fromkeys(s.created_users):
+        attempt("cognito_user", username, lambda u=username: _delete_user(idp, s.pool_id, u))
+    for plan_id in dict.fromkeys(s.created_plan_ids):
+        attempt("partition", f"PLAN#{plan_id}", lambda pk=f"PLAN#{plan_id}": _delete_partition(ddb, s.table_name, pk))
+    for sub in dict.fromkeys(s.created_subs):  # 수신함(USER#{owner}/INBOX#)
+        attempt("partition", f"USER#{sub}", lambda pk=f"USER#{sub}": _delete_partition(ddb, s.table_name, pk))
+    for pk in dict.fromkeys(s.created_idem_pks):  # 멱등 키(IDEM#{sub}#{key}/META). TTL 24시간이 있지만 바로 지운다
+        attempt(
+            "idem_key", pk,
+            lambda pk=pk: ddb.delete_item(TableName=s.table_name, Key={"PK": {"S": pk}, "SK": {"S": "META"}}),
+        )
+
+    if failures:
+        path = save_result("cleanup-failures", {"failures": failures})
+        raise RuntimeError(f"테스트 데이터 정리 실패 {len(failures)}건. 남은 대상은 수동 확인이 필요하다(로그: {path})")
+
+
+def token_sub(token: str) -> str:
+    """테스트가 받은 ID 토큰의 `sub`(서명 검증 없이 읽는다. 정리 대상 기록용)."""
+    import jwt
+
+    return jwt.decode(token, options={"verify_signature": False})["sub"]
+
+
+def register_idem_key(stack: Stack, token: str, key: str) -> None:
+    """POST /plans에 쓴 멱등 키를 정리 대상으로 등록한다. 요청 전에 부른다(응답을 못 받아도 지우도록)."""
+    stack.created_idem_pks.append(f"IDEM#{token_sub(token)}#{key}")
 
 
 def new_password() -> str:
@@ -164,7 +236,9 @@ def query_items(stack: Stack, pk: str, sk_prefix: str) -> list[dict[str, Any]]:
 
 
 def create_plan(stack: Stack, token: str, title: str = "통합 테스트 산책") -> str:
-    status, body = call(stack, "POST", "/plans", token=token, body=plan_body(title), headers={"Idempotency-Key": str(uuid.uuid4())})
+    key = str(uuid.uuid4())
+    register_idem_key(stack, token, key)
+    status, body = call(stack, "POST", "/plans", token=token, body=plan_body(title), headers={"Idempotency-Key": key})
     assert status == 201, body
     stack.created_plan_ids.append(body["plan"]["planId"])
     return body["plan"]["planId"]
