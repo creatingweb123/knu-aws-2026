@@ -8,7 +8,7 @@
 import io
 import warnings
 
-from hypothesis import HealthCheck, given, settings
+from hypothesis import HealthCheck, event, given, settings
 from hypothesis import strategies as st
 from PIL import Image
 
@@ -225,3 +225,193 @@ def test_property28_upload_url_and_replace(monkeypatch, ops):
             else:
                 assert code in {"NOT_FOUND", "FORBIDDEN", "CLAIM_NOT_ACTIVE", "RECORD_REQUIRED"}
                 assert after == before and len(presigned) == n_presign  # 실패는 아무것도 바꾸지 않고 presign하지 않는다
+
+
+# ------------------------------------------------------------------ P27
+
+import hashlib  # noqa: E402
+
+from botocore.exceptions import ReadTimeoutError  # noqa: E402
+
+from common.errors import TRY_AGAIN  # noqa: E402
+from tests.unit.photo_fixtures import BUCKET, jpeg, photo_env, s3_record  # noqa: E402
+from workers import photo_processor as pp  # noqa: E402
+
+COLORS = [(255, 0, 0), (0, 200, 0), (0, 0, 255), (240, 240, 0)]
+p27_pipeline = st.one_of(  # 시도 진행·중복 전달 연산은 자주 나오게 따로 둔다
+    st.tuples(st.just("deliver"), st.integers(0, 5)),
+    st.tuples(st.just("dup"), st.integers(0, 5)),
+    st.tuples(st.just("step"), st.integers(0, 5)),
+    st.tuples(st.just("step"), st.integers(0, 5)),
+)
+p27_op = st.one_of(
+    p27_pipeline,
+    p27_pipeline,
+    st.tuples(st.just("claim"), st.integers(0, 1)),
+    st.tuples(st.just("text"), st.integers(0, 1)),
+    st.tuples(st.just("photo"), st.integers(0, 1), st.integers(0, 3)),
+    st.tuples(st.just("reupload"), st.integers(0, 1), st.integers(0, 3)),
+    st.tuples(st.just("replace"), st.integers(0, 1), st.integers(0, 3)),
+    st.tuples(st.just("deliver"), st.integers(0, 5)),
+    st.tuples(st.just("dup"), st.integers(0, 5)),
+    st.tuples(st.just("step"), st.integers(0, 5)),
+    st.tuples(st.just("flaky"), st.sampled_from(["try_again", "commit_timeout"])),
+    st.tuples(st.just("complete_text"), st.integers(0, 1)),
+    st.tuples(st.just("abandon"), st.integers(0, 1)),
+    st.tuples(st.just("expire"), st.integers(0, 1)),
+)
+
+
+def _color_of(data):
+    px = Image.open(io.BytesIO(data)).convert("RGB").getpixel((3, 3))
+    return min(range(len(COLORS)), key=lambda i: sum((a - b) ** 2 for a, b in zip(px, COLORS[i])))
+
+
+@settings(max_examples=100, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture, HealthCheck.too_slow, HealthCheck.data_too_large])
+@given(first=st.integers(0, 3), ops=st.lists(p27_op, min_size=1, max_size=25))
+def test_property27_single_delivery_of_current_photo(monkeypatch, first, ops):
+    """Feature: backend-stage5-photo-pipeline, Property 27: 사진 전달은 최대 한 번이고 전달된 사진은 그 시점의 현재 사진이다.
+
+    Validates: Requirements 5, 6, 8, 9.7, 14.2
+    """
+    with photo_env(monkeypatch) as (table, client):
+        body = PlanCreate.model_validate({
+            "title": "속성", "summary": "s", "reason": "r", "estimatedMinutes": 30,
+            "places": [{"name": "빵집", "activity": "빵 사기", "whyChosen": ""}], "question": "q",
+            "authoring": {"mode": "MANUAL", "durationMs": 1, "story": "빵집에서 빵을 사요"},
+        })
+        pid = ps.create_plan(P_OWNER, "k", body, START)[0]["planId"]
+        state = {"now": START, "latest": {}, "flaky": None}
+        queue: list[dict] = []            # SQS 메시지(S3 레코드)
+        running: list[tuple] = []         # (Attempt, generator, message)
+        made_from: dict[str, tuple] = {}  # 처리본 키 → (원본 키, eTag)
+        etag_color: dict[tuple, int] = {}
+        preserved: set[str] = set()       # 불확실 등으로 끝나 보존된 처리본
+        delivered_hash: dict[str, str] = {}
+        real_complete = cs.complete_claim
+
+        def flaky_complete(*a, **k):
+            if a[1] != "WITH_PHOTO":  # 사용자의 글로 완료(complete_by_user)에는 주입하지 않는다
+                return real_complete(*a, **k)
+            mode, state["flaky"] = state["flaky"], None
+            if mode == "try_again":
+                raise ApiError(TRY_AGAIN)  # 커밋 없이 불확실
+            result = real_complete(*a, **k)
+            if mode == "commit_timeout":
+                raise ReadTimeoutError(endpoint_url="dynamodb")  # 커밋했지만 응답을 못 받음
+            return result
+
+        monkeypatch.setattr(cs, "complete_claim", flaky_complete)
+
+        def rec_of(cid):
+            return _record(table, pid, cid)
+
+        def put_original(key, color):
+            etag = client.put_object(Bucket=BUCKET, Key=key, Body=jpeg(COLORS[color], size=(32, 24)))["ETag"].strip('"')
+            etag_color[(key, etag)] = color
+            queue.append(s3_record(key, etag))
+
+        def advance(idx):
+            if not running:
+                return
+            att, gen, msg = running[idx % len(running)]
+            try:
+                label = next(gen)
+                if label == "uploaded":
+                    made_from[att.attempt_key] = (att.key, att.etag)
+            except StopIteration:
+                running.remove((att, gen, msg))
+            except Exception:  # noqa: BLE001  재시도 대상: 메시지를 다시 넣는다(SQS 재전달)
+                running.remove((att, gen, msg))
+                if att.created:
+                    preserved.add(att.attempt_key)
+                queue.append(msg)
+
+        def observe_delivery():
+            for cid in set(state["latest"].values()):
+                rec = rec_of(cid)
+                if rec and rec.get("processedKey") and rec["processedKey"] not in delivered_hash:
+                    data = client.get_object(Bucket=BUCKET, Key=rec["processedKey"])["Body"].read()
+                    delivered_hash[rec["processedKey"]] = hashlib.sha256(data).hexdigest()
+
+        ops = [("claim", 0), ("photo", 0, first)] + list(ops)  # 늘 사진 1건으로 시작한다
+        for op in ops:
+            name, arg = op[0], op[1]
+            user = P_USERS[arg] if name not in ("deliver", "dup", "step", "flaky") else None
+            cid = state["latest"].get(user.id) if user else None
+            try:
+                if name == "claim":
+                    state["latest"][user.id] = cs.claim_plan(pid, user, state["now"])[0]["claimId"]
+                elif name == "expire":
+                    state["now"] += timedelta(days=4)
+                    state["latest"][user.id] = cs.claim_plan(pid, user, state["now"])[0]["claimId"]
+                elif name == "text" and cid:
+                    cs.put_record(cid, user, "글", state["now"])
+                elif name == "photo" and cid:
+                    cs.put_record_with_photo(cid, user, "사진과 글", PHOTO, state["now"])
+                    put_original(rec_of(cid)["photoKey"], op[2])
+                elif name == "reupload" and cid and rec_of(cid) and rec_of(cid).get("photoKey"):
+                    put_original(rec_of(cid)["photoKey"], op[2])  # 같은 키에 다른 내용(스위치 꺼짐)
+                elif name == "replace" and cid:
+                    cs.replace_photo(cid, user, PHOTO, state["now"])
+                    put_original(rec_of(cid)["photoKey"], op[2])
+                elif name == "complete_text" and cid:
+                    cs.complete_by_user(cid, user, "TEXT_ONLY", state["now"])
+                elif name == "abandon" and cid:
+                    cs.abandon(cid, user, state["now"])
+                elif name == "deliver" and queue:
+                    msg = queue.pop(arg % len(queue))
+                    att = pp.Attempt(msg)
+                    running.append((att, att.steps(), msg))
+                elif name == "dup" and queue:
+                    queue.append(queue[arg % len(queue)])
+                elif name == "step":
+                    advance(arg)
+                elif name == "flaky":
+                    state["flaky"] = arg
+            except ApiError:
+                pass
+            observe_delivery()
+
+        # 남은 시도와 메시지를 모두 처리한다(불확실 주입은 끈다)
+        state["flaky"] = None
+        for _ in range(200):
+            if running:
+                advance(0)
+            elif queue:
+                msg = queue.pop(0)
+                att = pp.Attempt(msg)
+                running.append((att, att.steps(), msg))
+            else:
+                break
+            observe_delivery()
+        assert not running and not queue
+
+        items = [i for i in table.scan(ConsistentRead=True)["Items"]]
+        inbox = [i for i in items if i["SK"].startswith("INBOX#")]
+        records = [i for i in items if i["SK"].startswith("RECORD#")]
+        delivered = [r for r in records if r.get("deliveredAt")]
+        assert len(inbox) <= 1 and len(inbox) == len(delivered)  # 전달 1회 ⇔ InboxItem 1건
+        listed = {o["Key"] for o in client.list_objects_v2(Bucket=BUCKET, Prefix="photos/processed/").get("Contents", [])}
+        for r in records:
+            has = bool(r.get("processedKey"))
+            assert has == (r.get("photoStatus") == "READY")
+            if r.get("deliveredAt"):
+                (item,) = [i for i in inbox if i["itemId"] == r["claimId"]]
+                assert item["hasPhoto"] is has
+            else:
+                assert not has
+            if has:
+                pk = r["processedKey"]
+                assert pk in listed
+                orig_key, etag = made_from[pk]
+                assert orig_key == r["photoKey"]  # 지난 사진이 아니다
+                data = client.get_object(Bucket=BUCKET, Key=pk)["Body"].read()
+                assert _color_of(data) == etag_color[(orig_key, etag)]  # 그 ETag의 객체에서 만들었다
+                assert hashlib.sha256(data).hexdigest() == delivered_hash[pk]  # 전달 뒤 바뀌거나 지워지지 않았다
+        referenced = {r["processedKey"] for r in records if r.get("processedKey")}
+        assert listed <= referenced | preserved  # 확실히 미전달인 시도의 처리본은 남지 않는다
+        event(f"photo_delivered={bool(referenced)}")
+        event(f"processed_objects_made={'2+' if len(made_from) >= 2 else len(made_from)}")
+        event(f"preserved={bool(preserved)}")
+        event(f"text_delivered={any(r.get('deliveredAt') and not r.get('processedKey') for r in records)}")

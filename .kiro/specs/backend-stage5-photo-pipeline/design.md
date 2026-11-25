@@ -351,13 +351,13 @@ def _detail(event):   # 4단계 권한 검사(get_detail의 404)는 그대로 �
 
 ```python
 def settle(attempt_key, rec_after, claim_after) -> "delivered" | "not_delivered" | "uncertain":
-    if rec_after is None or claim_after is None:            # 읽기 실패는 예외로 올라오고 여기 오지 않는다
-        return "uncertain"
+    if rec_after is None:                                   # Record가 없으면 이 처리본을 가리킬 항목이 없다. 읽기 실패는 예외로 올라와 여기 오지 않는다
+        return "not_delivered"
     if rec_after.get("deliveredAt"):
         return "delivered" if rec_after.get("processedKey") == attempt_key else "not_delivered"
     if rec_after.get("photoKey") != original_key or rec_after.get("photoStatus") == "DISCARDED":
         return "not_delivered"
-    if claim_after.get("status") in ("ABANDONED", "EXPIRED"):
+    if claim_after is not None and claim_after.get("status") in ("ABANDONED", "EXPIRED"):
         return "not_delivered"
     return "uncertain"                                       # 아직 PROCESSING·미전달: 커밋 여부를 알 수 없다
 ```
