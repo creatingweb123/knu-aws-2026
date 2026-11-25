@@ -1,0 +1,62 @@
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.plan-title {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-sub);
+}
+
+.to {
+  font-size: var(--font-size-title);
+  font-weight: 700;
+  line-height: var(--line-height-title);
+}
+
+/* 하루 카드의 방문 질문 */
+.question {
+  padding: var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--color-plan);
+}
+
+.question-label {
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+  color: var(--color-text-sub);
+}
+
+.question-text {
+  margin-top: var(--space-1);
+  font-weight: 700;
+}
+
+.status {
+  padding: var(--space-6) 0;
+  text-align: center;
+  color: var(--color-text-sub);
+}
+
+/* 종료 안내(8)의 작성한 글 */
+.letter {
+  margin-top: var(--space-2);
+  max-height: 200px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  text-align: left;
+  user-select: text;
+}
+
+.copy {
+  margin-top: var(--space-3);
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--color-primary);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-primary);
+  font-weight: 700;
+  cursor: pointer;
+}

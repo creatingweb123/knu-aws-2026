@@ -10,6 +10,12 @@ import type { RouteObject } from 'react-router-dom';
 import { RequireAuth } from './auth/RequireAuth';
 import { Layout } from './components/Layout';
 import { BrowsePage } from './pages/browse/BrowsePage';
+import { InboxDetailPage } from './pages/inbox/InboxDetailPage';
+import { InboxPage } from './pages/inbox/InboxPage';
+import { AbandonPage } from './pages/me/AbandonPage';
+import { MyDayPage } from './pages/me/MyDayPage';
+import { DonePage } from './pages/record/DonePage';
+import { RecordPage } from './pages/record/RecordPage';
 import { PlanDetailPage } from './pages/plan/PlanDetailPage';
 import { PlacePage } from './pages/plan/create/PlacePage';
 import { PlanFormPage } from './pages/plan/create/PlanFormPage';
@@ -69,14 +75,35 @@ export const SCREENS: ScreenRoute[] = [
     stage: 3,
     element: <PublishedPage />,
   },
-  { path: '/me', screen: '4', name: '내 하루', tab: true, stage: 4 },
-  { path: '/claims/:claimId/abandon', screen: '4-1', name: '이어받기 포기 확인', back: true, stage: 4 },
-  { path: '/claims/:claimId/record', screen: '5', name: '그날의 이야기', back: true, stage: 4 },
+  { path: '/me', screen: '4', name: '내 하루', tab: true, stage: 4, element: <MyDayPage /> },
+  {
+    path: '/claims/:claimId/abandon',
+    screen: '4-1',
+    name: '이어받기 포기 확인',
+    back: true,
+    stage: 4,
+    element: <AbandonPage />,
+  },
+  {
+    path: '/claims/:claimId/record',
+    screen: '5',
+    name: '그날의 이야기',
+    back: true,
+    stage: 4,
+    element: <RecordPage />,
+  },
   { path: '/claims/:claimId/sending', screen: '5-1', name: '보내는 중', stage: 5 },
   { path: '/claims/:claimId/record/photo', screen: '5-3', name: '사진 교체', back: true, stage: 5 },
-  { path: '/claims/:claimId/done', screen: '5-4', name: '전송 완료', stage: 4 },
-  { path: '/inbox', screen: '6', name: '수신함', tab: true, stage: 4 },
-  { path: '/inbox/:itemId', screen: '7', name: '돌아온 하루', back: true, stage: 4 },
+  { path: '/claims/:claimId/done', screen: '5-4', name: '전송 완료', stage: 4, element: <DonePage /> },
+  { path: '/inbox', screen: '6', name: '수신함', tab: true, stage: 4, element: <InboxPage /> },
+  {
+    path: '/inbox/:itemId',
+    screen: '7',
+    name: '돌아온 하루',
+    back: true,
+    stage: 4,
+    element: <InboxDetailPage />,
+  },
 ];
 
 function screenElement(s: ScreenRoute): ReactNode {

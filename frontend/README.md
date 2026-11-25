@@ -74,8 +74,9 @@ src/
   auth/       tokens.ts(getIdToken, 7단계에 Amplify로 교체), RequireAuth.tsx
   components/ Header, BottomTab, PrimaryButton, StatusBadge, RouteTimeline, TextField/TextArea,
               Toast, ResultScreen, PageTitle, Layout, DevMockBar(개발 전용)
-  pages/      login/ browse/ plan/(상세·이어받기, create/ 하루 남기기) (4–6단계에 me/ record/ inbox/ 추가)
-  state/      planDraft.ts(하루 남기기 작성 상태, sessionStorage)
+  pages/      login/ browse/ plan/(상세·이어받기, create/ 하루 남기기) me/(내 하루·포기)
+              record/(방문 기록·전송 완료·종료 안내) inbox/(수신함·돌아온 하루)
+  state/      planDraft.ts(하루 남기기 작성 상태, sessionStorage), letterDraft.ts(방문 기록 임시 글, localStorage)
   mocks/      db.ts, session.ts, handlers/, browser.ts
   styles/     tokens.css, global.css
   utils/      date.ts(KST), plan.ts, validation.ts(백엔드와 같은 규칙·문구), hash.ts, uuid.ts
@@ -101,3 +102,5 @@ src/
 | FE-Q18 | 공개 키 재사용은 `durationMs`를 뺀 본문 해시로 판단, 재전송은 처음 본문 그대로 |
 | FE-Q19 | 폼 값은 앞뒤 공백을 빼고 검증·전송, 글자 수는 코드 포인트                      |
 | FE-Q20 | 폼의 장소는 "고치기"(`/plans/new/place?index=n`)·"빼기"                        |
+| FE-Q21 | 내 하루는 진행 중인 이어받기를 모두 카드로                                     |
+| FE-Q22 | `READY`(미전달)·`DISCARDED`면 "다녀온 이야기 쓰기"는 작성 화면으로             |
