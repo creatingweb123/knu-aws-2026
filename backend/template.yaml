@@ -163,6 +163,9 @@ Resources:
         PutRecord:
           Type: HttpApi
           Properties: { ApiId: !Ref HttpApi, Path: "/claims/{claimId}/record", Method: PUT }
+        ReplacePhoto:
+          Type: HttpApi
+          Properties: { ApiId: !Ref HttpApi, Path: "/claims/{claimId}/record/photo", Method: POST }
         CompleteClaim:
           Type: HttpApi
           Properties: { ApiId: !Ref HttpApi, Path: "/claims/{claimId}/complete", Method: POST }

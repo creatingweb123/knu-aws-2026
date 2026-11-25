@@ -114,3 +114,114 @@ def test_property26_rejections_are_typed(data):
                 assert e.code == "UNSUPPORTED_FORMAT"
     assert caught == [], [str(w.message) for w in caught]
     assert Image.MAX_IMAGE_PIXELS == old_max and warnings.filters == filters_before
+
+
+# ------------------------------------------------------------------ P28
+
+from datetime import datetime, timedelta, timezone  # noqa: E402
+
+import pytest  # noqa: E402
+
+from common import s3  # noqa: E402
+from common.auth import User  # noqa: E402
+from common.errors import ApiError  # noqa: E402
+from common.validation import PhotoIn, PlanCreate  # noqa: E402
+from domain import claim_service as cs  # noqa: E402
+from domain import plan_service as ps  # noqa: E402
+from tests.unit.moto_table import haru_table, set_env  # noqa: E402
+
+START = datetime(2026, 11, 20, 12, 0, tzinfo=timezone.utc)
+P_OWNER = User("u-owner", "지연")
+P_USERS = [User("u-a", "가"), User("u-b", "나")]
+REQUESTERS = [P_OWNER, *P_USERS]
+PHOTO = PhotoIn(contentType="image/jpeg", size=100)
+
+p28_op = st.one_of(
+    st.tuples(st.just("claim"), st.integers(0, 1)),
+    st.tuples(st.just("abandon"), st.integers(0, 1)),
+    st.tuples(st.just("record"), st.integers(0, 1)),
+    st.tuples(st.just("complete"), st.integers(0, 1)),
+    st.tuples(st.just("advance"), st.integers(1, 4)),
+    st.tuples(st.just("photo_put"), st.integers(0, 2)),
+    st.tuples(st.just("photo_replace"), st.integers(0, 2)),
+    st.tuples(st.just("mark"), st.sampled_from(["PROCESSING", "FAILED"])),
+)
+
+
+def _record(table, pid, cid):
+    return table.get_item(Key={"PK": f"PLAN#{pid}", "SK": f"RECORD#{cid}"}, ConsistentRead=True).get("Item")
+
+
+@settings(max_examples=100, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture, HealthCheck.too_slow])
+@given(ops=st.lists(p28_op, min_size=1, max_size=12))
+def test_property28_upload_url_and_replace(monkeypatch, ops):
+    """Feature: backend-stage5-photo-pipeline, Property 28: 업로드 URL 발급·교체는 글과 전달 상태를 지킨다.
+
+    Validates: Requirements 2, 3
+    """
+    set_env(monkeypatch)
+    monkeypatch.setenv("PHOTO_BUCKET", "haru-photos-test")
+    monkeypatch.setattr(s3, "_presign_client", None)
+    presigned = []
+    real = s3.presign_put
+    monkeypatch.setattr(s3, "presign_put", lambda key, ct, size, now=None: presigned.append(key) or real(key, ct, size, now))
+    with haru_table() as table:
+        body = PlanCreate.model_validate({
+            "title": "속성", "summary": "s", "reason": "r", "estimatedMinutes": 30,
+            "places": [{"name": "빵집", "activity": "빵 사기", "whyChosen": ""}], "question": "q",
+            "authoring": {"mode": "MANUAL", "durationMs": 1, "story": "빵집에서 빵을 사요"},
+        })
+        pid = ps.create_plan(P_OWNER, "k", body, START)[0]["planId"]
+        now, latest = START, {}
+        for name, arg in ops:
+            if name == "advance":
+                now += timedelta(days=arg)
+                continue
+            if name == "mark":  # 처리 Lambda가 바꾸는 상태를 흉내 낸다
+                for cid in latest.values():
+                    rec = _record(table, pid, cid)
+                    if rec and "deliveredAt" not in rec and rec.get("photoKey"):
+                        table.update_item(Key={"PK": f"PLAN#{pid}", "SK": f"RECORD#{cid}"}, UpdateExpression="SET photoStatus = :s, photoError = :e",
+                                          ExpressionAttributeValues={":s": arg, ":e": "CORRUPT_IMAGE"})
+                continue
+            if name in ("claim", "abandon", "record", "complete"):
+                user = P_USERS[arg]
+                try:
+                    if name == "claim":
+                        latest[user.id] = cs.claim_plan(pid, user, now)[0]["claimId"]
+                    elif user.id in latest:
+                        {"abandon": lambda: cs.abandon(latest[user.id], user, now),
+                         "record": lambda: cs.put_record(latest[user.id], user, f"{user.nickname}의 글", now),
+                         "complete": lambda: cs.complete_by_user(latest[user.id], user, "TEXT_ONLY", now)}[name]()
+                except ApiError:
+                    pass
+                continue
+            # 사진 요청: 임의 요청자가 어떤 Claim에든 보낸다
+            who = REQUESTERS[arg]
+            targets = list(latest.values()) or ["clm_none"]
+            cid = targets[arg % len(targets)]
+            before = _record(table, pid, cid)
+            n_presign = len(presigned)
+            try:
+                if name == "photo_put":
+                    rec, up = cs.put_record_with_photo(cid, who, "사진과 글", PHOTO, now)
+                else:
+                    up = cs.replace_photo(cid, who, PHOTO, now)
+                    rec = _record(table, pid, cid)
+                ok = True
+            except ApiError as e:
+                ok = False
+                code = e.code
+            after = _record(table, pid, cid)
+            if ok:
+                assert after["photoStatus"] == "UPLOAD_PENDING" and "processedKey" not in after and "photoError" not in after
+                assert before is None or after["photoKey"] != before.get("photoKey")
+                assert presigned[-1] == after["photoKey"] and len(presigned) == n_presign + 1
+                assert before is None or "deliveredAt" not in before  # 전달된 Record에는 성공하지 않는다
+                if name == "photo_replace":
+                    assert after["letter"] == before["letter"] and after["updatedAt"] == before["updatedAt"]
+                else:
+                    assert after["letter"] == "사진과 글"
+            else:
+                assert code in {"NOT_FOUND", "FORBIDDEN", "CLAIM_NOT_ACTIVE", "RECORD_REQUIRED"}
+                assert after == before and len(presigned) == n_presign  # 실패는 아무것도 바꾸지 않고 presign하지 않는다

@@ -159,3 +159,68 @@ def test_me_ignores_body_user_id(table):
 def test_unknown_inbox_route_404(table):
     status, body, _ = call(inbox.handler, "DELETE /inbox/{itemId}", OWNER, path={"itemId": "x"})
     assert status == 404 and body["error"]["code"] == "NOT_FOUND"
+
+
+# ---------------------------------------------------------------- 5단계 사진 (Requirement 10, BE-Q60)
+
+
+def _deliver_with_photo(table, monkeypatch):
+    """사진과 함께 전달된 InboxItem을 만든다(처리 Lambda 대신 complete_claim(WITH_PHOTO)를 직접 부른다)."""
+    from domain import claim_service as cs
+
+    monkeypatch.setenv("PHOTO_BUCKET", "haru-photos-test")
+    status, body, _ = call(plans.handler, "POST /plans", OWNER, body={**PLAN, "places": [
+        {"name": "출근길 빵집", "activity": "빵 사기", "whyChosen": ""}, {"name": "하천 산책로 벤치", "activity": "쉬기", "whyChosen": ""}]})
+    pid = body["plan"]["planId"]
+    cid = call(plans.handler, "POST /plans/{planId}/claims", SUHYUN, path={"planId": pid})[1]["claim"]["claimId"]
+    call(claims.handler, "PUT /claims/{claimId}/record", SUHYUN, body={"letter": "사진도 보냈어요", "photo": {"contentType": "image/jpeg", "size": 10}}, path={"claimId": cid})
+    key = table.get_item(Key={"PK": f"PLAN#{pid}", "SK": f"RECORD#{cid}"}, ConsistentRead=True)["Item"]["photoKey"]
+    table.update_item(Key={"PK": f"PLAN#{pid}", "SK": f"RECORD#{cid}"}, UpdateExpression="SET photoStatus = :p", ExpressionAttributeValues={":p": "PROCESSING"})
+    processed = f"photos/processed/{cid}/{'c' * 32}.jpg"
+    cs.complete_claim(cid, "WITH_PHOTO", key=key, processed_key=processed)
+    return pid, cid, processed
+
+
+def test_detail_photo_url_and_caption(table, monkeypatch):
+    from common import s3
+
+    calls = []
+    monkeypatch.setattr(s3, "presign_get", lambda key, expires=900: calls.append((key, expires)) or "https://signed.example/x")
+    _, cid, processed = _deliver_with_photo(table, monkeypatch)
+    status, body, _ = call(inbox.handler, "GET /inbox/{itemId}", OWNER, path={"itemId": cid})
+    assert status == 200 and body["item"]["hasPhoto"] is True
+    assert body["record"]["photoUrl"] == "https://signed.example/x" and body["record"]["photoCaption"] == "하천 산책로 벤치에서"
+    assert calls == [(processed, 900)]
+
+
+def test_detail_photo_presign_real_url_15_minutes(table, monkeypatch):
+    from common import s3
+
+    monkeypatch.setattr(s3, "_presign_client", None)
+    _, cid, processed = _deliver_with_photo(table, monkeypatch)
+    url = call(inbox.handler, "GET /inbox/{itemId}", OWNER, path={"itemId": cid})[1]["record"]["photoUrl"]
+    assert processed in url and "X-Amz-Expires=900" in url
+
+
+def test_detail_photo_not_presigned_for_others(table, monkeypatch):
+    from common import s3
+
+    calls = []
+    monkeypatch.setattr(s3, "presign_get", lambda key, expires=900: calls.append(key) or "u")
+    _, cid, _ = _deliver_with_photo(table, monkeypatch)
+    for who in (SUHYUN, MINJUN):
+        assert call(inbox.handler, "GET /inbox/{itemId}", who, path={"itemId": cid})[0] == 404
+    assert calls == []
+
+
+def test_detail_has_photo_without_processed_key(table, monkeypatch, caplog):
+    from common import s3
+
+    monkeypatch.setattr(s3, "presign_get", lambda *a, **k: (_ for _ in ()).throw(AssertionError("호출 금지")))
+    pid, cid, processed = _deliver_with_photo(table, monkeypatch)
+    table.update_item(Key={"PK": f"PLAN#{pid}", "SK": f"RECORD#{cid}"}, UpdateExpression="REMOVE processedKey")
+    with caplog.at_level(logging.WARNING):
+        status, body, _ = call(inbox.handler, "GET /inbox/{itemId}", OWNER, path={"itemId": cid})
+    assert status == 200 and body["record"]["photoUrl"] is None and body["record"]["photoCaption"] is None
+    assert body["record"]["letter"] == "사진도 보냈어요"
+    assert "inbox_photo_missing" in caplog.text and cid not in caplog.text and processed not in caplog.text

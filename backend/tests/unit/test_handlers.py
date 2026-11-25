@@ -229,4 +229,5 @@ def test_routes_cover_implemented_stages():
         "POST /plans", "GET /plans", "GET /plans/{planId}", "POST /plans/{planId}/claims",
         "POST /claims/{claimId}/abandon", "PUT /claims/{claimId}/record", "POST /claims/{claimId}/complete",
         "GET /inbox", "GET /inbox/{itemId}", "POST /inbox/{itemId}/read", "POST /inbox/{itemId}/reply",  # 4단계
+        "POST /claims/{claimId}/record/photo",  # 5단계
     }

@@ -235,11 +235,11 @@ def process_image(data: bytes) -> ProcessedImage
 
 ### `domain/claim_service.py`
 
-`put_record(claim_id, user, letter, photo=None, now=None) -> (record, upload | None)`
-- 시그니처에 `photo`(검증된 `PhotoIn`)를 더한다. `photo is None`이면 3단계와 같은 Update 식, 같은 반환(`upload=None`)이다.
+`put_record(claim_id, user, letter, now=None) -> record`(3단계 시그니처·반환 그대로)와 `put_record_with_photo(claim_id, user, letter, photo, now=None) -> (record, upload)`(신규). 둘은 내부 함수 `_write_record` 하나를 같이 쓴다.
+- 3단계 호출부(위치 인자 `now`, dict 반환)를 깨지 않으려고 기존 함수의 시그니처를 바꾸지 않고 사진용 함수를 따로 둔다(구현 중 결정). 사진 없는 경로는 3단계와 같은 Update 식이다.
 - `photo`가 있으면 Original_Key를 만들고 Record Update만 바꾼다(아래 "DynamoDB 조건식"). Plan·Claim ConditionCheck와 `attribute_not_exists(deliveredAt)`, 실패 분기(`ConditionFailed` → `_stale()`)는 3단계 그대로다.
 - Transaction 성공 → Record `ConsistentRead` 재조회 → `presign_put(...)`. Transaction이 실패하면 presign을 부르지 않는다(Requirement 2.4).
-- 3단계 호출부(`handlers/claims.py`, 테스트)는 반환값이 튜플이 되므로 함께 고친다. 3단계 테스트의 사진 없는 경로 기대값은 그대로다.
+- 3단계 호출부와 테스트는 고치지 않는다(시그니처·반환 불변).
 
 `replace_photo(claim_id, user, photo, now=None) -> upload` (신규)
 ```python

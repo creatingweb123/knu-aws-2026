@@ -197,9 +197,16 @@ def serialize_inbox_item(item: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def serialize_inbox_record(record: dict[str, Any]) -> dict[str, Any]:
-    """GET /inbox/{itemId}의 record. 사진 필드는 5단계 전까지 null이다(BE-Q42)."""
-    return {"letter": record.get("letter"), "deliveredAt": record.get("deliveredAt"), "photoUrl": None, "photoCaption": None}
+def serialize_inbox_record(record: dict[str, Any], *, photo_url: str | None = None, caption: str | None = None) -> dict[str, Any]:
+    """GET /inbox/{itemId}의 record. 사진이 없으면 photoUrl·photoCaption은 null이다(docs/03 §3.5)."""
+    return {"letter": record.get("letter"), "deliveredAt": record.get("deliveredAt"), "photoUrl": photo_url, "photoCaption": caption}
+
+
+def photo_caption(plan: dict[str, Any]) -> str | None:
+    """마지막 장소 이름 + "에서"(docs/03 §3.5). 장소가 없거나 이름이 비면 null. 저장하지 않고 응답 때 만든다."""
+    places = plan.get("places") or []
+    name = places[-1].get("name") if places and isinstance(places[-1], dict) else None
+    return f"{name}에서" if name else None
 
 
 def iso_utc(dt: datetime) -> str:

@@ -148,7 +148,7 @@ def test_inbox_time_values_are_millis_utc():
 
 
 def test_inbox_record_photo_fields_null():
-    """BE-Q42: 5단계 전까지 photoUrl·photoCaption은 null. photoKey 등 내부 속성은 나가지 않는다."""
+    """사진 인자를 주지 않으면 photoUrl·photoCaption은 null(사진 없는 항목). photoKey 등 내부 속성은 나가지 않는다."""
     rec = {"PK": "PLAN#p", "SK": "RECORD#c", "letter": "글", "deliveredAt": "2026-11-20T09:00:00.000Z", "photoKey": "photos/x.jpg", "authorId": "u"}
     assert serialize_inbox_record(rec) == {"letter": "글", "deliveredAt": "2026-11-20T09:00:00.000Z", "photoUrl": None, "photoCaption": None}
 
@@ -197,3 +197,12 @@ def test_property22_inbox_serialization(item, record):
     rec = serialize_inbox_record(record)
     assert rec["photoUrl"] is None and rec["photoCaption"] is None and set(rec) == {"letter", "deliveredAt", "photoUrl", "photoCaption"}
     assert json.loads(json.dumps(rec, ensure_ascii=False)) == rec
+
+
+def test_inbox_record_photo_fields_and_caption():
+    from common.responses import photo_caption
+
+    assert serialize_inbox_record({"letter": "글", "deliveredAt": "t"}, photo_url="https://u", caption="벤치에서") == {
+        "letter": "글", "deliveredAt": "t", "photoUrl": "https://u", "photoCaption": "벤치에서"}
+    assert photo_caption({"places": [{"name": "빵집"}, {"name": "하천 산책로 벤치"}]}) == "하천 산책로 벤치에서"
+    assert photo_caption({"places": [{"name": ""}]}) is None and photo_caption({"places": []}) is None and photo_caption({}) is None

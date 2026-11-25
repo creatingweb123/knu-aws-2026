@@ -72,7 +72,7 @@
 - [ ] 3. 사진 업로드 URL·교체 API (`claim_service`, `handlers/claims.py`)
   - 선행: 1.1, 1.2
   - [ ] 3.1 `claim_service.put_record`의 사진 분기
-    - `put_record(claim_id, user, letter, photo=None, now=None) -> (record, upload | None)`. 사진이 있으면 Record Update를 `SET …, photoKey = :key, photoStatus = :pending REMOVE processedKey, photoError`로 바꾸고, Transaction 성공·재조회 뒤에만 `presign_put`. 사진이 없으면 3단계 식 그대로, `upload=None`.
+    - `put_record(claim_id, user, letter, now=None) -> record`는 3단계 그대로 두고 `put_record_with_photo(..., photo, now=None) -> (record, upload)`를 더한다(내부 `_write_record` 공유, 3단계 호출부 무변경). 사진이 있으면 Record Update를 `SET …, photoKey = :key, photoStatus = :pending REMOVE processedKey, photoError`로 바꾸고, Transaction 성공·재조회 뒤에만 `presign_put`. 사진이 없으면 3단계 식 그대로, `upload=None`.
     - Plan·Claim ConditionCheck 두 항목 생성은 비공개 헬퍼로 뽑되 식은 그대로 둔다(작업 15에서 diff로 확인).
     - _Requirements: 2.1–2.5, 2.7, 2.9, 2.10, 15.3 · BE-REC-02, BE-REC-03, G3_
   - [ ] 3.2 `claim_service.replace_photo` 신규
