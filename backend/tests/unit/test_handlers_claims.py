@@ -43,7 +43,7 @@ def ev(route, claims_=None, body=None, path=None, query=None, headers=None):
         "queryStringParameters": query,
         "body": json.dumps(body, ensure_ascii=False) if body is not None else None,
         "isBase64Encoded": False,
-        "requestContext": {"authorizer": {"jwt": {"claims": claims_}}} if claims_ is not None else {},
+        "requestContext": {"authorizer": {"jwt": {"claims": {"token_use": "id", **claims_}}}} if claims_ is not None else {},
     }
 
 
@@ -162,7 +162,7 @@ def test_me_still_reads_no_db(monkeypatch):
     monkeypatch.setattr(ddb, "table", lambda: (_ for _ in ()).throw(AssertionError("DB 접근 금지")))
     status, body = call(me.handler, "GET /me", SUHYUN)
     assert status == 200 and body["unreadInboxCount"] == 0
-    resp = me.handler({"requestContext": {"authorizer": {"jwt": {"claims": SUHYUN}}}}, None)  # routeKey 없는 이전 이벤트
+    resp = me.handler({"requestContext": {"authorizer": {"jwt": {"claims": {"token_use": "id", **SUHYUN}}}}}, None)  # routeKey 없는 이전 이벤트
     assert resp["statusCode"] == 200
 
 

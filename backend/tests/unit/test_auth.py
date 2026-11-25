@@ -15,7 +15,9 @@ from common.errors import ApiError
 ids = st.text(min_size=1, max_size=40)
 
 
-def event(claims, body=None, query=None, headers=None):
+def event(claims, body=None, query=None, headers=None, token_use="id"):
+    if token_use is not None:
+        claims = {"token_use": token_use, **claims}
     return {
         "headers": headers or {},
         "queryStringParameters": query,
@@ -48,6 +50,17 @@ def test_user_comes_from_sub_only(sub, nickname, other):
     ],
 )
 def test_missing_sub_is_unauthorized(ev):
+    with pytest.raises(ApiError) as exc:
+        get_user(ev)
+    assert exc.value.code == "UNAUTHORIZED" and exc.value.status == 401
+
+
+@pytest.mark.parametrize("token_use", [None, "access", "", "ID", 1])
+def test_non_id_token_is_unauthorized(token_use):
+    """액세스 토큰(token_use=access)이나 token_use가 없는 클레임은 sub가 있어도 401 (AWS T1)."""
+    ev = event({"sub": "u1", "nickname": "지연"}, token_use=None)
+    if token_use is not None:
+        ev["requestContext"]["authorizer"]["jwt"]["claims"]["token_use"] = token_use
     with pytest.raises(ApiError) as exc:
         get_user(ev)
     assert exc.value.code == "UNAUTHORIZED" and exc.value.status == 401

@@ -35,7 +35,7 @@ def event(route, claims=None, body=None, headers=None, query=None, path=None, ra
         "pathParameters": path,
         "body": raw_body if raw_body is not None else (json.dumps(body, ensure_ascii=False) if body is not None else None),
         "isBase64Encoded": False,
-        "requestContext": {"authorizer": {"jwt": {"claims": claims}}} if claims is not None else {},
+        "requestContext": {"authorizer": {"jwt": {"claims": {"token_use": "id", **claims}}}} if claims is not None else {},
     }
     return ev
 
