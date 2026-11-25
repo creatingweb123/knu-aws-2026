@@ -16,7 +16,7 @@ AWS 계정 없이 개발한 백엔드를 AWS 담당이 배포·판정할 수 있
 | AWS 판정 | T1·T13·T3·T4·T5·T6·T7·T14·T16 **15건 모두 통과**(2026-11-25, `haru-dev`, AWS 담당). 첫 실행에서 T1 액세스 토큰 1건이 실패해 `common/auth.py`를 고친 뒤 다시 통과했다(3.1절) |
 | AWS 판정(4단계) | T1 확장·T2·T17 테스트 코드 작성, **미실행**(3.3절). 배포와 실행은 AWS 담당 |
 | 다음 단계 조건 | T3–T7이 AWS에서 통과해야 4단계를 시작한다(docs/07 §7.2). **2026-11-25 충족**. 4단계 이후 PR마다 `tests/integration/test_concurrency.py`를 다시 돌린다(docs/07 §7.2) |
-| PR | 아직 열지 않았다(8절) |
+| PR | 2026-11-25 6개 열림(#1–#6), 병합 전(8절) |
 
 AWS에서만 확인되는 것은 4절, 로컬 환경 구동 기록과 절차는 5절, 테스트 데이터 정리 보완은 3.2절에 있다.
 
@@ -328,27 +328,32 @@ Docker 없이 확인한 대체 수단: moto 테스트(`tests/unit/test_plan_serv
 
 ## 8. 리뷰가 필요한 것과 PR
 
-PR은 아직 열지 않았다. 리뷰할 때 아래 순서로 연다.
+2026-11-25 아래 PR 6개를 열었다. **아직 병합하지 않았다.** 위에서부터 차례로 병합하고, 하나가 병합되면 다음 PR의 base를 병합된 쪽(결국 `main`)으로 바꾼다. 병합 전 리뷰와 승인은 docs/07 §7.2·§7.8을 따른다.
 
-1. `docs/monorepo-stage1-2-spec` → `main`: 문서·spec
-2. `feat/be-1-2-foundation` → `docs/monorepo-stage1-2-spec`(1이 병합되면 `main`): 1·2단계 코드
-3. (3단계 인계 후) `feat/be-3-claim-transaction` → `feat/be-1-2-foundation`
-4. `fix/be-3-aws-verify` → `feat/be-3-claim-transaction`: AWS 판정 중 고친 `token_use` 확인과 판정 기록(3.1절)
-5. `fix/be-3-local-verify` → `fix/be-3-aws-verify`: 로컬 테스트 수정, `_cleanup` 보완(3.2절), 로컬 구동 기록(5절)
+| 순서 | PR | head → base | 내용 | 단위 테스트(head에서 2026-11-25 재실행) | AWS 판정 |
+|---|---|---|---|---|---|
+| 1 | [#2](https://github.com/creatingweb123/knu-aws-2026/pull/2) | `docs/monorepo-stage1-2-spec` → `main` | 문서·steering·1·2단계 spec | 해당 없음 | 해당 없음 |
+| 2 | [#3](https://github.com/creatingweb123/knu-aws-2026/pull/3) | `feat/be-1-2-foundation` → `docs/monorepo-stage1-2-spec` | 1·2단계 코드, SAM, 로컬 환경 | 225 passed | T1·T13 통과(2026-11-25) |
+| 3 | [#4](https://github.com/creatingweb123/knu-aws-2026/pull/4) | `feat/be-3-claim-transaction` → `feat/be-1-2-foundation` | 3단계 트랜잭션 G1–G4 | 284 passed | T3–T7·T14·T16 통과 |
+| 4 | [#5](https://github.com/creatingweb123/knu-aws-2026/pull/5) | `fix/be-3-aws-verify` → `feat/be-3-claim-transaction` | `token_use` 확인, 판정 기록(3.1절) | 289 passed | 수정 후 15건 통과 |
+| 5 | [#6](https://github.com/creatingweb123/knu-aws-2026/pull/6) | `fix/be-3-local-verify` → `fix/be-3-aws-verify` | 로컬 테스트 수정, `_cleanup` 보완(3.2절), 로컬 기록(5절) | 296 passed | `_cleanup` 보완은 미실행 |
+| 6 | [#1](https://github.com/creatingweb123/knu-aws-2026/pull/1) | `feat/be-4-inbox` → `fix/be-3-local-verify` | 4단계 수신함(묶음 A, 계약 변경 없음) | 385 passed | 미실행(3.3절) |
 
-6. (4단계) `feat/be-4-inbox` → `fix/be-3-local-verify`: 수신함 묶음(계약 변경 없음). `GET /claims/{claimId}/record` 구현(`feat/be-4-record-inbox`의 `f3626c0`)은 BE-Q46 승인 전에는 이 PR에 넣지 않는다
+- 묶음 B(`GET /claims/{claimId}/record`, `feat/be-4-record-inbox`의 `f3626c0`)는 PR을 열지 않았다. BE-Q46 승인과 docs/03 §3.4 수정 PR이 먼저다.
+- 모든 PR의 `cfn-lint`는 0건이다.
 
 비교 링크: `https://github.com/creatingweb123/knu-aws-2026/compare/<기준>...<브랜치>`
 
-3번 PR에는 3단계 spec(`.kiro/specs/backend-stage3-claim/`)과 docs/08 BE-Q34–BE-Q41 추가가 함께 들어 있다. spec은 리뷰 에이전트 검토를 한 번 거쳤다(지적 16건 반영, 반영 결과는 spec 미결 사항에 있다).
+3단계 PR(#4)에는 3단계 spec(`.kiro/specs/backend-stage3-claim/`)과 docs/08 BE-Q34–BE-Q41 추가가 함께 들어 있다. spec은 리뷰 에이전트 검토를 한 번 거쳤다(지적 16건 반영, 반영 결과는 spec 미결 사항에 있다).
 
 계약 변경(docs/07 §7.2, §7.8에 따라 다른 팀원 한 명이 리뷰):
 
-- 시간 형식을 밀리초 3자리로 고정(docs/03 공통 규칙에 반영)
-- API Gateway가 거부한 401은 본문 형식이 다르다(requirements 1.7, docs/03 §3.6 401 행에 반영)
+- 시간 형식을 밀리초 3자리로 고정(docs/03 공통 규칙에 반영, #3)
+- API Gateway가 거부한 401은 본문 형식이 다르다(requirements 1.7, docs/03 §3.6 401 행에 반영, #3). 액세스 토큰은 Lambda가 계약 형식 401로 거부한다(#5)
 - BE-Q23·BE-Q24·BE-Q29·BE-Q33의 임시 결정
-- **BE-Q46(4단계, 프론트엔드 담당 승인 필요)**: docs/03 §3.4 `GET /claims/{claimId}/record`에 "Claim·Record를 한 시점으로 읽는 트랜잭션 조회가 충돌 재시도(최초 1회 + 재시도 최대 3회, 누적 대기 175–350ms)를 모두 소진하면 503 `TRY_AGAIN`"을 적는 변경. 함께 볼 것: 스로틀링이나 충돌과 다른 사유가 섞인 취소를 503으로 볼지(지금은 500), 거부하면 대안 A(GetItem 2회, 불일치 허용)로 설계를 바꾼다. 승인 전에는 docs/03을 고치지 않았다
-- BE-Q45: InboxItem `claimerNickname` null 가능과 프론트 타입 `string`의 불일치
+- **BE-Q46(프론트엔드 담당 승인 필요)** — 권장안: TransactGetItems 스냅샷과 503 `TRY_AGAIN`을 유지한다. docs/03 §3.4 `GET /claims/{claimId}/record`에 "Claim·Record를 한 시점으로 읽는 트랜잭션 조회가 충돌 재시도(최초 1회 + 재시도 최대 3회, 누적 대기 175–350ms)를 모두 쓰면 503 `TRY_AGAIN`"을 적는다. 503은 §3.6·§3.7에 이미 있는 코드와 처리 규칙("같은 요청 1회 재시도 후 토스트")이라 새 코드가 아니다. 스로틀링·섞인 사유는 지금처럼 500으로 둔다(재시도해도 같은 사유일 수 있고 원인이 가려진다). 거부하면 대안 A(GetItem 2회, 불일치 허용)로 설계를 바꾼다. 승인 전에는 docs/03을 고치지 않았다
+- **BE-Q45(프론트엔드 담당 결정)** — 권장안: 프론트 타입을 `claimerNickname: string | null`로 바꾸고, UI가 `null`이면 기본 표시명(예: "이어받은 사람")을 보여 준다. 백엔드는 지금처럼 저장값이 없으면 `null`을 내보낸다(빈 문자열 같은 가짜 값을 저장·응답하지 않는다). 같은 성격의 `Me.nickname`, `UserRef.nickname`, `PlanSummary.ownerNickname`도 같은 방식으로 맞춘다. 정해지면 docs/03 §3.5에 "null일 수 있음"을 적는 계약 문서 수정이 필요하다(프론트 승인 뒤)
+- **BE-Q48(별도 개선 과제)** — 4단계 PR의 범위가 아니다. 모든 Lambda가 공유하는 DynamoDB 클라이언트의 SDK 타임아웃·재시도 정책(`connect_timeout`·`read_timeout`·재시도 모드·최대 시도)과 함수 타임아웃을 공통 개선 사항으로 따로 다룬다. AWS 측정(함수 소요 시간, 런타임 내장 botocore 버전·재시도 모드)을 받은 뒤 별도 spec·PR로 진행한다. 그 전까지 지금 설정을 유지한다
 
 프론트엔드 담당에게 전달할 것(S2, 프론트 코드는 이 작업에서 바꾸지 않았다. 상세는 spec design.md "프론트엔드 연동 주의사항 (S2)")
 
