@@ -46,7 +46,14 @@ PowerShell에서 `npm.ps1` 실행이 막혀 있으면 `npm.cmd`로 실행한다.
 - 화면 위쪽 검은 **목업 바**(개발 빌드 + 목업 모드에서만 보임)에서 사용자(지연·수현·민준)를 고른다. 목업 모드에서는 고른 사용자로 로그인된 상태로 본다(FE-Q10, FE-Q13).
 - 사용자 선택은 **탭별**이다. 탭 A는 수현, 탭 B는 민준으로 두면 같은 목업 데이터에서 동시 이어받기 경합을 재현할 수 있다(2단계).
 - 목업 데이터는 localStorage `haru.mock.db`에 있어 탭끼리 공유된다. 목업 바의 **초기화**로 시드로 되돌린다.
-- 시나리오는 진입 URL의 `?mock=값`으로 고르고 탭을 닫을 때까지 유지된다(FE-Q11). `?mock=`(빈 값)이면 지운다. 시나리오 처리는 5단계(사진)·6단계(AI)에서 추가한다.
+- 시나리오는 진입 URL의 `?mock=값`으로 고르고 탭을 닫을 때까지 유지된다(FE-Q11). `?mock=`(빈 값)이면 지운다. 사진(5단계)·AI(6단계) 시나리오는 그 단계에서 추가한다.
+
+| 시나리오               | 동작                                                           | 단계 |
+| ---------------------- | -------------------------------------------------------------- | ---- |
+| `?mock=claim-conflict` | 이어받기가 항상 409 `ALREADY_CLAIMED`(한 탭에서 2-1 안내 확인) | 2    |
+| `?mock=browse-empty`   | 둘러보기 목록이 비어 있음(빈 상태 확인)                        | 2    |
+
+두 탭 경합 확인: 목업 바에서 **초기화** → 탭 A 수현, 탭 B 민준으로 `/plans/pln_demo`를 연다 → A에서 이어받기(내 하루로 이동) → B에서 이어받기(같은 화면에 "이미 다른 사람이 이어받았어요").
 
 시드 데이터(`src/mocks/db.ts`, FE-Q15)
 
@@ -67,10 +74,10 @@ src/
   auth/       tokens.ts(getIdToken, 7단계에 Amplify로 교체), RequireAuth.tsx
   components/ Header, BottomTab, PrimaryButton, StatusBadge, RouteTimeline, TextField/TextArea,
               Toast, ResultScreen, PageTitle, Layout, DevMockBar(개발 전용)
-  pages/      login/ browse/ (2–6단계에 plan/ me/ record/ inbox/ 추가)
+  pages/      login/ browse/ plan/(상세·이어받기) (3–6단계에 me/ record/ inbox/ 추가)
   mocks/      db.ts, session.ts, handlers/, browser.ts
   styles/     tokens.css, global.css
-  utils/      date.ts(KST)
+  utils/      date.ts(KST), plan.ts
   routes.tsx  경로 표(docs/05 §5.1)
 ```
 
@@ -89,3 +96,4 @@ src/
 | FE-Q14 | 시스템 글꼴, 4px 간격, 모서리 14px(추정값)                                  |
 | FE-Q15 | 시드 장소 이름은 명세(출근길 빵집)                                          |
 | FE-Q16 | Node 22, 버전은 `package-lock.json`으로 고정                                |
+| FE-Q17 | 2단계 목업 시나리오 `claim-conflict`, `browse-empty`                        |

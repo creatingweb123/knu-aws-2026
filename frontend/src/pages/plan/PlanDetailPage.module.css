@@ -1,0 +1,94 @@
+.cover {
+  height: 140px;
+  margin: 0 calc(var(--space-4) * -1) var(--space-5);
+  background: linear-gradient(135deg, var(--color-record), var(--color-plan));
+}
+
+.badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+.title {
+  font-size: var(--font-size-title);
+  font-weight: 700;
+  line-height: var(--line-height-title);
+}
+
+.summary {
+  margin-top: var(--space-2);
+  color: var(--color-text-sub);
+}
+
+.meta {
+  margin-top: var(--space-2);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-sub);
+}
+
+/* "지연 · 취소한 이유" 박스(docs/05 §5.5) */
+.planner {
+  margin-top: var(--space-5);
+  padding: var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--color-plan);
+}
+
+.planner-label {
+  font-size: var(--font-size-sm);
+  font-weight: 700;
+}
+
+.planner-reason {
+  margin-top: var(--space-2);
+}
+
+.section {
+  margin-top: var(--space-6);
+}
+
+.section-title {
+  margin-bottom: var(--space-4);
+  font-size: var(--font-size-md);
+  font-weight: 700;
+}
+
+/* 2-1 안내 박스 */
+.notice {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-6);
+  padding: var(--space-5) var(--space-4) var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--color-plan);
+}
+
+.notice-title {
+  font-weight: 700;
+}
+
+.notice-text {
+  margin-bottom: var(--space-2);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-sub);
+}
+
+.status {
+  padding: var(--space-6) 0;
+  text-align: center;
+  color: var(--color-text-sub);
+}
+
+.retry {
+  margin-top: var(--space-3);
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--color-primary);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-primary);
+  font-weight: 700;
+  cursor: pointer;
+}

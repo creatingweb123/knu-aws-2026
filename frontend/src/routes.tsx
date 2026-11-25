@@ -10,6 +10,7 @@ import type { RouteObject } from 'react-router-dom';
 import { RequireAuth } from './auth/RequireAuth';
 import { Layout } from './components/Layout';
 import { BrowsePage } from './pages/browse/BrowsePage';
+import { PlanDetailPage } from './pages/plan/PlanDetailPage';
 import { LoginPage } from './pages/login/LoginPage';
 import { NotFoundPage } from './pages/NotFoundPage';
 import { Placeholder } from './pages/Placeholder';
@@ -35,7 +36,14 @@ export const SCREENS: ScreenRoute[] = [
   { path: '/plans/new/card', screen: '3-1', name: 'AI와 함께 정리하기', back: true, stage: 6 },
   { path: '/plans/new/form', screen: '3-2', name: '하루 남기기', back: true, stage: 3 },
   { path: '/plans/new/place', screen: '3-3', name: '장소 추가', back: true, stage: 3 },
-  { path: '/plans/:planId', screen: '2', name: '하루 들여다보기', back: true, stage: 2 },
+  {
+    path: '/plans/:planId',
+    screen: '2',
+    name: '하루 들여다보기',
+    back: true,
+    stage: 2,
+    element: <PlanDetailPage />,
+  },
   { path: '/plans/:planId/published', screen: '3-4', name: '공개 완료', stage: 3 },
   { path: '/me', screen: '4', name: '내 하루', tab: true, stage: 4 },
   { path: '/claims/:claimId/abandon', screen: '4-1', name: '이어받기 포기 확인', back: true, stage: 4 },

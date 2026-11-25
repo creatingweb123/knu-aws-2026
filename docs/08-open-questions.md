@@ -70,6 +70,7 @@
 | FE-Q14 | 글꼴·글자 크기·간격·그림자 토큰이 문서에 없다(색과 모서리 12–16px만 있음). | 시스템 글꼴, 4px 단위 간격, 모서리 14px로 두고 `tokens.css`에 추정값으로 표시한다(FE-Q5처럼 값만 교체). |
 | FE-Q15 | 목업 시드 계획의 예시 장소 이름(§5.6 3번). | 명세(§2.5)의 "출근길 빵집"·"하천 산책로 벤치"를 쓴다. |
 | FE-Q16 | 프론트 도구 버전(문서에 없음). | Node 22 LTS, React 18, Vite·React Router·TanStack Query·MSW·Vitest는 1단계 시점의 안정판을 `package-lock.json`으로 고정한다. |
+| FE-Q17 | 2단계(둘러보기·이어받기) 분기를 한 탭에서 확인할 목업 시나리오 이름(§2.10은 AI·사진 경로만 정했다). | `?mock=claim-conflict`: `POST /plans/{planId}/claims`가 판정 없이 409 `ALREADY_CLAIMED`. `?mock=browse-empty`: `GET /plans?status=OPEN`이 빈 `items`. 두 탭 경합은 시나리오 없이 FE-Q10의 탭별 사용자로 재현한다. |
 
 ## 8.3 결정 시점
 
@@ -79,6 +80,7 @@
 |---|---|
 | 구현을 시작하기 전 | FE-Q3(결정: CSS Modules), BE-Q15·FE-Q9, 단계별 담당자와 날짜 |
 | 프론트 1단계(세팅·공통 레이아웃) | FE-Q10–FE-Q16 (임시 결정으로 구현) |
+| 프론트 2단계(둘러보기·이어받기) | FE-Q17 (임시 결정으로 구현) |
 | 백엔드 1단계(로컬 환경 구성) | BE-Q17·FE-Q8, BE-Q16, BE-Q27, BE-Q28, BE-Q30 |
 | 백엔드 2단계(계획 API) | BE-Q22, BE-Q23, BE-Q24, BE-Q25, BE-Q29, BE-Q31, BE-Q32, BE-Q33 |
 | 백엔드 3단계(이어받기·포기·완료) | BE-Q34–BE-Q41 (임시 결정으로 구현, AWS 판정 때 확인) |

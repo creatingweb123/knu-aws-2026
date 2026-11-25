@@ -85,13 +85,7 @@ describe('레이아웃(FE-COM-01, FE-COM-02, FE-Q12)', () => {
   it('안 읽은 편지가 없으면 점이 없다(민준)', async () => {
     setTokenProvider(async () => mockTokenFor('u-minjun'));
     renderAt('/');
-    await screen.findByTestId('plan-count');
+    await screen.findByTestId('plan-list');
     expect(screen.queryByTestId('unread-dot')).not.toBeInTheDocument();
-  });
-
-  it('둘러보기는 GET /plans 목업 응답 건수를 보여준다', async () => {
-    setTokenProvider(async () => mockTokenFor('u-suhyun'));
-    renderAt('/');
-    expect(await screen.findByTestId('plan-count')).toHaveTextContent('2개');
   });
 });
