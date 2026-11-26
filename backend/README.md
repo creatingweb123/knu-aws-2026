@@ -115,7 +115,7 @@ T3·T4·T5에서 503 `TRY_AGAIN`은 나오지 않았다.
 
 - 테스트 정리 후에도 Cognito 사용자 15명과 `HaruTable` 항목 30개(멱등 키 `IDEM#` 14, Plan 4, Claim 4, ClaimLookup 4, Record 3, InboxItem 1)가 남았다. `_cleanup`은 `IDEM#{sub}#…` 파티션을 지우지 않는다. 사용자가 남은 원인은 확인하지 않았다(`_cleanup`이 삭제 예외를 무시하므로 로그가 없다). 정리 코드 보완이 필요하다(개발 담당).
   - **보완(2026-11-25, 개발 담당, `fix/be-3-local-verify`)**: 3.2절. AWS에서 다시 실행하지 않았다. 남아 있는 항목은 지우지 않았다(아래 3.2절 "남은 데이터").
-- 결과 로그(`test-results/`)는 이 PC에만 있다. 저장소에 넣을지, 따로 보관할지 팀이 정한다.
+- 결과 로그(`test-results/`)는 이 PC에만 있다. 저장소에 넣을지, 따로 보관할지 팀이 정한다. 2026-11-26부터 `backend/.gitignore`에 `test-results/`를 넣어 실수로 커밋되지 않게 했다(기존 기록은 AWS 담당 PC에 그대로 있고 지우지 않았다). 저장소에 넣기로 하면 `git add -f`로 명시적으로 넣는다. 테스트는 `backend/`에서 실행한다(`RESULTS_DIR`는 실행 위치 기준 상대 경로).
 
 ### 3.2 테스트 데이터 정리(`_cleanup`) 보완
 
@@ -485,20 +485,20 @@ python scripts/photo_dlq_recover.py --stack haru-dev --apply --confirm-stack har
   | 스택 재확인 | `--confirm-stack` = `--stack` | `confirm_stack_mismatch` |
   | 이벤트 소스 매핑 | 처리 함수의 매핑이 모두 `Disabled`, 스택의 `PhotoProcessorQueueMapping`이 그중에 있음, 마지막 변경 뒤 60초(함수 타임아웃 30초의 2배) 이상 | `mapping_not_disabled:<State>`, `mapping_not_found`, `mapping_disabled_less_than_60s`, `mapping_unavailable:*` |
   | 처리 중 메시지 | PhotoQueue `ApproximateNumberOfMessagesNotVisible`를 5초 간격으로 3번 읽어 모두 0(근사값이라 한 번만 보지 않는다). 대기 중(Visible) 메시지는 매핑이 꺼져 있으면 처리되지 않으므로 막지 않는다 | `queue_in_flight_not_zero` |
-  | 실행 종료 | CloudWatch `AWS/Lambda` `ConcurrentExecutions`(함수 차원)를 읽을 수 있고, 매핑 변경 시각 + 30초 이후 최대값이 0(데이터 없음은 호출 없음으로 본다) | `executions_after_disable`, `executions_unavailable:*` |
+  | 실행 종료 | CloudWatch `AWS/Lambda` `ConcurrentExecutions`(함수 차원). 지표가 늦게 들어오므로 매핑 변경 + 30초 뒤 300초가 지나야 판단한다(즉 매핑을 끈 뒤 최소 330초). 데이터 점이 있으면 최대값이 0이어야 한다. **데이터 점이 없으면 0으로 보지 않는다.** 호출 없음, 아직 안 들어온 지표, 함수 이름·리전 불일치를 구분할 수 없기 때문이다. 이때는 `ListMetrics`로 그 함수의 지표가 있을 때(이름·리전이 맞고 최근 2주 안에 호출됨)만 "호출 없음"으로 추정해 통과시키고, 출력에 `executions=no_datapoints(inferred_idle…)`로 측정값이 아님을 표시한다 | `executions_metric_not_settled_300s`, `executions_after_disable`, `executions_no_data_metric_unknown`, `executions_unavailable:*`, `executions_since_unknown` |
 
 - 절차
   1. dry-run으로 판정을 본다(60초 가시성 변경을 감안한다).
   2. `aws lambda list-event-source-mappings --function-name <PhotoProcessorFunction>`으로 PhotoQueue 매핑 UUID를 찾는다.
   3. `aws lambda update-event-source-mapping --uuid <UUID> --no-enabled`, `get-event-source-mapping`의 `State`가 `Disabled`가 될 때까지 기다린다. 끈 시각을 기록한다.
-  4. 최소 60초 기다린다. 함수 로그에 새 `START` 줄이 없는지도 눈으로 본다(스크립트는 로그를 읽지 않는다).
-  5. `--apply --confirm-stack <스택>`으로 실행한다. `BLOCKED`면 사유를 해소하고 다시 실행한다. CloudWatch 지표는 1–2분 늦게 들어오므로 `executions_after_disable`이 나오면 몇 분 뒤 다시 본다.
+  4. 최소 330초(매핑 60초 조건과 지표 지연 300초 조건) 기다린다. 함수 로그에 새 `START` 줄이 없는지도 눈으로 본다(스크립트는 로그를 읽지 않는다).
+  5. `--apply --confirm-stack <스택>`으로 실행한다. `BLOCKED`면 사유를 해소하고 다시 실행한다. `executions_no_data_metric_unknown`이면 함수 이름·리전을 확인하고, 최근 2주 동안 호출이 없던 함수라면 콘솔에서 실행이 없음을 직접 확인한 뒤 개발 담당과 상의한다(스크립트로는 통과시키지 않는다).
   6. 스크립트는 실행 뒤 매핑 상태를 한 번 더 읽어, 실행 중에 누가 매핑을 켰으면 `WARNING`을 출력한다(쓴 항목은 조건부라 깨지지 않는다).
   7. `aws lambda update-event-source-mapping --uuid <UUID> --enabled`로 다시 켜고 `State = Enabled`를 확인한다. 꺼 둔 동안 들어온 메시지는 큐에 남아 있다가 처리된다(가시성·보존 기간 안).
   - 매핑 끄기·켜기는 운영 변경이다. AWS 담당이 하고 시각을 기록한다. 스크립트는 매핑을 바꾸지 않는다.
 - 안전 확인을 통과한 뒤에 늦게 시작한 실행이 있더라도 데이터는 깨지지 않는다. 그 실행의 완료는 `photoStatus = PROCESSING` 조건이 맞지 않아 거부되고, 그 실행은 자기 처리본만 지운다. 다만 성공했을 사진이 `FAILED`로 보일 수 있다(사용자는 교체·글로 완료 가능).
 - 복구 뒤 메시지: "복구 대상(적용됨)·이미 실패·지난 메시지"는 운영자가 판정을 확인한 뒤 직접 지운다(스크립트 실행 뒤 60초가 지나야 다시 보인다). "비정상"은 남겨 개발 담당에게 넘긴다. redrive는 원인을 고친 뒤 운영자가 판단해 한다(redrive된 메시지는 무시 조건으로 안전하게 끝난다).
-- 운영자 권한: PhotoDLQ `sqs:ReceiveMessage`, PhotoQueue `sqs:GetQueueAttributes`, HaruTable `dynamodb:GetItem`·`UpdateItem`, `cloudformation:DescribeStacks`·`DescribeStackResource`, `lambda:ListEventSourceMappings`(`--apply` 필수), `cloudwatch:GetMetricStatistics`(`--apply` 필수, dry-run은 선택). 매핑 절차에는 `lambda:GetEventSourceMapping`·`UpdateEventSourceMapping`.
+- 운영자 권한: PhotoDLQ `sqs:ReceiveMessage`, PhotoQueue `sqs:GetQueueAttributes`, HaruTable `dynamodb:GetItem`·`UpdateItem`, `cloudformation:DescribeStacks`·`DescribeStackResource`, `lambda:ListEventSourceMappings`(`--apply` 필수), `cloudwatch:GetMetricStatistics`(`--apply` 필수, dry-run은 선택), `cloudwatch:ListMetrics`(`--apply` 필수). 매핑 절차에는 `lambda:GetEventSourceMapping`·`UpdateEventSourceMapping`.
 
 ### 10.4 알려진 한계
 

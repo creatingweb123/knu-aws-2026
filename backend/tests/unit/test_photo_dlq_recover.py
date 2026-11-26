@@ -57,14 +57,21 @@ class FakeLambda:
 
 
 class FakeCw:
-    def __init__(self, peaks=(), fail=None):
+    def __init__(self, peaks=(), fail=None, metric_exists=True, list_fail=None):
         self.peaks, self.fail, self.calls = list(peaks), fail, []
+        self.metric_exists, self.list_fail, self.list_calls = metric_exists, list_fail, []
 
     def get_metric_statistics(self, **kw):
         self.calls.append(kw)
         if self.fail:
             raise self.fail
         return {"Datapoints": [{"Maximum": v} for v in self.peaks]}
+
+    def list_metrics(self, **kw):
+        self.list_calls.append(kw)
+        if self.list_fail:
+            raise self.list_fail
+        return {"Metrics": [{"MetricName": "ConcurrentExecutions", "Dimensions": kw["Dimensions"]}] if self.metric_exists else []}
 
 
 def apply_kw(**over):
@@ -218,7 +225,9 @@ def test_gate_passes_and_reports(env):
     lines = []
     lam = FakeLambda()
     res = rec_mod.run(sqs=sqs, dlq_url=dlq, queue_url=q, function="haru-dev-PhotoProcessorFunction-x", apply=True, out=lines.append, **apply_kw(lam=lam))
-    assert res["gate"]["in_flight_samples"] == [0, 0, 0] and res["gate"]["executions_peak"] == 0
+    assert res["gate"]["in_flight_samples"] == [0, 0, 0]
+    assert res["gate"]["executions"] == {"data": "none_inferred_idle", "peak": None, "points": 0}  # 0으로 적지 않는다
+    assert any(line.startswith("apply_gate ok") and "no_datapoints(inferred_idle" in line and "peak=0" not in line for line in lines)
     assert any(line.startswith("apply_gate ok") for line in lines) and any(line.startswith("NEXT") for line in lines)
     assert lam.calls == ["haru-dev-PhotoProcessorFunction-x"] * 2  # 실행 전 확인 + 실행 뒤 재확인. 매핑을 바꾸지 않는다
 
@@ -270,9 +279,50 @@ def test_gate_executions_after_disable_block(env):
 def test_gate_executions_window_starts_after_disable(env):
     cw = FakeCw()
     _, sqs, dlq, q, _ = env
-    rec_mod.run(sqs=sqs, dlq_url=dlq, queue_url=q, function="f", apply=True, out=lambda *_: None, **apply_kw(cw=cw, lam=FakeLambda(age_s=120)))
+    rec_mod.run(sqs=sqs, dlq_url=dlq, queue_url=q, function="f", apply=True, out=lambda *_: None, **apply_kw(cw=cw, lam=FakeLambda(age_s=400)))
     start = cw.calls[-1]["StartTime"]
-    assert start == T0 - timedelta(seconds=120) + timedelta(seconds=rec_mod.FUNCTION_TIMEOUT_S)
+    assert start == T0 - timedelta(seconds=400) + timedelta(seconds=rec_mod.FUNCTION_TIMEOUT_S)
+
+
+# ConcurrentExecutions 데이터 없음을 측정값 0으로 보지 않는다
+
+
+def test_no_data_with_unknown_metric_blocks(env):
+    """함수 이름·리전이 틀렸거나 지표가 없으면 데이터 점도 없다. 0으로 통과시키지 않는다."""
+    assert "executions_no_data_metric_unknown" in _blocked(env, cw=FakeCw(metric_exists=False))
+
+
+def test_no_data_list_metrics_failure_blocks(env):
+    assert any(r.startswith("executions_unavailable") for r in _blocked(env, cw=FakeCw(list_fail=RuntimeError("AccessDenied"))))
+
+
+@pytest.mark.parametrize("peaks", [(), (0, 0)])
+def test_metric_delay_not_settled_blocks(env, peaks):
+    """매핑 변경 + 30초 뒤 300초가 안 지났으면 데이터가 있든 없든 막는다(지표가 늦게 들어온다)."""
+    reasons = _blocked(env, cw=FakeCw(peaks=peaks), lam=FakeLambda(age_s=rec_mod.FUNCTION_TIMEOUT_S + rec_mod.METRIC_DELAY_S - 1))
+    assert f"executions_metric_not_settled_{rec_mod.METRIC_DELAY_S}s" in reasons
+
+
+def test_measured_zero_passes_and_is_labelled_measured(env):
+    _, sqs, dlq, q, _ = env
+    lines = []
+    res = rec_mod.run(sqs=sqs, dlq_url=dlq, queue_url=q, function="f", apply=True, out=lines.append, **apply_kw(cw=FakeCw(peaks=(0, 0, 0))))
+    assert res["gate"]["executions"] == {"data": "measured", "peak": 0, "points": 3}
+    assert any("executions=measured peak=0 points=3" in line for line in lines)
+
+
+def test_executions_check_unit_no_data_is_not_zero():
+    reasons, seen = rec_mod.executions_check(FakeCw(metric_exists=False), "wrong-name", T0 - timedelta(seconds=61), T0)
+    assert seen["peak"] is None and seen["data"] == "none"
+    assert "executions_no_data_metric_unknown" in reasons and any(r.startswith("executions_metric_not_settled") for r in reasons)
+
+
+def test_dry_run_info_reports_no_data_not_zero(env):
+    _, sqs, dlq, q, _ = env
+    lines = []
+    res = rec_mod.run(sqs=sqs, cw=FakeCw(), dlq_url=dlq, queue_url=q, function="f", apply=False, out=lines.append)
+    assert res["safety"]["concurrent_executions_max_5m"] == "no_data"
+    assert any("concurrent_executions_max_5m=no_data" in line for line in lines)
 
 
 @pytest.mark.parametrize("cw", [None, FakeCw(fail=RuntimeError("AccessDenied"))])

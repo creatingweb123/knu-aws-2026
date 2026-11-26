@@ -5,3 +5,5 @@ __pycache__/
 *.pyc
 .pytest_cache/
 .hypothesis/
+# AWS 판정 결과 로그(save_result). 보관 방법은 팀이 정한다(README 3.1절). 저장소에 넣을 때만 git add -f
+test-results/

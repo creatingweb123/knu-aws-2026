@@ -13,7 +13,10 @@
   2. 처리 함수의 이벤트 소스 매핑이 모두 `Disabled`이고, 마지막 변경 뒤 `MAPPING_QUIET_S`(60초, 함수 타임아웃 30초의 2배) 이상 지났다.
   3. PhotoQueue의 처리 중 메시지(ApproximateNumberOfMessagesNotVisible)가 `QUEUE_SAMPLES`번(간격 `QUEUE_SAMPLE_INTERVAL_S`초) 모두 0.
      값이 근사값이라 한 번만 보지 않는다. 대기 중 메시지(Visible)는 매핑이 꺼져 있으면 처리되지 않으므로 막지 않는다.
-  4. 처리 함수의 CloudWatch `ConcurrentExecutions`(함수 차원)를 읽을 수 있고, 매핑을 끈 시각 + 함수 타임아웃 이후 최대값이 0.
+  4. 처리 함수의 CloudWatch `ConcurrentExecutions`(함수 차원)로 실행 종료를 본다. 지표는 늦게 들어오므로 매핑을 끈 시각 +
+     함수 타임아웃 뒤 `METRIC_DELAY_S`(300초)가 지나야 판단한다. 데이터 점이 있으면 최대값이 0이어야 한다(측정값 0).
+     데이터 점이 없으면 **0으로 보지 않는다**. 그 함수의 지표가 CloudWatch에 있을 때(ListMetrics, 함수 이름·리전이 맞고
+     최근 2주 안에 호출됨)만 "데이터 없음 = 호출 없음"으로 추정해 통과시키고, 출력에 측정값이 아닌 추정임을 표시한다.
      권한이 없거나 조회에 실패하면 통과로 보지 않는다.
 - 쓰기 조건: photoKey = 그 메시지의 키 AND photoStatus = PROCESSING AND attribute_not_exists(deliveredAt).
 - SQS 메시지 수는 근사값이다. 처리 중 실행이 없다는 것을 확실히 하려면 런북의 이벤트 소스 매핑 끄기 절차를 먼저 한다.
@@ -51,6 +54,7 @@ MAPPING_QUIET_S = 2 * FUNCTION_TIMEOUT_S
 QUEUE_SAMPLES = 3
 QUEUE_SAMPLE_INTERVAL_S = 5
 DLQ_VISIBILITY_S = 60
+METRIC_DELAY_S = 300  # Lambda 표준 지표가 CloudWatch에 들어오기까지의 여유(늦게 들어온 실행을 놓치지 않게)
 EXIT_BLOCKED = 2
 
 
@@ -85,7 +89,8 @@ def safety_check(sqs: Any, cw: Any, queue_url: str, function: str | None) -> dic
             now = datetime.now(timezone.utc)
             points = cw.get_metric_statistics(Namespace="AWS/Lambda", MetricName="ConcurrentExecutions", Dimensions=[{"Name": "FunctionName", "Value": function}],
                                               StartTime=now - timedelta(minutes=5), EndTime=now, Period=60, Statistics=["Maximum"])["Datapoints"]
-            out["concurrent_executions_max_5m"] = max((p["Maximum"] for p in points), default=0)
+            # 데이터 점이 없으면 0이 아니라 "no_data"로 적는다(호출 없음·지연·이름 불일치를 구분할 수 없다)
+            out["concurrent_executions_max_5m"] = max(p["Maximum"] for p in points) if points else "no_data"
         except Exception as e:  # noqa: BLE001  권한이 없으면 "확인 못 함"
             out["concurrent_executions_max_5m"] = f"unavailable:{type(e).__name__}"
     return out
@@ -138,21 +143,46 @@ def in_flight_check(sqs: Any, queue_url: str, sleep: Callable[[float], None]) ->
     return (["queue_in_flight_not_zero"] if any(samples) else []), samples
 
 
-def executions_check(cw: Any, function: str, since: datetime | None, now: datetime) -> tuple[list[str], Any]:
-    """매핑을 끈 뒤(+함수 타임아웃) 실행이 없었는지. 지표가 없으면(호출 없음) 0으로 본다. 조회 실패는 실패다."""
+def executions_check(cw: Any, function: str, since: datetime | None, now: datetime) -> tuple[list[str], dict[str, Any]]:
+    """매핑을 끈 뒤(+함수 타임아웃) 실행이 없었는지. (실패 사유, 관측값).
+
+    관측값 `data`: "measured"(데이터 점이 있고 최대값을 읽음), "none_inferred_idle"(데이터 점 없음, 지표 존재 확인으로
+    호출 없음을 추정), "none"(데이터 점 없음, 추정 불가), "unavailable"(조회 실패). 데이터 점이 없을 때 `peak`는 None이다.
+    """
+    seen: dict[str, Any] = {"data": "unavailable", "peak": None, "points": 0}
     if cw is None:
-        return ["executions_unavailable:no_client"], None
-    start = max((since or now) + timedelta(seconds=FUNCTION_TIMEOUT_S), now - timedelta(minutes=10))
+        return ["executions_unavailable:no_client"], seen
+    if since is None:
+        return ["executions_since_unknown"], seen
+    window_start = since + timedelta(seconds=FUNCTION_TIMEOUT_S)
+    reasons: list[str] = []
+    if (now - window_start).total_seconds() < METRIC_DELAY_S:
+        reasons.append(f"executions_metric_not_settled_{METRIC_DELAY_S}s")
+    start = max(window_start, now - timedelta(minutes=30))
     if start >= now:
         start = now - timedelta(seconds=60)
+    dims = [{"Name": "FunctionName", "Value": function}]
     try:
-        points = cw.get_metric_statistics(Namespace="AWS/Lambda", MetricName="ConcurrentExecutions",
-                                          Dimensions=[{"Name": "FunctionName", "Value": function}],
+        points = cw.get_metric_statistics(Namespace="AWS/Lambda", MetricName="ConcurrentExecutions", Dimensions=dims,
                                           StartTime=start, EndTime=now, Period=60, Statistics=["Maximum"])["Datapoints"]
     except Exception as e:  # noqa: BLE001
-        return [f"executions_unavailable:{type(e).__name__}"], None
-    peak = max((p["Maximum"] for p in points), default=0)
-    return (["executions_after_disable"] if peak else []), peak
+        return reasons + [f"executions_unavailable:{type(e).__name__}"], seen
+    seen["points"] = len(points)
+    if points:
+        seen["data"], seen["peak"] = "measured", max(p["Maximum"] for p in points)
+        if seen["peak"]:
+            reasons.append("executions_after_disable")
+        return reasons, seen
+    try:
+        known = cw.list_metrics(Namespace="AWS/Lambda", MetricName="ConcurrentExecutions", Dimensions=dims).get("Metrics", [])
+    except Exception as e:  # noqa: BLE001
+        return reasons + [f"executions_unavailable:{type(e).__name__}"], seen
+    if known:
+        seen["data"] = "none_inferred_idle"
+    else:
+        seen["data"] = "none"
+        reasons.append("executions_no_data_metric_unknown")
+    return reasons, seen
 
 
 def apply_gate(*, stack: str, confirm_stack: str | None, sqs: Any, cw: Any, lam: Any, queue_url: str, function: str | None,
@@ -166,11 +196,11 @@ def apply_gate(*, stack: str, confirm_stack: str | None, sqs: Any, cw: Any, lam:
         raise ApplyBlocked(reasons)
     m_reasons, m_seen = mapping_check(lam, function, mapping, now)
     q_reasons, samples = in_flight_check(sqs, queue_url, sleep)
-    e_reasons, peak = executions_check(cw, function, m_seen["disabled_since"], now)
+    e_reasons, e_seen = executions_check(cw, function, m_seen["disabled_since"], now)
     reasons += m_reasons + q_reasons + e_reasons
     if reasons:
         raise ApplyBlocked(reasons)
-    return {"mappings": m_seen["mappings"], "in_flight_samples": samples, "executions_peak": peak}
+    return {"mappings": m_seen["mappings"], "in_flight_samples": samples, "executions": e_seen}
 
 
 def read_dlq(sqs: Any, dlq_url: str, limit: int) -> list[str]:
@@ -229,7 +259,11 @@ def run(*, sqs: Any, cw: Any, dlq_url: str, queue_url: str, function: str | None
             out("BLOCKED --apply 안전 확인 실패: " + " ".join(e.reasons))
             out("DLQ를 읽지 않았고 아무것도 쓰지 않았다. 런북(backend/README.md 10.3절)의 매핑 끄기·실행 종료 확인 뒤 다시 실행한다.")
             return {"safety": safety, "counts": {}, "blocked": e.reasons}
-        out(f"apply_gate ok in_flight_samples={gate['in_flight_samples']} executions_peak={gate['executions_peak']}")
+        ex = gate["executions"]
+        if ex["data"] == "measured":
+            out(f"apply_gate ok in_flight_samples={gate['in_flight_samples']} executions=measured peak={ex['peak']} points={ex['points']}")
+        else:  # 측정값 0이 아니라 추정이다
+            out(f"apply_gate ok in_flight_samples={gate['in_flight_samples']} executions=no_datapoints(inferred_idle: metric exists, no data after disable)")
     else:
         out(f"NOTE dry-run도 ReceiveMessage를 부른다. 읽은 DLQ 메시지는 {DLQ_VISIBILITY_S}초 동안 보이지 않고 수신 횟수가 1 오른다.")
     counts: dict[str, int] = {}
