@@ -215,16 +215,17 @@ push 전 확인(각 Checkpoint와 push마다)
   - 14 전부 통과, 단위 전체 실패 0. **push 전 확인 → commit → push.**
   - _Requirements: 24.6_
 
-- [ ] 16. 로컬 통합 (`tests/local/test_local_agent.py`)
+- [x] 16. 로컬 통합 (`tests/local/test_local_agent.py`)
   - 선행: 13, 14
-  - [ ] 16.1 `AGENT_MODE=agent`로 띄웠을 때만 도는 사례: `ask_once`(생성 ASKING → 답 → READY → `POST /plans` 지표), `finish`, `WORKING` 이어가기(`slow_agent`), 같은 턴 동시 5요청, 중복 답변, 체크포인트 삭제 확인.
+  - [x] 16.1 `AGENT_MODE=agent`로 띄웠을 때만 도는 사례: `ask_once`(생성 ASKING → 답 → READY → `POST /plans` 지표), `finish`, `WORKING` 이어가기(`slow_agent`), 같은 턴 동시 5요청, 중복 답변, 체크포인트 삭제 확인.
     - _Requirements: 21.1, 21.4_
-  - [ ] 16.2 강제 종료 복구: 테스트 전용 주입(`STAGE=local` + `AGENT_TEST_HOOKS=true`)으로 어댑터 처리 중 `os._exit` → 컨테이너 재시작 → 다음 요청으로 복구(F2·F4·F6 최소).
+  - [x] 16.2 강제 종료 복구: 테스트 전용 주입(`STAGE=local` + `AGENT_TEST_HOOKS=true`)으로 어댑터 처리 중 `os._exit` → 컨테이너 재시작 → 다음 요청으로 복구(F2·F4·F6 최소).
     - _Requirements: 21.3_
-  - [ ] 16.3 모드 전환: 같은 볼륨에서 `AGENT_MODE`를 바꿔 다시 띄우고 진행 중 세션 폐쇄 확인.
+  - [x] 16.3 모드 전환: 같은 볼륨에서 `AGENT_MODE`를 바꿔 다시 띄우고 진행 중 세션 폐쇄 확인.
     - _Requirements: 15.6_
-  - [ ] 16.4 실행: 기본(`pipeline`) 상태에서 **기존 23건 통과**, `agent`로 다시 띄워 새 사례 통과. 결과에 `llmMode: fake`, 판정 근거 아님.
+  - [x] 16.4 실행: 기본(`pipeline`) 상태에서 **기존 23건 통과**, `agent`로 다시 띄워 새 사례 통과. 결과에 `llmMode: fake`, 판정 근거 아님.
     - _Requirements: 20.5, 21.4_
+    - 상태(2026-11-26, llmMode: fake, 판정 근거 아님): 기본 pipeline에서 기존 23건 통과. `AGENT_MODE=agent FAKE_LLM_SCENARIO=ask_once` + `LOCAL_AGENT_MODE=agent LOCAL_COMPOSE_CONTROL=1`에서 새 9건 통과(동시 5요청 200 1건·409 BUSY 4건, ai-slow 3요청 37.8초, 강제 종료 F2·F4·F6 복구, 모드 전환). `check_ai_build.py --local-ddb-network haru_default` 통과. 컨테이너를 다시 띄우면 dev 토큰 서명 키가 바뀌므로 토큰을 다시 받는다.
 
 - [ ] 17. AWS 통합 테스트 작성 (`tests/integration/test_ai.py`, 작성·수집만)
   - 선행: 10, 13

@@ -21,6 +21,8 @@ LIMIT = int(os.environ.get("LOCAL_AI_DAILY_SESSION_LIMIT", "10"))
 
 
 def only(scenario):
+    if os.environ.get("LOCAL_AGENT_MODE") == "agent":  # 6b: 레벨 0 사례는 pipeline 모드에서만(에이전트는 test_local_agent.py)
+        return pytest.mark.skip(reason="레벨 0 사례. AGENT_MODE=pipeline(기본)으로 띄웠을 때만")
     return pytest.mark.skipif(SCENARIO != scenario, reason=f"어댑터를 FAKE_LLM_SCENARIO={scenario}로 띄우고 LOCAL_FAKE_SCENARIO={scenario}로 실행할 때만")
 
 
