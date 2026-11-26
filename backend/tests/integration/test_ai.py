@@ -239,9 +239,16 @@ def test_T19_privacy_not_published(stack, ai_env):
 
 
 def test_T20_concurrent_same_turn(stack, ai_env):
+    """T20(design §20.4, 판정 기준 보강): 같은 expectedTurn으로 5회 동시. 세부 기준은 tests/integration/verdicts.py.
+
+    - 커밋 1회, 응답은 200(1건 이상)과 AI_SESSION_BUSY 409, 200 본문은 같은 턴의 같은 SessionView.
+    - 추가 호출 0: 예약 증가 = 커밋된 턴의 모델 호출 수. 중복 요청은 모델을 부르지도 예약을 쓰지도 않는다.
+    - 세션당 예약 상한 6.
+    """
     from concurrent.futures import ThreadPoolExecutor
 
     from tests.fixtures.stories import auto_answer, story
+    from tests.integration.verdicts import t20_checks, t20_pass
 
     _agent_only(ai_env)
     fx = story("missing_1")
@@ -257,18 +264,11 @@ def test_T20_concurrent_same_turn(stack, ai_env):
     with ThreadPoolExecutor(5) as ex:
         res = list(ex.map(lambda _: ai_turn(stack, token, sid, body), range(5)))
     [after] = find_ai_sessions(stack, sub)
-    codes = [s for s, _ in res]
-    oks = [b for s, b in res if s == 200]
-    busy = [b for s, b in res if s == 409]
-    result = {"scenario": "T20", "llmMode": _llm_mode(ai_env), "codes": codes, "turn": [int(before["turn"]), int(after["turn"])],
-              "turnAttempts": int(after.get("turnAttempts") or 0), "reserved": [int(before.get("modelCallsReserved") or 0),
-                                                                              int(after.get("modelCallsReserved") or 0)]}
+    checks = t20_checks(before, after, res)
+    result = {"scenario": "T20", "llmMode": _llm_mode(ai_env), "autoAnswer": "tests/fixtures/stories.py 규칙", "checks": checks,
+              "passed": t20_pass(checks), "turnAttempts": int(after.get("turnAttempts") or 0)}
     path = save_result("T20", result)
-    assert all(s in (200, 409) for s in codes) and oks, path
-    assert all(b["error"]["code"] == "AI_SESSION_BUSY" for b in busy), path
-    assert int(after["turn"]) == int(before["turn"]) + 1 or after.get("status") == "WORKING", path
-    assert len({json.dumps(b, sort_keys=True) for b in oks if b["turn"] == int(after["turn"])}) <= 1, path  # 같은 SessionView
-    assert int(after.get("modelCallsReserved") or 0) <= 6, path
+    assert t20_pass(checks), path
 
 
 @pytest.mark.fault
