@@ -321,7 +321,7 @@ def _run_graph(session: dict[str, Any], *, token: str, expected_turn: int, deadl
         try:
             result = await app.ainvoke(inp, {"configurable": conf, "metadata": md}, durability="sync")
         except ck.CheckpointFenceError as e:
-            _log.warning("ai_ckpt id=%s reason=%s", sid, str(e) if str(e).startswith("FENCE_") else "FENCE")
+            _log.warning("ai_ckpt id=%s reason=%s", sid, e.reason)
             return _Outcome("FENCED", saver=saver, checkpoint_id=ck.checkpoint_id_of(saver.last_config), ran=True)
         except FenceLost:
             return _Outcome("LOST", saver=saver)

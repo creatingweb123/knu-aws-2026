@@ -169,20 +169,21 @@ push 전 확인(각 Checkpoint와 push마다)
     - **Property 48: 프론트 모형과 임의 장애(울타리 닫힘·예약 불확실·강제 종료·동시 요청)에서 세션은 정해진 요청 수 안에 종료 상태 또는 오류가 되고 같은 턴 시도는 4를 넘지 않는다**
     - **Validates: Requirements 4, 5, 7, 12.4, 14, 15 · BE-Q101, BE-Q121**
 
-- [ ] 11. 로그·추적·지표 (`handlers/ai_card.py`, `common/metrics.py`, `domain/ai_metrics.py`)
+- [x] 11. 로그·추적·지표 (`handlers/ai_card.py`, `common/metrics.py`, `domain/ai_metrics.py`)
   - 선행: 10
-  - [ ] 11.1 EMF 8종(design §17, `Bytes` 단위 포함) + 6a 3종, 로그 필드(design §16), 라이브러리 로거에 `langgraph_checkpoint_aws` 추가.
+  - [x] 11.1 EMF 8종(design §17, `Bytes` 단위 포함) + 6a 3종, 로그 필드(design §16), 라이브러리 로거에 `langgraph_checkpoint_aws` 추가.
     - _Requirements: 17.1–17.3, 18.1 · BE-OBS-01_
-  - [ ] 11.2 `POST /plans` 지표: 에이전트 세션 `answers` 형식, `agentMode`(`AGENT`/`DEGRADED`), `privacyDetected`(종료 때 1회). 6a 레벨 0 지표 불변.
+  - [x] 11.2 `POST /plans` 지표: 에이전트 세션 `answers` 형식, `agentMode`(`AGENT`/`DEGRADED`), `privacyDetected`(종료 때 1회). 6a 레벨 0 지표 불변.
     - _Requirements: 18.2 · BE-Q79_
-  - [ ] 11.3 테스트 (`test_agent_logging.py`, `test_agent_tracing.py`): 6a 검사를 도구 호출·interrupt·resume·체크포인트 경로로 넓힘(DEBUG에서 체크포인트 본문 미노출, AST 금지 패턴을 새 모듈에 적용, LangSmith 전송 0), `test_ai_metrics.py` 에이전트 사례.
+  - [x] 11.3 테스트 (`test_agent_logging.py`, `test_agent_tracing.py`): 6a 검사를 도구 호출·interrupt·resume·체크포인트 경로로 넓힘(DEBUG에서 체크포인트 본문 미노출, AST 금지 패턴을 새 모듈에 적용, LangSmith 전송 0), `test_ai_metrics.py` 에이전트 사례.
     - _Requirements: 17, 18_
-  - [ ] 11.4 Write property test
+  - [x] 11.4 Write property test
     - **Property 42: 개인정보가 탐지된 답변은 Sources에 없고, ToolMessage·로그·trace·EMF에 사연·답변·카드 문자열(한글 4자 이상 창)이 없다**
     - **Validates: Requirements 10.3, 17.1**
 
-- [ ] 12. Checkpoint C - 핸들러와 복구
+- [x] 12. Checkpoint C - 핸들러와 복구
   - **P29–P48 전부 통과**, F0–F17 전부 통과, 단위 전체 실패 0(722건 + 새 테스트), 레벨 0 핸들러 테스트 불변. **push 전 확인 → commit → push.**
+  - 상태: 단위 1016건 통과(P29–P48, F0–F17 포함). 강제 종료 흉내는 한 번 죽으면 이후 모든 지점에서 던지게 했다(LangGraph가 일부 put 예외를 늦게 드러내므로).
   - _Requirements: 20_
 
 - [ ] 13. 인프라 (`template.yaml`, `agent/fault.py`, `docker-compose.yml`, `.env.example`)

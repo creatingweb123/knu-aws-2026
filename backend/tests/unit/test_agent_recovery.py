@@ -27,12 +27,14 @@ class Crash(BaseException):
 
 
 class At:
-    """point가 n번째로 불릴 때 한 번 exc를 던진다."""
+    """point가 n번째로 불릴 때 exc를 던진다. Crash면 그 뒤 모든 지점에서도 던진다(강제 종료)."""
 
     def __init__(self, point, n=1, exc=Crash):
         self.point, self.n, self.exc, self.seen, self.fired = point, n, exc, 0, False
 
     def __call__(self, p):
+        if self.fired and self.exc is Crash:
+            raise Crash()  # 죽은 프로세스는 더 진행하지 않는다(LangGraph가 늦게 드러내는 put 예외 대비)
         if p == self.point and not self.fired:
             self.seen += 1
             if self.seen == self.n:
@@ -140,10 +142,11 @@ def test_F4_crash_after_model_response(agent_env, asking):
     finish_ok(agent_env, asking, extra_calls=1)  # 외부 호출은 정확히 한 번이 아니다(design §8.5)
 
 
-@pytest.mark.parametrize("n", [2, 3, 4, 5])  # 답변 턴의 쓰기는 5번(재개·ask·decide·gate·final)
-def test_F5_crash_between_writes(agent_env, asking, n):
+@pytest.mark.parametrize(("n", "extra"), [(2, 0), (3, 1), (4, 0), (5, 0)])  # 답변 턴의 쓰기는 5번(재개·ask·decide·gate·final)
+def test_F5_crash_between_writes(agent_env, asking, n, extra):
+    """n=3은 decide 응답을 받은 뒤 그 쓰기 전에 죽는 경우라 다음 시도가 모델을 한 번 더 부른다(P45 상한 안)."""
     crash_turn(asking, At("ckpt_writes", n))
-    finish_ok(agent_env, asking)
+    finish_ok(agent_env, asking, extra_calls=extra)
 
 
 @pytest.mark.parametrize(("n", "extra"), [(1, 0), (2, 0), (3, 1)])

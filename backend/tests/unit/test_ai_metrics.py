@@ -11,6 +11,7 @@ from common.ids import new_session_id
 from common.responses import iso_utc
 from common.validation import PlanCreate
 from domain import ai_metrics, ai_session_service, plan_service
+from tests.unit.agent_handler_util import agent_env  # noqa: F401
 from tests.unit.moto_table import haru_table, set_env
 
 NOW = datetime(2026, 11, 26, 3, 0, tzinfo=timezone.utc)
@@ -255,3 +256,60 @@ def test_session_read_does_not_leak_into_sdk_debug_logs(table, caplog):
     finally:
         for n, lv in before.items():
             logging.getLogger(n).setLevel(lv)
+
+
+# ---------------------------------------------------------------- 6b 에이전트 세션 (작업 11.2, design §17)
+
+
+def _agent_plan(agent_table, view, sid, story):
+    from tests.unit.agent_handler_util import session as get_item
+
+    card = view["card"]
+    data = {k: card[k] for k in ai_metrics.SCALARS} | {"places": [dict(p, whyChosen=p["whyChosen"] or "") for p in card["places"]]}
+    for k, v in {"estimatedMinutes": 45, "question": "무엇이 보였나요?", "title": "산책", "summary": "산책", "reason": "못 갔어요"}.items():
+        data[k] = data[k] if data[k] is not None else v  # 빈칸은 계획자가 폼에서 채운다
+    data["authoring"] = {"mode": "AI_EDITED", "durationMs": 1500, "story": story, "aiSessionId": sid}
+    plan, _ = plan_service.create_plan(OWNER, f"k-{sid}", PlanCreate.model_validate(data), datetime.now(timezone.utc))
+    return plan["metrics"], get_item(agent_table, sid)
+
+
+def test_agent_session_metrics_after_question(agent_env, monkeypatch):
+    from tests.unit.agent_handler_util import STORY as A_STORY
+    from tests.unit.agent_handler_util import body_of, create, turns
+
+    monkeypatch.setenv("FAKE_LLM_SCENARIO", "ask_once")
+    sid = body_of(create())["sessionId"]
+    view = body_of(turns(sid, {"expectedTurn": 1, "answer": {"questionId": "q1", "choice": "45분"}}))
+    m, item = _agent_plan(agent_env, view, sid, A_STORY)
+    [a] = item["answers"]
+    assert {"askedAt", "answeredAt", "choice", "questionId", "path"} <= set(a) and a["askedAt"] <= a["answeredAt"]
+    assert m["agentMode"] == "AGENT" and m["questionsAsked"] == 1 and m["questionsSkipped"] == 0
+    assert m["modelCalls"] == int(item["modelCalls"]) == 4 and m["answerWaitMs"] >= 0
+    assert m["missingFirst"] == len(item["firstReport"]["missing"]) and m["firstProposalNotInSource"] == len(item["firstReport"]["notInSource"])
+    assert m["privacyDetected"] == int(item["privacyDetected"])
+
+
+def test_agent_session_metrics_skipped_and_degraded(agent_env, monkeypatch):
+    from tests.unit.agent_handler_util import STORY as A_STORY
+    from tests.unit.agent_handler_util import body_of, create, turns
+
+    monkeypatch.setenv("FAKE_LLM_SCENARIO", "ask_once")
+    sid = body_of(create())["sessionId"]
+    monkeypatch.setenv("AGENT_MODE", "pipeline")  # 모드 전환 → 결정적 폐쇄(degraded)
+    view = body_of(turns(sid, {"expectedTurn": 1, "finish": True}))
+    assert view["degraded"] is True
+    m, item = _agent_plan(agent_env, view, sid, A_STORY)
+    assert m["agentMode"] == "DEGRADED" and m["modelCalls"] == int(item.get("modelCalls") or 0)
+    assert m["fieldsEditedAfterHandoff"] == sum(1 for k in ai_metrics.SCALARS if view["card"][k] is None)
+
+
+def test_agent_session_privacy_answer_not_a_source(agent_env, monkeypatch):
+    from tests.unit.agent_handler_util import STORY as A_STORY
+    from tests.unit.agent_handler_util import body_of, create, turns
+
+    monkeypatch.setenv("FAKE_LLM_SCENARIO", "ask_once")
+    sid = body_of(create())["sessionId"]
+    view = body_of(turns(sid, {"expectedTurn": 1, "answer": {"questionId": "q1", "text": "골목 카페 010-1234-5678"}}))
+    m, item = _agent_plan(agent_env, view, sid, A_STORY)
+    assert item["answers"][0]["privacy"] is True and m["privacyDetected"] >= 1
+    assert ai_metrics.answer_sources(item["answers"]) == []

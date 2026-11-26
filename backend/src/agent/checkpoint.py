@@ -34,6 +34,12 @@ LARGE_BYTES = 200_000
 class CheckpointFenceError(Exception):
     """울타리가 닫혀 체크포인트 쓰기를 시작하지 않았다(체크포인트는 마지막 성공 지점 그대로)."""
 
+    REASONS = ("FENCE_TIME", "FENCE_RESERVE")
+
+    def __init__(self, reason: str = "FENCE") -> None:
+        super().__init__(reason)
+        self.reason = reason if reason in self.REASONS else "FENCE"
+
 
 def checkpoint_sdk_config() -> Config:
     return Config(connect_timeout=1, read_timeout=1, retries={"mode": "standard", "total_max_attempts": 1})
