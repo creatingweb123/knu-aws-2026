@@ -270,12 +270,27 @@ def _card_view(card: Any) -> dict[str, Any] | None:
     return {k: out[k] for k in CARD_KEYS}
 
 
+QUESTION_KEYS = ("questionId", "path", "text", "reason", "options", "allowFreeText")
+
+
+def _question_view(q: Any) -> dict[str, Any] | None:
+    if not isinstance(q, dict) or not all(k in q for k in QUESTION_KEYS):
+        return None
+    out = {k: _plain(q.get(k)) for k in QUESTION_KEYS}
+    out["options"] = [str(o) for o in (out["options"] or [])]
+    out["allowFreeText"] = bool(out["allowFreeText"])
+    return out
+
+
 def _entries(values: Any, keys: tuple[str, ...]) -> list[dict[str, Any]]:
     return [{k: _plain(v.get(k)) for k in keys} for v in (values or []) if isinstance(v, dict)]
 
 
 def serialize_session_view(item: dict[str, Any]) -> dict[str, Any]:
-    """허용 목록 9개 키만 내보낸다. READY가 아니면 card null, flags·notes 빈 배열. question은 6a에서 항상 null."""
+    """허용 목록 9개 키만 내보낸다. READY가 아니면 card null, flags·notes 빈 배열.
+
+    question은 ASKING이고 저장된 질문이 허용 형식일 때만 채운다(6b). 6a 레벨 0 세션은 ASKING이 없으므로 항상 null이다.
+    """
     status = item.get("status")
     ready = status == READY
     view = {
@@ -283,10 +298,232 @@ def serialize_session_view(item: dict[str, Any]) -> dict[str, Any]:
         "status": status,
         "turn": _plain(item.get("turn", 1)),
         "trace": _entries(item.get("trace"), ("step", "tool", "summary")),
-        "question": None,
+        "question": _question_view(item.get("question")) if status == ASKING else None,
         "card": _card_view(item.get("card")) if ready else None,
         "flags": _entries(item.get("flags"), ("path", "type")) if ready else [],
         "notes": _entries(item.get("notes"), ("path", "action", "reason", "source")) if ready else [],
         "degraded": bool(item.get("degraded")) if ready else False,
     }
     return {k: view[k] for k in VIEW_KEYS}
+
+
+# ---------------------------------------------------------------------------
+# 6b 에이전트 세션: 잠금·커밋 (design §3.1, §5, §9.3, BE-Q93·BE-Q96·BE-Q100·BE-Q110)
+# ---------------------------------------------------------------------------
+
+AGENT = "AGENT"
+PIPELINE = "PIPELINE"
+LOCK_MS = 30_000                 # BE-Q110
+MAX_TURN_ATTEMPTS = 3            # BE-Q113: 같은 턴 복구 2회까지(세 번째 시도까지 실행)
+OK, CONDITION, UNCERTAIN = "OK", "CONDITION", "UNCERTAIN"
+
+
+def now_ms() -> int:
+    import time
+
+    return int(time.time() * 1000)
+
+
+def build_agent_session_item(
+    *,
+    session_id: str,
+    owner_id: str,
+    story: str,
+    created_at: datetime,
+    lock_token: str,
+    lock_now_ms: int,
+    prompt_version: str | None,
+    llm_mode: str | None,
+    llm_provider_label: str | None,
+) -> dict[str, Any]:
+    """에이전트 생성 항목(BE-Q100): turn 0, WORKING, 잠금을 건 채로 그래프 전에 저장한다."""
+    item: dict[str, Any] = {
+        **session_key(session_id),
+        "sessionId": session_id,
+        "ownerId": owner_id,
+        "story": story,
+        "answers": [],
+        "askedPaths": [],
+        "status": WORKING,
+        "turn": 0,
+        "version": 1,
+        "agentMode": AGENT,
+        "finishRequested": False,
+        "lockToken": lock_token,
+        "lockedUntil": lock_now_ms + LOCK_MS,
+        "lockedAt": iso_utc(created_at),
+        "turnAttempts": 1,
+        "turnRuns": [lock_token],
+        "modelCallsReserved": 0,
+        "tokenCharged": 0,
+        "modelCalls": 0,
+        "tokenIn": 0,
+        "tokenOut": 0,
+        "tokenInEstimated": 0,
+        "tokenEstimated": False,
+        "checkDraftCount": 0,
+        "gateRejects": 0,
+        "questionsAsked": 0,
+        "recoveries": 0,
+        "card": None,
+        "flags": [],
+        "notes": [],
+        "trace": [],
+        "degraded": False,
+        "privacyDetected": 0,
+        "createdAt": iso_utc(created_at),
+        "ttl": int((created_at + SESSION_TTL).timestamp()),
+    }
+    for k, v in {"promptVersion": prompt_version, "llmMode": llm_mode, "llmProviderLabel": llm_provider_label}.items():
+        if v is not None:
+            item[k] = v
+    return item
+
+
+def _code(e: ClientError) -> str:
+    return e.response.get("Error", {}).get("Code", "")
+
+
+def acquire_lock(
+    session_id: str,
+    *,
+    owner_id: str,
+    expected_turn: int,
+    token: str,
+    now_utc: datetime,
+    now_ms_value: int,
+    resume: dict[str, Any] | None = None,
+    resume_question_id: str | None = None,
+    finish: bool = False,
+    table: Any = None,
+) -> tuple[str, dict[str, Any] | None]:
+    """잠금 획득·WORKING 전환·답변(pendingResume) 기록을 한 번의 조건부 갱신으로 한다(design §5.2).
+
+    pendingResume은 if_not_exists라 처음 기록한 답이 이긴다(BE-Q118). 결과: (OK, ALL_NEW) | (CONDITION, None) | (UNCERTAIN, None).
+    """
+    names = {"#turn": "turn", "#status": "status", "#ttl": "ttl"}
+    values: dict[str, Any] = {
+        ":me": owner_id, ":nowEpoch": int(now_utc.timestamp()), ":expected": expected_turn,
+        ":ASKING": ASKING, ":WORKING": WORKING, ":nowMs": now_ms_value,
+        ":token": token, ":until": now_ms_value + LOCK_MS, ":at": iso_utc(now_utc),
+        ":run": [token], ":empty": [], ":one": 1,
+    }
+    cond = ("attribute_exists(PK) AND ownerId = :me AND #ttl > :nowEpoch AND #turn = :expected "
+            "AND #status IN (:ASKING, :WORKING) AND (attribute_not_exists(lockedUntil) OR lockedUntil < :nowMs)")
+    sets = ["lockToken = :token", "lockedUntil = :until", "lockedAt = :at", "#status = :WORKING",
+            "turnRuns = list_append(if_not_exists(turnRuns, :empty), :run)"]
+    if resume is not None:
+        values[":qid"] = resume_question_id
+        values[":resume"] = resume
+        cond += (" AND ((#status = :ASKING AND question.questionId = :qid AND attribute_not_exists(pendingResume))"
+                 " OR pendingResume.questionId = :qid)")
+        sets.append("pendingResume = if_not_exists(pendingResume, :resume)")
+    if finish:
+        values[":true"] = True
+        sets.append("finishRequested = :true")
+    try:
+        got = (table or ddb.table()).update_item(
+            Key=session_key(session_id),
+            ConditionExpression=cond,
+            UpdateExpression="SET " + ", ".join(sets) + " ADD turnAttempts :one",
+            ExpressionAttributeNames=names,
+            ExpressionAttributeValues=values,
+            ReturnValues="ALL_NEW",
+        )
+        return OK, got["Attributes"]
+    except ClientError as e:
+        if _code(e) == "ConditionalCheckFailedException":
+            return CONDITION, None
+        _log.warning("ai_lock id=%s reason=LOCK_UNCERTAIN type=%s", session_id, type(e).__name__)
+        return UNCERTAIN, None
+    except BotoCoreError as e:
+        _log.warning("ai_lock id=%s reason=LOCK_UNCERTAIN type=%s", session_id, type(e).__name__)
+        return UNCERTAIN, None
+
+
+def lock_failure(item: dict[str, Any] | None, *, owner_id: str, expected_turn: int, now_utc: datetime, now_ms_value: int) -> str:
+    """잠금 조건 실패 뒤 다시 읽은 항목으로 분기한다(docs/03 §3.2 순서): NOT_FOUND → TURN_MISMATCH → CLOSED → BUSY → CHANGED."""
+    if not is_live(item, now_utc) or item.get("ownerId") != owner_id:
+        return "NOT_FOUND"
+    if turn_of(item) != expected_turn:
+        return "TURN_MISMATCH"
+    if item.get("status") in TERMINAL:
+        return "CLOSED"
+    locked = _int(item.get("lockedUntil"))
+    if locked is not None and locked >= now_ms_value:
+        return "BUSY"
+    return "CHANGED"  # 질문·답변 조건이 경합으로 바뀜(다시 검증)
+
+
+def commit_turn(
+    session_id: str,
+    *,
+    token: str,
+    expected_turn: int,
+    updates: dict[str, Any],
+    if_absent: dict[str, Any] | None = None,
+    append_answers: list[dict[str, Any]] | None = None,
+    token_correction: int = 0,
+    recoveries: int = 0,
+    table: Any = None,
+) -> str:
+    """턴 결과를 lockToken·turn 조건으로 한 번 쓴다(design §5.3). OK | CONDITION | UNCERTAIN."""
+    names = {"#turn": "turn"}
+    values: dict[str, Any] = {":token": token, ":expected": expected_turn, ":next": expected_turn + 1,
+                              ":zero": 0, ":empty": [], ":corr": int(token_correction), ":rec": int(recoveries)}
+    sets = ["#turn = :next", "turnAttempts = :zero", "turnRuns = :empty"]
+    for i, (k, v) in enumerate(updates.items()):
+        names[f"#u{i}"] = k
+        values[f":u{i}"] = v
+        sets.append(f"#u{i} = :u{i}")
+    for i, (k, v) in enumerate((if_absent or {}).items()):
+        names[f"#a{i}"] = k
+        values[f":a{i}"] = v
+        sets.append(f"#a{i} = if_not_exists(#a{i}, :a{i})")
+    if append_answers:
+        values[":answers"] = append_answers
+        sets.append("answers = list_append(if_not_exists(answers, :empty), :answers)")
+    expr = "SET " + ", ".join(sets) + " ADD tokenCharged :corr, recoveries :rec REMOVE lockToken, lockedUntil, lockedAt, pendingResume"
+    try:
+        (table or ddb.table()).update_item(
+            Key=session_key(session_id),
+            ConditionExpression="lockToken = :token AND #turn = :expected",
+            UpdateExpression=expr,
+            ExpressionAttributeNames=names,
+            ExpressionAttributeValues=values,
+        )
+        return OK
+    except ClientError as e:
+        if _code(e) == "ConditionalCheckFailedException":
+            return CONDITION
+        _log.warning("ai_commit id=%s reason=COMMIT_UNCERTAIN type=%s", session_id, type(e).__name__)
+        return UNCERTAIN
+    except BotoCoreError as e:
+        _log.warning("ai_commit id=%s reason=COMMIT_UNCERTAIN type=%s", session_id, type(e).__name__)
+        return UNCERTAIN
+
+
+def commit_landed(item: dict[str, Any] | None, *, expected_turn: int, checkpoint_id: str | None) -> bool:
+    """커밋 결과를 모를 때 다시 읽은 항목이 이 커밋인지(design §5.3)."""
+    return (bool(item) and turn_of(item) == expected_turn + 1 and "lockToken" not in item
+            and item.get("checkpointId") == checkpoint_id)
+
+
+def release_lock(session_id: str, *, token: str, table: Any = None) -> bool:
+    """중단 해제(design §9.3): turn·status·pendingResume·turnAttempts는 그대로 두고 잠금만 푼다."""
+    try:
+        (table or ddb.table()).update_item(
+            Key=session_key(session_id),
+            ConditionExpression="lockToken = :token",
+            UpdateExpression="REMOVE lockToken, lockedUntil, lockedAt",
+            ExpressionAttributeValues={":token": token},
+        )
+        return True
+    except (ClientError, BotoCoreError) as e:
+        _log.warning("ai_lock id=%s reason=RELEASE_FAILED type=%s", session_id, type(e).__name__)
+        return False
+
+
+def is_agent_session(item: dict[str, Any]) -> bool:
+    """agentMode가 없는 항목(6a 이전 형식)은 PIPELINE으로 본다(design §13)."""
+    return item.get("agentMode") == AGENT
