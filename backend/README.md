@@ -360,17 +360,29 @@ LLM 호출 취소(`tests/unit/test_ai_cancel.py -s`, 로컬 스텁, deadline 0.5
 
 Floci `DynamoDBSaver`(`tests/local/test_local_checkpointer.py`, BE-Q21): `floci/floci:2.5.0-compat` 기본 엔진에서 동기·비동기 모두 interrupt → `get_state`의 대기 interrupt → `Command(resume)` → 결과가 동작했다. 짧은 스레드 하나가 항목 18개를 썼고 모두 `ttl`이 있었다. `delete_thread` 뒤 그 스레드 항목 0건. 제품 경로에는 연결하지 않았다.
 
-### 10.5 공급자 실측 양식 (LLM 담당, BE-Q6 후보가 정해진 뒤, 합성 사연만)
+### 10.5 공급자 실측 (개발용 NVIDIA NIM, 2026-11-26, 합성 사연만)
+
+BE-Q6의 **개발·검증용** 공급자는 NVIDIA NIM(`nvidia/nemotron-3.5-lightning-30b-a3b`)이다. 운영(시범 운영) 공급자 결정이 아니다(10.10절). 측정은 `scripts/probe_provider.py`로 했다(결과 파일은 `test-results/`, gitignore. 모델 응답 원문은 남기지 않는다).
 
 | 항목 | 값 |
 |---|---|
-| 공급자·모델·`LLM_BASE_URL` | |
-| `max_completion_tokens` 수용 / `max_tokens`(`LLM_EXTRA_BODY`) 필요 여부 | |
-| `temperature=0` 수용(`LLM_TEMPERATURE`) | |
-| 비스트리밍 usage 반환(`tokenEstimated`) | |
-| 호출 지연 p50·p95(합성 사연 15건, BE-Q12) | |
-| 오류 응답 형태(401·429·400) | |
-| `LLM_EXTRA_BODY` 최종 값(BE-Q9) | |
+| 공급자·모델·`LLM_BASE_URL` | NVIDIA NIM · `nvidia/nemotron-3.5-lightning-30b-a3b` · `https://integrate.api.nvidia.com/v1` (`LLM_PROVIDER=openai_compat`, 전용 클라이언트 없음) |
+| Thinking | **기본이 켜짐.** 켠 채로는 출력 토큰이 `reasoning_content`로 가서 `content`가 비거나 잘린다(데모 사연 레벨 0: `NOT_JSON` 2회 → 502, 8.6초). `LLM_EXTRA_BODY={"chat_template_kwargs":{"enable_thinking":false}}`로 끄면 `content`에 바로 답한다 |
+| `max_completion_tokens` / `max_tokens` | 둘 다 지켜진다(각각 16으로 보내면 `completion_tokens` 16, `finish_reason=length`). `ChatOpenAI`가 보내는 `max_completion_tokens`만으로 충분하다 |
+| `temperature=0` | 수용(200) |
+| 한국어·JSON 카드 | 한국어로 답한다. 레벨 0 합성 사연 15건 중 14건 `READY`(그중 `degraded` 2건), 1건 502(아래) |
+| 도구 호출 | `tools` + `parallel_tool_calls=false` 수용, 도구 1개 호출, 인자 JSON 파싱 성공. `parallel_tool_calls`를 빼도 같다. ToolMessage 뒤 후속 요청도 200이고 다음 도구를 부른다(`ChatOpenAI.bind_tools` 경로: `check_draft` → `submit_card`, `invalid_tool_calls` 0) |
+| usage | 모든 응답에 `prompt_tokens`·`completion_tokens` 있음(`tokenEstimated = false`) |
+| 입력 토큰 추정 | 6a 추정(글자 수 / 2)이 실제보다 약 6–8% 작다(레벨 0 프롬프트, 7건 비 1.06–1.08) |
+| 지연(Thinking 끔) | 단순 요청 0.44–0.54초, 도구 호출 0.8–1.0초(후속 1회는 3.8초). 레벨 0 15건: 중앙값 1.13초, 최대 4.33초(재시도 2회 포함), 타임아웃 0. 6a 제한(connect 2·read 8·재시도 0)을 바꾸지 않고 모두 안에 들었다. 15건이라 p95는 내지 않는다(BE-Q12) |
+| 오류 응답 | 잘못된 키 → **403**(401이 아님, 6a 분류 `HTTP_403`), 잘못된 파라미터 → 400(`code`·`message`·`type`), 없는 모델 → 404. 429는 만들지 않았다 |
+| 6a 핸들러 끝까지(moto + 실제 공급자) | 데모 사연 `POST /ai/card-sessions` → 200 `READY`, 1.33초, `llmMode=openai_compat`, `llmProviderLabel=NVIDIA NIM`, 모델 호출 1, trace `draft → check_draft → submit_card` |
+| `LLM_EXTRA_BODY` 권장 값(BE-Q9) | `{"chat_template_kwargs":{"enable_thinking":false}}` |
+
+발견한 것
+- 장소가 5곳 나오는 사연(`many_places`)에서 모델이 프롬프트의 "장소는 0–3곳"을 어기고 5곳을 두 번 모두 냈다(경로 `places`의 SCHEMA) → 502. 6a 규칙대로다(위반 필드를 고쳐 살리지 않는다, BE-Q91). 처리 방침은 BE-Q127.
+- 잘못된 키가 403이라 T12 판정(`llmError = HTTP_401`, BE-Q83)과 맞지 않는다. BE-Q128.
+- 레벨 0 결과의 품질(원문 대조·개인정보)은 15건 1회 실행이라 평가가 아니다. 비교 평가는 `scripts/eval_agent.py`(6b)로 한다.
 
 ### 10.6 429 세 종류 (BE-Q92)
 
@@ -393,3 +405,27 @@ Floci `DynamoDBSaver`(`tests/local/test_local_checkpointer.py`, BE-Q21): `floci/
 ### 10.8 4·5단계 병합 뒤 통합 회귀 계획 (작업 22, 보류)
 
 이 브랜치는 `fix/be-3-local-verify` 기준이라 4단계(PR #1 `feat/be-4-inbox`)·5단계(PR #7 `feat/be-5-photo-pipeline`) 변경이 없다. 병합 때 겹치는 곳: `common/ddb.py`의 `use_table`(5단계와 같은 함수), `common/metrics.py`의 `emit(..., unit=)`(5단계와 같은 시그니처), `template.yaml`의 `Stage` 파라미터·`IsDev` 조건(5단계와 같은 정의), `handlers/routes.py`, `common/errors.py`, `docs/08`의 질문 번호(4단계 BE-Q42–48, 5단계 BE-Q49–72, 6a BE-Q73–92). 병합 뒤 전체 단위·로컬 테스트와 `check_ai_build.py`를 다시 돌린다.
+
+### 10.9 공급자 확인 절차
+
+```bash
+cd backend
+# .env(gitignore)에 LLM_PROVIDER·LLM_BASE_URL·LLM_MODEL·LLM_API_KEY·LLM_EXTRA_BODY를 직접 넣는다. 키를 출력·커밋하지 않는다.
+.venv/bin/python scripts/probe_provider.py --env-file .env            # 약 40회 호출
+.venv/bin/python scripts/probe_provider.py --env-file .env --only raw  # 요청 필드 수용만
+```
+
+- 사연은 `tests/fixtures/stories.json`(합성 15건)만 쓴다. 결과 JSON에는 상태·필드 존재·길이·토큰 수·지연만 남고, 키가 들어가면 스크립트가 실패한다.
+- 일반 회귀(`pytest tests/unit`, `-m local`)의 기본값은 Fake 모델이다. 실제 공급자 호출은 이 스크립트를 직접 실행할 때만 일어난다.
+
+### 10.10 NVIDIA API Trial 이용 조건과 운영 결정의 구분
+
+[NVIDIA API Trial Terms of Service](https://assets.ngc.nvidia.com/products/api-catalog/legal/NVIDIA%20API%20Trial%20Terms%20of%20Service.pdf)와 그 해석을 다룬 [NVIDIA 개발자 포럼 글](https://forums.developer.nvidia.com/t/api-trial/385386), [포럼 질의](https://forums.developer.nvidia.com/t/clarification-on-trial-api-use/334275)를 요약하면(원문을 바꿔 적었다):
+- trial 서비스는 제한된 시험 목적이고 서비스·생성물을 운영(production)에 쓰지 않는다.
+- 세션 동안 입력·생성물을 서비스 제공을 위해 저장·사용할 수 있고, 조항에 따라 제품 개선에 쓸 수 있다고 읽히는 부분이 있다.
+- 생성물 배포에 제한이 있다.
+
+그래서 이 프로젝트에서는:
+- NVIDIA NIM trial은 **개발·검증·오프라인 평가 전용**이다. 합성 사연만 보낸다.
+- 시범 운영(실제 사용자 사연)과 `demo` 스택의 공급자·동의 문구(BE-Q7)·전송 전 마스킹(BE-Q10)은 **아직 정하지 않았다.** 이 개발용 결정이 그 결정을 대신하지 않는다. 시범 운영에 NVIDIA를 쓰려면 trial이 아닌 이용 조건(유료·자체 호스팅 NIM 등)과 처리 국가·보존 기간을 따로 확인해야 한다.
+- `samconfig.toml`에는 공급자 값을 넣지 않았다(AWS 배포 미수행, 6a 작업 19.3은 AWS 담당과 함께).
