@@ -78,13 +78,16 @@ def consume_quota(user_id: str, now_utc: datetime, *, table: Any = None) -> None
     모델을 부르지 않고 500으로 끝낸다(사유 QUOTA_WRITE_FAILED).
     """
     _, ttl = quota_day(now_utc)
+    limit = daily_limit()
+    if limit <= 0:  # attribute_not_exists 조건이 첫 건을 통과시키므로 한도 0은 쓰기 전에 막는다
+        raise ApiError(AI_QUOTA_EXCEEDED)
     try:
         (table or ddb.table()).update_item(
             Key=quota_key(user_id, now_utc),
             UpdateExpression="ADD #s :one SET #ttl = if_not_exists(#ttl, :ttl)",
             ConditionExpression="attribute_not_exists(#s) OR #s < :limit",
             ExpressionAttributeNames={"#s": "sessions", "#ttl": "ttl"},
-            ExpressionAttributeValues={":one": 1, ":ttl": ttl, ":limit": daily_limit()},
+            ExpressionAttributeValues={":one": 1, ":ttl": ttl, ":limit": limit},
         )
     except ClientError as e:
         if e.response.get("Error", {}).get("Code") == "ConditionalCheckFailedException":
@@ -185,6 +188,11 @@ def _int(value: Any) -> int | None:
         except (ValueError, ArithmeticError):
             return None
     return None
+
+
+def turn_of(item: dict[str, Any]) -> int | None:
+    """저장된 turn 값(정수가 아니면 None → 어떤 expectedTurn과도 다르다)."""
+    return _int(item.get("turn"))
 
 
 def is_live(item: dict[str, Any] | None, now_utc: datetime) -> bool:

@@ -206,3 +206,10 @@ def test_session_view_failed_and_decimal():
     it["turn"] = Decimal(1)
     view = svc.serialize_session_view(it)
     assert view["card"] is None and view["flags"] == [] and view["notes"] == [] and view["turn"] == 1 and view["trace"]
+
+
+def test_quota_limit_zero_blocks_without_write(table, monkeypatch):
+    monkeypatch.setenv("AI_DAILY_SESSION_LIMIT", "0")
+    with pytest.raises(ApiError) as e:
+        svc.consume_quota("u1", NOW)
+    assert e.value.code == "AI_QUOTA_EXCEEDED" and "Item" not in table.get_item(Key=svc.quota_key("u1", NOW))

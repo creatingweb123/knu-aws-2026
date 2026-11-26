@@ -303,3 +303,70 @@ def test_property_36_first_proposal_preserved(candidate, story):
     work = repair.with_src(parsed.card)
     assert final["first_proposal"] == tools.public_card(work)
     assert final["first_report"] == tools.check_draft(work, [story])
+
+
+# ---------------------------------------------------------------- P34: 유출 방지
+
+import logging as _logging  # noqa: E402
+import re as _re2  # noqa: E402
+
+from agent import fake_llm as _fake_llm  # noqa: E402
+from tests.unit.ai_handler_util import ai_env, create as _create, sessions as _sessions  # noqa: E402,F401
+
+_HANGUL = _re2.compile(r"[\uac00-\ud7a3]")
+
+
+def _windows(text, n=4):
+    """4자 이상 부분 문자열 중 한글이 든 것(숫자·영문만인 창은 sessionId·시간 값과 우연히 겹칠 수 있어 따로 본다)."""
+    return {text[i:i + n] for i in range(len(text) - n + 1) if _HANGUL.search(text[i:i + n]) and text[i:i + n].strip() == text[i:i + n]}
+
+
+def _card_strings(card):
+    out = [card.get(k) for k in ("title", "summary", "reason", "question")]
+    for p in card.get("places") or []:
+        out += [p.get("name"), p.get("activity"), p.get("whyChosen")]
+    return [s for s in out if s]
+
+
+_P34_MODES = ["card", "echo_then_card", "echo_twice", "http_401", "timeout"]
+
+
+# Feature: backend-stage6a-ai-pipeline, Property 34
+@PROPS
+@given(story=story_st, candidate=candidate_st, mode=st.sampled_from(_P34_MODES))
+def test_property_34_no_leak(ai_env, monkeypatch, caplog, capsys, story, candidate, mode):
+    """Property 34: 어떤 사연·카드·시나리오에서도 로그와 trace에 사연·카드 문자열(4자 이상 부분 문자열)이 나오지 않는다.
+    Validates: Requirements 4.9, 13.1, 13.2, 13.8"""
+    monkeypatch.setenv("AI_DAILY_SESSION_LIMIT", "100000")
+    monkeypatch.setenv("FAKE_LLM_SCENARIO", "p34")
+    card_json = _json.dumps(candidate, ensure_ascii=False)
+    echo = f"사연을 정리하지 못했어요: {story} / {card_json[:200]}"  # 모델이 원문을 되풀이한 응답(JSON 아님)
+    steps = {
+        "card": [{"kind": "content", "text": card_json, "usage": True, "sleep": 0.0}],
+        "echo_then_card": [{"kind": "content", "text": echo, "usage": True, "sleep": 0.0}, {"kind": "content", "text": card_json, "usage": True, "sleep": 0.0}],
+        "echo_twice": [{"kind": "content", "text": echo, "usage": True, "sleep": 0.0}],
+        "http_401": [{"kind": "raise", "error": "http_401"}],
+        "timeout": [{"kind": "raise", "error": "timeout"}],
+    }[mode]
+    monkeypatch.setitem(_fake_llm.SCENARIOS, "p34", steps)
+    saved = []
+    real_put = svc.put_session
+    monkeypatch.setattr(svc, "put_session", lambda item, **k: (saved.append(item), real_put(item, **k)))
+    caplog.clear()
+    capsys.readouterr()
+    with caplog.at_level(_logging.DEBUG):
+        _llm.quiet_library_loggers()
+        resp = _create(story)
+    out = capsys.readouterr()
+    assert resp["statusCode"] in (200, 502, 503) and len(saved) == 1
+    item = saved[0]
+    trace_text = " ".join(t["summary"] + " " + t["tool"] for t in item["trace"])
+    logs = caplog.text + out.out + out.err
+    secrets = _windows(story)
+    for s in _card_strings(candidate):
+        secrets |= _windows(s)
+    for w in secrets:
+        assert w not in logs, w
+        assert w not in trace_text, w
+    for exact in ("010-1234-5678", "a@b.co", "900101-1234567"):
+        assert exact not in logs and exact not in trace_text

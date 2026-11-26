@@ -165,29 +165,29 @@
     - 생성기: 4.5의 카드 생성기를 Fake 응답으로 감싼 것, Gate 통과·거부 모두.
     - **Validates: Requirements 5.2**
 
-- [ ] 9. 핸들러 (`handlers/ai_card.py`, `handlers/routes.py`)
+- [x] 9. 핸들러 (`handlers/ai_card.py`, `handlers/routes.py`)
   - 선행: 3, 8
-  - [ ] 9.1 콜드 스타트 초기화: AI 전용 `Config`로 DynamoDB 리소스·SSM 클라이언트 생성, `ddb.use_table`, 그래프·프롬프트 로드. 라이브러리 로거 수준.
+  - [x] 9.1 콜드 스타트 초기화: AI 전용 `Config`로 DynamoDB 리소스·SSM 클라이언트 생성, `ddb.use_table`, 그래프·프롬프트 로드. 라이브러리 로거 수준.
     - _Requirements: 7.6, 12.5 · BE-Q85_
-  - [ ] 9.2 `POST /ai/card-sessions`: design §4.1 순서(검증 → `AGENT_MODE` → 할당량 → `tracing_context(enabled=False)` 안에서 `asyncio.run(graph.ainvoke)` → 결과 판정 → 저장·확인(§4.4) → EMF → 응답). `AGENT_MODE` 미설정 → `pipeline`, 그 밖 → 503 `CONFIG_AGENT_MODE`(할당량 전).
+  - [x] 9.2 `POST /ai/card-sessions`: design §4.1 순서(검증 → `AGENT_MODE` → 할당량 → `tracing_context(enabled=False)` 안에서 `asyncio.run(graph.ainvoke)` → 결과 판정 → 저장·확인(§4.4) → EMF → 응답). `AGENT_MODE` 미설정 → `pipeline`, 그 밖 → 503 `CONFIG_AGENT_MODE`(할당량 전).
     - _Requirements: 1.1–1.8, 1.10, 5.1, 5.4, 6.1, 9.2, 9.10, 12.3, 13.5, 18.1 · BE-Q74, BE-Q75, BE-Q87, BE-Q88, BE-Q89_
-  - [ ] 9.3 `GET /ai/card-sessions/{sessionId}`, `POST …/turns`: design §4.2·§4.3. 형식 오류 ID 404, 404 본문 동일, turns ①–③, 비종료 세션 500 `NON_TERMINAL_SESSION`.
+  - [x] 9.3 `GET /ai/card-sessions/{sessionId}`, `POST …/turns`: design §4.2·§4.3. 형식 오류 ID 404, 404 본문 동일, turns ①–③, 비종료 세션 500 `NON_TERMINAL_SESSION`.
     - _Requirements: 2.1–2.4, 3.1–3.5 · BE-Q77, BE-Q87_
-  - [ ] 9.4 `routes.py`에 3개 경로(`handlers.ai_card.handler`).
+  - [x] 9.4 `routes.py`에 3개 경로(`handlers.ai_card.handler`).
     - _Requirements: 15.1, 19.12_
-  - [ ] 9.5 단위 테스트 (`tests/unit/test_handlers_ai_card.py`, moto + Fake)
+  - [x] 9.5 단위 테스트 (`tests/unit/test_handlers_ai_card.py`, moto + Fake)
     - 생성: Fake 시나리오별 응답 코드·SessionView·AiSession 속성(`llmMode` 저장, 응답에는 없음)·할당량·EMF 3종. 400은 할당량 미사용·모델 0회, `AGENT_MODE=agent`·`foo` → 503·할당량 미사용·모델 0회, 미설정 → 정상.
     - 원인이 섞인 실패(검증 실패 → LLM_Error → 503, LLM 없음 → 검증 실패 두 번 → 502), `TIME_BUDGET` → 503, Final_Check 차단 주입(모의) → 502 `FALLBACK_INVARIANT`.
     - 소유권·TTL: 남의 세션·없는 세션·만료(항목 남음)·형식 오류 ID → GET·turns 404(본문·상태 동일), 모델·쓰기 0.
     - turns: 같은 turn 409, 다른 turn 200, 형태 오류 400, 비종료 세션(직접 넣은 항목) 500·세션 불변.
     - _Requirements: 1.1–1.10, 2.1–2.4, 3.1–3.5, 5.8, 6.1, 19.1, 19.2 · BE-Q87_
-  - [ ] 9.6 저장 불확실성·429·로그·추적 테스트
+  - [x] 9.6 저장 불확실성·429·로그·추적 테스트
     - `test_ai_save_uncertain.py`: `PutItem` 읽기 타임아웃(Stubber/주입) 후 확인 조회 성공 → 200, 조건 실패인데 우리 항목 → 200, 다른 항목 → 500, 확인 조회 실패 → 500, 남은 시간 1.5초 미만 → 조회 없이 500, 모든 경우 할당량 그대로.
     - `test_ai_429.py`: 공급자 429(Fake·스텁) → 503 `AI_UNAVAILABLE`·`llmError=HTTP_429`, 할당량 429는 계약 형식, 두 경우의 `AiFailure`·로그 구분.
     - `test_ai_logging.py`: 모든 시나리오(성공·실패·예외 주입)에서 로그·trace·응답·AiSession 로그 필드에 사연 표본·카드 문자열·가짜 키(`sk-test-…`)·모델 응답 원문이 없음, 라이브러리 로거 수준, AST 검사로 `agent/`·`handlers/ai_card.py`에 `logger.exception`·`exc_info=True`·`str(e)`·`repr(e)`·`%r` 포맷 없음.
     - `test_ai_tracing.py`: `LANGSMITH_TRACING=true`·`LANGCHAIN_TRACING_V2=true`로 두고 핸들러 실행 → langsmith 전송 함수 호출 0회(전송 경로를 막아 확인), 네트워크 호출 0회.
     - _Requirements: 13.1–13.8, 12.3, 19.6 · BE-Q89, BE-Q92_
-  - [ ] 9.7 Write property test for 유출 방지 (`tests/unit/test_ai_properties.py`)
+  - [x] 9.7 Write property test for 유출 방지 (`tests/unit/test_ai_properties.py`)
     - **Property 34: 어떤 사연·카드·시나리오에서도 로그와 trace에 사연·카드 문자열(4자 이상 부분 문자열)이 나오지 않는다**
     - 생성기: 임의 사연(개인정보 표본 포함), Fake 응답 카드, 시나리오.
     - **Validates: Requirements 4.9, 13.1, 13.2, 13.8**

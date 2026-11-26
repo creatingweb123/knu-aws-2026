@@ -28,7 +28,9 @@ _log = logging.getLogger("haru.ai")
 
 FAKE, OPENAI_COMPAT = "fake", "openai_compat"
 DEV_STACK = "haru-dev"
-QUIET_LOGGERS = ("openai", "httpx", "httpcore", "langchain", "langchain_core", "langchain_openai", "langgraph", "langsmith")
+QUIET_LOGGERS = ("openai", "httpx", "httpcore", "langchain", "langchain_core", "langchain_openai", "langgraph", "langsmith",
+                 # DEBUG에서 PutItem 요청·응답 본문(사연·카드)을 그대로 찍는다(6a 구현 중 test_ai_logging에서 확인)
+                 "boto3", "botocore", "urllib3")
 
 # 분류 코드 (design §11.3)
 TIMEOUT, CONNECTION = "TIMEOUT", "CONNECTION"
