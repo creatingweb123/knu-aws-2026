@@ -136,3 +136,40 @@ def test_loc_to_path():
     assert loc_to_path(("places", 0, "name")) == "places[0].name"
     assert loc_to_path(("authoring", "story")) == "authoring.story"
     assert loc_to_path(()) == "body"
+
+
+# ---------------------------------------------------------------- 6a AI 요청 모델 (Requirement 1.2, 3.1)
+
+from common.validation import AiSessionCreate, AiTurn  # noqa: E402
+
+
+def _details(model, body):
+    import pytest as _pt
+
+    with _pt.raises(ValidationError) as e:
+        model.model_validate(body)
+    return to_details(e.value)
+
+
+def test_ai_session_create_story_bounds():
+    assert AiSessionCreate.model_validate({"story": "가"}).story == "가"
+    assert len(AiSessionCreate.model_validate({"story": "가" * 1000}).story) == 1000
+    for bad in ({"story": ""}, {"story": "가" * 1001}, {"story": 1}, {}):
+        assert set(_details(AiSessionCreate, bad)) == {"story"}
+
+
+def test_ai_turn_shapes():
+    assert AiTurn.model_validate({"expectedTurn": 1}).answer is None
+    ok = AiTurn.model_validate({"expectedTurn": 2, "answer": {"questionId": "q1", "skipped": True}, "finish": True})
+    assert ok.answer.skipped is True and ok.finish is True
+    assert set(_details(AiTurn, {})) == {"expectedTurn"}
+    assert set(_details(AiTurn, {"expectedTurn": 0})) == {"expectedTurn"}
+    assert set(_details(AiTurn, {"expectedTurn": "1"})) == {"expectedTurn"}
+    assert set(_details(AiTurn, {"expectedTurn": 1, "finish": "yes"})) == {"finish"}
+
+
+def test_ai_answer_exactly_one():
+    for answer in ({"questionId": "q1"}, {"questionId": "q1", "choice": "30분", "text": "x"}):
+        assert set(_details(AiTurn, {"expectedTurn": 1, "answer": answer})) == {"answer"}
+    assert set(_details(AiTurn, {"expectedTurn": 1, "answer": {"questionId": "q1", "text": "가" * 101}})) == {"answer.text"}
+    assert set(_details(AiTurn, {"expectedTurn": 1, "answer": {"questionId": "q1", "skipped": False}})) == {"answer.skipped"}

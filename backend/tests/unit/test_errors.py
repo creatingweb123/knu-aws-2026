@@ -39,13 +39,13 @@ def test_status_must_match_contract():
     with pytest.raises(ValueError):
         ApiError("UNAUTHORIZED", 403)
     with pytest.raises(ValueError):
-        ApiError("AI_UNAVAILABLE")  # 아직 구현하지 않은 단계(6단계)의 코드
+        ApiError("REPLY_ALREADY_SENT")  # 이 브랜치에 아직 없는 단계(4단계)의 코드
     with pytest.raises(ValueError):
         ApiError("FORBIDDEN", 404)
 
 
 def test_contract_code_status_pairs():
-    """docs/03 §3.6과 같은 조합(1–3단계 범위)."""
+    """docs/03 §3.6과 같은 조합(1–3단계 + 6a 범위)."""
     assert CODE_STATUS == {
         "VALIDATION_ERROR": 400,
         "RECORD_REQUIRED": 400,
@@ -58,6 +58,11 @@ def test_contract_code_status_pairs():
         "IDEMPOTENCY_CONFLICT": 409,
         "TRY_AGAIN": 503,
         "INTERNAL_ERROR": 500,  # BE-Q23 임시
+        "AI_QUOTA_EXCEEDED": 429,
+        "AI_SESSION_CLOSED": 409,
+        "AI_SESSION_BUSY": 409,  # 6b 턴 잠금용, 6a 미사용
+        "AI_INVALID_OUTPUT": 502,
+        "AI_UNAVAILABLE": 503,
     }
 
 
@@ -108,3 +113,30 @@ def test_iso_utc_string_order_matches_time_order(a, b):
 def test_plan_id_format():
     a, b = new_plan_id(), new_plan_id()
     assert a.startswith("pln_") and len(a) == 4 + 26 and a != b
+
+
+# ---------------------------------------------------------------- 6a AI 코드와 EMF 단위
+
+
+def test_ai_error_codes_and_status():
+    from common import errors
+
+    assert {c: errors.CODE_STATUS[c] for c in ("AI_QUOTA_EXCEEDED", "AI_SESSION_CLOSED", "AI_SESSION_BUSY", "AI_INVALID_OUTPUT", "AI_UNAVAILABLE")} == {
+        "AI_QUOTA_EXCEEDED": 429, "AI_SESSION_CLOSED": 409, "AI_SESSION_BUSY": 409, "AI_INVALID_OUTPUT": 502, "AI_UNAVAILABLE": 503,
+    }
+    for code in ("AI_QUOTA_EXCEEDED", "AI_UNAVAILABLE"):
+        assert errors.ApiError(code).message
+
+
+def test_emf_line_unit_and_default_unchanged():
+    import json
+
+    from common.metrics import emf_line
+
+    ms = json.loads(emf_line("AiLatencyMs", 1234, timestamp_ms=1, unit="Milliseconds"))
+    assert ms["_aws"]["CloudWatchMetrics"][0]["Metrics"] == [{"Name": "AiLatencyMs", "Unit": "Milliseconds"}]
+    assert emf_line("ClaimConflict", 1, timestamp_ms=1) == emf_line("ClaimConflict", 1, timestamp_ms=1, unit="Count")
+    assert emf_line("ClaimConflict", 1, timestamp_ms=1) == (
+        '{"_aws":{"Timestamp":1,"CloudWatchMetrics":[{"Namespace":"Haru","Dimensions":[[]],'
+        '"Metrics":[{"Name":"ClaimConflict","Unit":"Count"}]}]},"ClaimConflict":1}'
+    )

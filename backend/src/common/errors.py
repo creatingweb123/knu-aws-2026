@@ -16,6 +16,12 @@ ALREADY_CLAIMED = "ALREADY_CLAIMED"
 CANNOT_CLAIM_OWN_PLAN = "CANNOT_CLAIM_OWN_PLAN"
 CLAIM_NOT_ACTIVE = "CLAIM_NOT_ACTIVE"
 RECORD_REQUIRED = "RECORD_REQUIRED"
+# 6a단계(AI 하루 카드, §3.2). AI_SESSION_BUSY는 6b 턴 잠금용이라 6a에서는 쓰지 않는다.
+AI_QUOTA_EXCEEDED = "AI_QUOTA_EXCEEDED"
+AI_SESSION_CLOSED = "AI_SESSION_CLOSED"
+AI_SESSION_BUSY = "AI_SESSION_BUSY"
+AI_INVALID_OUTPUT = "AI_INVALID_OUTPUT"
+AI_UNAVAILABLE = "AI_UNAVAILABLE"
 # BE-Q23: 예기치 못한 서버 오류의 코드가 §3.6에 없다. 확정 전까지 임시로 쓴다.
 INTERNAL_ERROR = "INTERNAL_ERROR"
 
@@ -32,6 +38,11 @@ CODE_STATUS: dict[str, int] = {
     IDEMPOTENCY_CONFLICT: 409,
     TRY_AGAIN: 503,
     INTERNAL_ERROR: 500,
+    AI_QUOTA_EXCEEDED: 429,
+    AI_SESSION_CLOSED: 409,
+    AI_SESSION_BUSY: 409,
+    AI_INVALID_OUTPUT: 502,
+    AI_UNAVAILABLE: 503,
 }
 
 DEFAULT_MESSAGES: dict[str, str] = {
@@ -46,6 +57,11 @@ DEFAULT_MESSAGES: dict[str, str] = {
     IDEMPOTENCY_CONFLICT: "같은 요청 키로 다른 내용을 보냈어요.",
     TRY_AGAIN: "잠시 후 다시 시도해 주세요.",
     INTERNAL_ERROR: "일시적인 오류가 발생했어요.",
+    AI_QUOTA_EXCEEDED: "오늘 AI 정리 횟수를 모두 썼어요. 직접 정리해 주세요.",
+    AI_SESSION_CLOSED: "이미 끝난 AI 정리예요.",
+    AI_SESSION_BUSY: "AI가 아직 정리하고 있어요.",
+    AI_INVALID_OUTPUT: "AI 카드를 만들지 못했어요. 직접 정리해 주세요.",
+    AI_UNAVAILABLE: "AI 카드를 만들지 못했어요. 직접 정리해 주세요.",
 }
 
 

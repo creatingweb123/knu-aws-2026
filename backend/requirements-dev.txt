@@ -2,9 +2,9 @@
 pytest==9.2.0
 hypothesis==6.170.17
 # botocore Stubber와 로컬·AWS 통합 테스트용
-boto3==1.44.10
+boto3==1.44.12
 # `aws login` 자격 증명(login_session)을 boto3가 읽으려면 crt가 필요하다(AWS 판정 2026-11-25)
-botocore[crt]==1.44.11
+botocore[crt]==1.44.12
 # Docker 없이 실제 DynamoDB 조건식·갱신식을 확인하는 인프로세스 흉내(병렬성은 재현하지 않는다)
 moto[dynamodb]==5.2.6
 # template.yaml 정적 검사(sam validate --lint와 같은 검사기)와 템플릿 단위 테스트
@@ -13,3 +13,5 @@ PyYAML==6.0.4
 # 로컬 어댑터·dev JWT 테스트용
 PyJWT==2.15.1
 cryptography==50.0.2
+# AiCardFunction 의존성(src/ai-requirements.lock과 같은 버전). 해시 확인은 빌드(Makefile)에서 한다.
+# 개발 venv는 `uv pip install -r requirements-dev.txt -r src/ai-requirements.lock`로 만든다.
