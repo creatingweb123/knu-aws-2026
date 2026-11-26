@@ -25,6 +25,21 @@
 | BE-Q110 | 잠금 30초 유지 | §5 |
 | BE-Q113 | 같은 턴의 복구는 최대 2회(초기값). 넘으면 유효 후보가 있으면 폴백, 없으면 `FAILED` | §7.4 |
 
+### 조건부 승인 뒤 보완 (2026-11-26, 2차)
+
+| 보완 | 이 문서 |
+|---|---|
+| 1. 계보 선택에 턴 번호·실행 식별자·`resumeId` 검사 추가, 지연된 이전 실행의 가지 배제 | §6.2 |
+| 2. 울타리 직전에 시작한 쓰기가 잠금 만료 뒤 완료될 수 있음. 울타리를 완전한 fencing으로 보지 않음 | §6.7 |
+| 3. 동기 I/O가 시간 예산·LLM 취소에 주는 영향 검증(V13) | §6.1, §9 |
+| 4. 복구 재호출도 세션당 6회 예약 안에서만 | §8.1 |
+| 5. BE-Q118·119·120·123 승인, 알려진 한계와 호환성 검증 | §22, §24 |
+| 6. BE-Q122: 정보 없는 빈 카드와 `places`만 빈 카드 구분, 6a와 정합 | §10.3 |
+| 7. BE-Q121: 같은 턴 `WORKING`·연속 `WORKING` finish·BUSY 재동기화·복구 상한의 결합 검증 | §9.3, P48 |
+| 8. BE-Q107·111·116 승인 | §18.3, §20.5, §11.2 |
+| 9. BE-Q112: 같은 `draft` 출력의 후처리 전후 비교임을 명시 | §21 |
+| 10. 6a 비종료 500은 `PIPELINE` 세션의 비정상 상태에만 | §13 |
+
 ### 설계 검증 결과 (2026-11-26, 저장소 밖 `/tmp/haru6b-probe`, Floci `2.5.0-compat`, `langgraph 1.2.24`·`langgraph-checkpoint 4.3.2`·`langgraph-checkpoint-aws 1.3.0`, 6a 잠금 파일과 같은 버전)
 
 | # | 확인한 것 | 결과 | 설계 반영 |
@@ -41,6 +56,7 @@
 | V10 | `delete_thread` | 정상 스레드는 0건까지 지운다. 단, 체크포인트가 없는 스레드에 resume을 보내 생긴 고아 WRITES 항목은 남는다 | V2를 막으면 생기지 않는다. 남아도 TTL |
 | V11 | 크기·지연(Floci, 로컬이라 AWS 값 아님) | 사연 1,000자 + 시스템 프롬프트 + 큰 카드 인자 3회 호출 세션: 항목 66개, 최대 항목 23.9KB, 합계 289KB. put 중앙값 2.6ms·최대 3.1ms, put_writes 4.6ms·10.6ms, `delete_thread` 20ms | 400KB 한도까지 여유가 크다(§6.6). 시간 예산(§9)은 AWS 측정으로 다시 본다 |
 | V12 | moto 위 `DynamoDBSaver` | interrupt·resume·`delete_thread` 동작, 0.1초 | 단위 테스트 체크포인터는 moto(§20.1) |
+| V13 | 동기 I/O(쓰기 지연 0초·0.5초 주입)와 `asyncio.wait_for(1초)` LLM 대기 | 직선 그래프에서 체크포인트 쓰기와 LLM 대기는 한 번도 겹치지 않았다(쓰기 9회). LLM deadline은 두 경우 모두 1.000–1.001초로 정확했다. 쓰기 지연 0.5초에서 이벤트 루프가 최대 1.52초(연속 쓰기 3회) 멈췄고 그 시간은 벽시계로 그대로 흘러갔다 | 동기 I/O는 LLM 취소를 늦추지 않는다(겹치지 않으므로). 대신 루프를 막으므로 같은 실행 안에 다른 비동기 태스크를 두지 않는다. 쓰기 시간은 Remaining_Time에 그대로 잡힌다(§9) |
 
 V6 결과(재개 턴: RESUME 쓰기 → `ask` 결과 쓰기 → 체크포인트 → `decide`(모델) 결과 쓰기 → 체크포인트 → `gate` 쓰기 → 체크포인트):
 
@@ -105,7 +121,8 @@ HTTP 요청 ─▶ AiCard_Handler
 | `agentMode` | `AGENT`(6b 세션), `PIPELINE`(6a) | 생성 |
 | `turn` | 처리를 마친 턴 수. 에이전트 생성 직후 항목은 **0**, 생성 커밋에서 1 | 생성·커밋 |
 | `lockToken`, `lockedUntil`(epoch ms), `lockedAt` | 잠금. 커밋·폐쇄에서 지운다 | 잠금·커밋 |
-| `turnAttempts` | 이번 턴에 잠금을 잡은 횟수. 커밋에서 0 | 잠금(ADD)·커밋 |
+| `turnAttempts` | 이번 턴에 잠금을 잡은 횟수. 커밋에서 0(중단 해제는 유지) | 잠금(ADD)·커밋 |
+| `turnRuns` | 이번 턴에 잠금을 잡은 실행의 `runId` 목록(잠금 순서). 시도 번호 = 위치 + 1. 커밋에서 비움 | 잠금(`list_append`)·커밋 |
 | `pendingResume` | `{resumeId, questionId, choice|text|skipped, viaFinish, answeredAt}` | 잠금·커밋(REMOVE) |
 | `question`, `questionAskedAt`, `askedPaths` | 현재 질문, 질문 시각, 지금까지 물은 `path` 목록 | 커밋 |
 | `answers[]` | `{questionId, path, choice|text|skipped, askedAt, answeredAt, privacy}` | 커밋(`pendingResume` 소비 시 추가) |
@@ -124,7 +141,7 @@ HTTP 요청 ─▶ AiCard_Handler
 ### 3.2 체크포인트 (`HaruAgentCheckpoints`)
 
 - 키 형식은 라이브러리가 정한다(`CHECKPOINT_{sessionId}`, `CHUNK_…`, `WRITES_…`). `thread_id = sessionId`, `checkpoint_ns = ""`.
-- 실행마다 `config["metadata"] = {"runTurn": 처리 중인 턴 번호(= expectedTurn + 1, 생성은 1), "runId": lockToken, "resumeId": 이번 실행이 재개하는 pendingResume.resumeId 또는 null}`(V5).
+- 실행마다 `config["metadata"] = {"runTurn": 처리 중인 턴 번호(= expectedTurn + 1, 생성은 1), "runId": lockToken, "runAttempt": turnRuns 안 내 위치 + 1, "resumeId": 이번 실행이 재개하는 pendingResume.resumeId 또는 null}`(V5).
 
 ### 3.3 AgentState 추가 필드
 
@@ -205,6 +222,7 @@ UpdateItem AISESSION#{id}/META
     SET lockToken = :token, lockedUntil = :nowMs + 30000, lockedAt = :now, #status = :WORKING,
         pendingResume = if_not_exists(pendingResume, :resume)          (answer·ASKING finish일 때만)
         finishRequested = :true                                        (finish일 때만)
+        turnRuns = list_append(if_not_exists(turnRuns, :empty), :thisRun)     (:thisRun = [:token]. 시도 번호 = 목록에서의 위치 + 1, ALL_NEW로 확인)
     ADD turnAttempts :one
   ReturnValues: ALL_NEW
 ```
@@ -224,7 +242,7 @@ UpdateItem
         card/flags/notes/degraded (READY만), trace, checkpointId = :tip, bestCard,
         modelCalls, tokenIn, tokenOut, tokenInEstimated, checkDraftCount, gateRejects, questionsAsked,
         firstProposal/firstReport (if_not_exists), privacyDetected·readyAt (종료만), failureCode·llmError (FAILED만),
-        answers = list_append(answers, :consumed) (pendingResume을 소비했을 때), turnAttempts = :zero,
+        answers = list_append(answers, :consumed) (pendingResume을 소비했을 때), turnAttempts = :zero, turnRuns = :empty,
         recoveries = recoveries + (turnAttempts - 1), checkpointBytesMax
     ADD tokenCharged :correction          (실제 usage가 예약 추정치보다 컸던 만큼, §8.3)
     REMOVE lockToken, lockedUntil, lockedAt, pendingResume
@@ -256,24 +274,40 @@ UpdateItem
 AiSession의 `lockToken`만으로는 이전 실행이 체크포인트 테이블에 쓰는 것을 막을 수 없다(체크포인트 쓰기는 AiSession을 보지 않는다). 그래서 세 겹으로 막는다.
 
 1. **백그라운드 쓰기 없음**: `aput`·`aput_writes`·`aget_tuple`·`alist`·`adelete_thread`를 이벤트 루프에서 동기 메서드로 바로 부르도록 덮어쓴다(V9). 라이브러리 기본은 스레드 실행기라, LLM 취소나 Lambda 동결 뒤에도 스레드가 남아 **다음 호출에서 늦게 쓰기**를 할 수 있다. 동기로 바꾸면 쓰기는 그 실행 안에서만 일어난다. `durability="sync"`라 어차피 쓰기를 기다리므로 지연 차이는 없다.
-2. **시간 울타리**: 실행마다 `fence_deadline = 잠금 성공 시각(monotonic) + 26초`와 `commit_reserve`를 둔다. 쓰기 직전에 `monotonic ≥ fence_deadline`이거나 남은 시간 < `COMMIT_RESERVE_MS`(2.5초)면 `CheckpointFenceError`를 던진다(V8: 체크포인트는 그대로). 잠금은 30초라 울타리가 잠금보다 최소 4초 먼저 닫힌다. monotonic 기준이라 Lambda 사이 시계 차이와 무관하다.
-3. **계보 고정**: 다음 실행은 "최신" 체크포인트가 아니라 AiSession `checkpointId`(커밋된 기준)의 자손 중에서 이어 갈 지점을 고른다(§6.2). 울타리를 빠져나간 늦은 쓰기가 있어도 그것은 다른 가지가 되어 무시된다(V7).
+2. **시간 울타리**: 실행마다 `fence_deadline = 잠금 성공 시각(monotonic) + FENCE_MS(24초)`를 둔다. 쓰기 **시작** 직전에 `monotonic ≥ fence_deadline`이거나 남은 시간 < `COMMIT_RESERVE_MS`(2.5초)면 `CheckpointFenceError`를 던진다(V8: 체크포인트는 그대로). 체크포인트 전용 SDK 설정은 connect 1초·read 1초·**시도 1회**로 둬서 쓰기 하나가 끝나는(또는 실패하는) 시간을 약 2초로 묶는다. 그래서 울타리 직전에 시작한 쓰기도 보통 잠금 성공 + 26초 안에 끝나고, 잠금 만료(30초)까지 약 4초가 남는다. 시도가 1회라 일시 오류는 예외로 끝나고 §9.3 중단 해제로 간다. monotonic 기준이라 Lambda 사이 시계 차이와 무관하다. **이 울타리는 늦은 쓰기를 줄일 뿐 막지 못한다**(§6.7).
+3. **계보 고정과 표지 검사**: 다음 실행은 "최신" 체크포인트가 아니라 AiSession `checkpointId`(커밋된 기준)의 자손 중에서, 표지(`runTurn`·`runId`·`runAttempt`·`resumeId`)가 AiSession 기록과 맞는 가지만 골라 이어 간다(§6.2). 울타리를 빠져나간 늦은 쓰기는 선택에서 빠지거나, 정당한 진행일 때만 쓰인다(§6.7).
+4. **예약 조건**: 모델 호출 예약은 `lockToken` 조건이라, 잠금을 잃은 실행은 새 모델 호출을 할 수 없다(§8.1). 늦은 쓰기가 담을 수 있는 것은 이미 예약된 호출의 결과뿐이다.
+
+- 동기 I/O의 영향(V13): 그래프가 직선이라 체크포인트 쓰기는 LLM 대기와 겹치지 않으므로 `asyncio.wait_for` 취소를 늦추지 않는다. 쓰기 동안 이벤트 루프가 멈추므로 한 실행 안에 다른 비동기 태스크(하트비트 등)를 두지 않고, 병렬 분기 노드도 두지 않는다. 쓰기 시간은 Remaining_Time 계산에 그대로 들어간다.
 
 - 실행별 상태(울타리 시각, TTL, 크기 측정)는 공유 `DynamoDBSaver`를 얕게 복사한 실행 전용 객체에 둔다(로컬 어댑터는 스레드로 동시 요청을 처리하므로 전역 값을 바꾸지 않는다). boto 클라이언트는 콜드 스타트 때 한 번 만들어 공유한다. 실행 전용 객체가 라이브러리 내부 속성(`repo`, `storage`의 `ttl_seconds`)을 바꾸는 부분은 잠금 파일 버전에서 단위 테스트로 고정한다(임시, BE-Q119).
 
-### 6.2 이어 갈 지점(tip) 고르기
+### 6.2 이어 갈 지점(tip) 고르기 (보완 1)
+
+실행마다 체크포인트 metadata에 `runTurn`(처리 중인 턴 = expectedTurn + 1), `runId`(= lockToken), `runAttempt`(`turnRuns` 안 위치 + 1), `resumeId`(이번 실행이 넘긴 재개 id 또는 null)를 남긴다(V5). AiSession에는 잠금 때 `turnRuns = list_append(turnRuns, [runId])`를 남기고 커밋 때 비운다(§3.1). 시도 번호는 그 목록에서의 위치 + 1이다.
 
 ```
-select_tip(sid, base = s.checkpointId):
-  base가 없으면(생성 실행) → 새 스레드
-  hist = alist(thread)                      ─ Query, 세션당 수십 개
-  candidates = base의 자손(parent 사슬로 base에 닿음, 깊이 ≤ 64) ∪ {base}
-  tip = candidates 중 checkpoint_id(uuid6, 시간순) 최대
-  base가 hist에 없으면 → F11(체크포인트 없음)
+select_tip(s):                                    s = 잠금 결과(ALL_NEW)
+  base = s.checkpointId                           없으면(생성 실행) 새 스레드
+  hist = alist(thread)                            Query, 세션당 수십 개
+  if base ∉ hist: → F11
+  legit_runs = {runId: i + 1 for i, runId in enumerate(s.turnRuns) if runId != 내 runId}
+  T = s.turn + 1
+  for c in hist:                                  base의 자손만(parent 사슬로 base에 닿음, 깊이 ≤ 64)
+     통과 조건(모두):
+       c.metadata.runTurn == T
+       c.metadata.runId ∈ legit_runs 이고 c.metadata.runAttempt == legit_runs[runId]
+       c부터 base까지의 사슬이 모두 이 조건을 만족(중간에 다른 턴·모르는 실행이 없음)
+       c 상태의 consumedResumeIds ⊆ (s.answers의 resumeId) ∪ {s.pendingResume.resumeId}
+     하나라도 어기면 그 가지 제외, 로그 사유 CHECKPOINT_BRANCH_REJECTED(사유 코드만)
+  tip = 통과한 것 중 runAttempt가 가장 큰 실행의 체크포인트 가운데 checkpoint_id(uuid6, 시간순) 최대
+        통과한 것이 없으면 tip = base
 ```
 
-- 자손에는 이번 턴의 이전 시도(죽은 실행)들이 쓴 체크포인트가 들어간다. 시도들은 순서대로(잠금으로 직렬화) 실행되므로 가장 늦은 자손이 가장 앞선 진행이다.
+- 시도는 잠금으로 직렬화되므로 시도 번호가 큰 실행이 더 나중의 진행이다. 같은 시도 안에서는 시간순 최대가 가장 앞선 진행이다.
+- 이전 턴의 실행, 커밋된 기준이 아닌 곳에서 갈라진 가지, `turnRuns`에 없는 실행, 모르는 `resumeId`를 소비한 가지는 선택되지 않는다.
 - 실행은 `config.configurable.checkpoint_id = tip`으로 고정해서 시작한다(V7에서 고정 시작 확인).
+- 커밋은 `checkpointId = 이번 실행이 끝낸 지점`(실행 없이 커밋하면 tip)을 기록한다. 다음 턴의 기준이 된다.
 
 ### 6.3 실행 입력 고르기 (BE-Q19·BE-Q94·BE-Q95)
 
@@ -305,6 +339,26 @@ select_tip(sid, base = s.checkpointId):
 - `CheckpointStore.put`에서 직렬화된 페이로드 길이(라이브러리 serializer 결과)를 재어 실행 중 최댓값을 `AgentCheckpointBytes`(Bytes)와 AiSession `checkpointBytesMax`에 남긴다.
 - 크기 상한 계산: 메시지 이력은 예산으로 묶인다(모델 호출 6회 × 응답 최대 800토큰, 도구 결과 6개 이하, 사연 1,000자, 답변 2개). V11의 3회 세션이 최대 항목 23.9KB였으므로 6회 세션도 100KB 아래로 본다. 200KB를 넘으면 경고 로그(`CHECKPOINT_LARGE`)만 남기고 동작은 바꾸지 않는다(임시). AWS 측정으로 다시 본다.
 
+### 6.7 늦은 체크포인트 쓰기와 fencing의 한계 (보완 2)
+
+울타리는 쓰기의 **시작**만 막는다. 다음 경우 이전 실행의 쓰기가 잠금 만료 뒤에 DynamoDB에 반영될 수 있다.
+
+- 울타리 직전에 보낸 PutItem이 네트워크·서버에서 늦어져 클라이언트 타임아웃(약 2초) 근처에서 반영됨. 클라이언트가 실패로 판단해도 서버에는 반영됐을 수 있다.
+- Lambda가 쓰기 중 동결·종료되고, 이미 보낸 요청이 나중에 처리됨.
+- 체크포인트 쓰기는 두 PutItem(메타 → 페이로드)이라 메타만 반영될 수 있다(V9: 페이로드 없는 메타는 라이브러리가 건너뛴다).
+
+그래서 정합성은 울타리가 아니라 아래 규칙으로 지킨다.
+
+| 늦은 쓰기의 위치 | 결과 |
+|---|---|
+| 이미 커밋된 턴의 기준(`checkpointId`) 밖 | §6.2의 자손 조건으로 제외 |
+| 같은 턴, 이전 시도의 가지, 새 시도가 이미 진행을 남김 | 시도 번호가 큰 쪽이 우선이라 제외 |
+| 같은 턴, 이전 시도의 가지, 새 시도가 아직 진행을 남기지 않음 | 정당한 진행으로 쓰인다. 그 실행이 잠금을 잡고 있을 때 시작한 계산이고, 모델 호출은 그 실행의 예약 안에서 이뤄졌으며, 답변 소비는 `consumedResumeIds` 검사로 확인한다 |
+| 다음 턴이 커밋된 뒤 이전 턴 실행의 쓰기 | 자손이 아니라 제외 |
+| 표지가 맞지 않는 가지(다른 `runTurn`, 모르는 `runId`, 모르는 `resumeId`) | 제외 + 로그. 남은 정상 후보가 없으면 tip = base에서 다시 진행 |
+
+남는 위험: 새 시도가 tip을 고른 **뒤** 이전 시도의 늦은 쓰기가 같은 부모 아래에 반영되면, 새 시도의 가지와 형제가 된다. 새 시도가 커밋하면 그 가지가 기준이 되어 형제는 제외된다. 새 시도도 죽으면 다음 시도는 시도 번호가 큰 새 시도의 가지를 고른다(진행이 없으면 이전 시도의 가지가 선택될 수 있고, 위 표 세 번째 줄처럼 정당한 진행이다). 이 규칙은 속성 테스트 P46으로 확인한다.
+
 ## 7. 장애 지점별 복구 시퀀스 (필수 검증 3)
 
 표기: L = 잠금 갱신, R = 예약, M = 모델 응답 수신, W = 체크포인트 쓰기, C = 커밋, D = 체크포인트 삭제. "다음 시도"는 잠금 만료(30초) 뒤 같은 `expectedTurn`의 요청이다(프론트는 `WORKING`·`BUSY`·오류 뒤 재동기화한다).
@@ -327,7 +381,8 @@ select_tip(sid, base = s.checkpointId):
 | F13 | 같은 턴 `turnAttempts` > 3(복구 2회 초과, BE-Q113) | — | 결정적 폐쇄(F11과 같음), 사유 `RECOVERY_LIMIT` | — | 0 |
 | F14 | 울타리 닫힘(`CheckpointFenceError`) | 체크포인트는 마지막 성공 지점 | 중단 해제(§9.3): `WORKING`·같은 `turn`으로 응답. 다음 요청이 이어감 | 보존 | 0 |
 | F15 | 생성 중 강제 종료 | `turn 0` 세션, 고아 체크포인트 | 없음(클라이언트가 id를 모름). TTL | — | 예약만큼 |
-| F16 | 늦은 쓰기(울타리를 빠져나간 이전 실행) | 다른 가지 | §6.2가 무시 | — | 0 |
+| F16 | 늦은 쓰기(울타리를 빠져나간 이전 실행) | 다른 가지 또는 같은 턴 이전 시도 가지 | §6.2·§6.7 규칙으로 제외 또는 정당한 진행으로 사용 | 1회(`consumedResumeIds` 검사) | 0(그 실행의 예약 안) |
+| F17 | 표지가 맞지 않는 가지만 있음 | 기준만 정상 | tip = base에서 다시 진행 | 1회 | 예약 안에서 재호출 가능 |
 
 ### 7.1 결정적 폐쇄
 
@@ -371,6 +426,8 @@ UpdateItem AISESSION#{id}/META
 - `LlmCaller.ainvoke(messages, deadline_s, tools=…)`가 호출 직전에 `budget.reserve`를 부른다. 노드는 예외를 받아 상태로 바꿀 뿐 DB를 모른다.
 - 예약 조건에 `lockToken`이 있어 잠금을 잃은 실행은 모델을 부를 수 없다. 체크포인트 울타리(§6.1)와 함께 이전 실행의 부작용을 막는 두 번째 축이다.
 - 상한: 세션 하나의 실제 외부 호출 수 ≤ `modelCallsReserved` ≤ 6. 강제 종료·불확실 예약은 예약을 쓰기만 하므로 실제 호출은 6보다 적어질 수는 있어도 많아질 수 없다(P37).
+- **복구 재호출도 같은 6회 안이다**(보완 4). 복구(F3·F4·F17)는 새 예약을 받아야만 모델을 부르고, 복구용 별도 한도나 예약 초기화는 없다. 남은 예약이 없으면 복구 실행은 `BudgetExhausted`로 `fallback`(유효 후보가 없으면 `FAILED` + 503)이 된다. 커밋·잠금·결정적 폐쇄는 `modelCallsReserved`를 바꾸지 않는다.
+- 예약 UpdateItem 자체도 늦게 반영될 수 있다(SDK가 결과를 못 받음). 그 실행은 `ReservationUncertain`으로 호출하지 않으므로 예약만 늘고 호출은 없다. 잠금을 잃은 뒤 반영되는 늦은 예약은 `lockToken` 조건에 걸리거나(새 잠금이 있으면) 예약 수만 늘린다. 어느 쪽도 상한을 넘기지 않는다.
 
 ### 8.2 예산 검사 순서 (LLM 노드 앞, 조건부 엣지)
 
@@ -425,8 +482,10 @@ UpdateItem AISESSION#{id}/META
 | `COMMIT_RESERVE_MS` | 2,500 | 이보다 적게 남으면 체크포인트 쓰기를 하지 않고 중단 해제 |
 | `VERIFY_MIN_MS` | 1,500 | 6a |
 | 잠금 | 30,000 | BE-Q110 |
-| 울타리 | 잠금 성공 + 26,000(monotonic) | §6.1 |
-| AI SDK 설정 | connect 1초, read 2초, 총 2회(6a BE-Q85) | AiSession·예약·체크포인트 공통 |
+| 울타리(`FENCE_MS`) | 잠금 성공 + 24,000(monotonic). 쓰기 시작만 막는다 | §6.1, §6.7 |
+| 실행 시간 상한 | `min(Remaining_Time, fence_deadline − now)`를 12초 규칙·호출 deadline 계산에 쓴다 | 울타리 뒤에 LLM 호출이 끝나지 않게 |
+| AI SDK 설정 | connect 1초, read 2초, 총 2회(6a BE-Q85) | AiSession 잠금·커밋·예약 |
+| 체크포인트 SDK 설정 | connect 1초, read 1초, 총 1회 | 쓰기 하나 약 2초 상한(§6.1) |
 
 ### 9.2 한 턴의 시간 표 (재개 턴, 질문 답 → 검사 → 제출)
 
@@ -440,7 +499,8 @@ UpdateItem AISESSION#{id}/META
 | 노드마다 쓰기 2–3회 | 10–30ms | — |
 | 커밋 + (종료면) 삭제 | 20–40ms | 커밋 6.5초, 삭제는 1.5초 이상 남을 때만 |
 
-- 정상 경로에서 LLM 노드 앞 12초 확인 → 호출 deadline이 남은 시간 − 5초 → 호출 뒤 최소 5초에서 쓰기·커밋을 한다. 한 요청에 모델 호출은 보통 1–2회다.
+- 정상 경로에서 LLM 노드 앞 12초 확인 → 호출 deadline이 남은 시간 − 5초 → 호출 뒤 최소 5초에서 쓰기·커밋을 한다. 남은 시간은 울타리까지의 시간과 Lambda·API 남은 시간 중 작은 값이다. 실행 창이 약 24초라 한 요청의 모델 호출은 보통 1–2회이고, 호출이 느리면 1회 뒤 `pause`된다.
+- 동기 체크포인트 쓰기 시간은 벽시계로 흘러가 Remaining_Time에 그대로 잡힌다(V13). 쓰기는 LLM 대기와 겹치지 않으므로 호출 deadline과 취소 시간에는 영향이 없다.
 - SDK 상한까지 걸리는 DynamoDB 지연이 겹치면 5초로 부족할 수 있다. 그때는 울타리가 `COMMIT_RESERVE_MS`에서 쓰기를 멈추고 §9.3으로 응답한다. 그래도 Lambda 강제 종료가 나면 F1–F7로 복구된다(Req 12.6과 같은 한계). AWS에서 p99 지연을 재고 값을 다시 정한다.
 
 ### 9.3 중단 해제 (울타리·체크포인트 일시 오류)
@@ -454,6 +514,15 @@ UpdateItem Condition lockToken = :token
 
 - 같은 `turn`의 `WORKING`을 받은 프론트는 그 `turn`을 `expectedTurn`으로 다시 보내므로 다음 요청이 바로(잠금 만료를 기다리지 않고) 이어 간다. `turn`을 올리지 않는 `WORKING` 응답은 docs/03 `turn` 설명("턴 처리가 끝나면 1 오른다")과 어긋나지 않는다(처리를 마친 턴이 아니다). 프론트의 "연속 2회 WORKING → finish" 규칙도 그대로 적용된다. 프론트 리뷰 대상(임시, BE-Q121).
 - 해제 갱신마저 실패하면 잠금은 30초 뒤 만료된다.
+
+같은 턴 `WORKING`과 다른 규칙의 결합(보완 7):
+
+| 규칙 | 결합 |
+|---|---|
+| 프론트 "연속 2회 `WORKING` → `finish: true`" | 같은 턴 `WORKING`도 `WORKING`으로 센다. 두 번째부터 `finish`가 오면 잠금에서 `finishRequested = true`가 기록되고 중단 해제가 지우지 않는다 |
+| BUSY 재동기화(2초 뒤 `GET`) | 중단 해제는 잠금을 지우므로 `GET` 뒤 다음 `turns`는 바로 잠금을 잡는다. 해제 갱신이 실패했으면 30초 동안 BUSY가 이어지고 프론트는 2초마다 `GET`한다 |
+| 복구 상한(`turnAttempts` > 3) | 중단 해제는 `turnAttempts`를 0으로 돌리지 않는다. 같은 턴에서 중단 해제가 세 번 나면 네 번째 잠금에서 결정적 폐쇄(§7.3)로 끝난다 |
+| 결과 | 한 세션의 요청 수는 (턴 수 × 시도 상한)으로 묶이고, 모델 호출은 예약 6회로 묶인다. 프론트가 docs/03 규칙대로 움직이면 세션은 유한한 요청 안에 종료 상태가 된다(P48) |
 
 ## 10. 노드와 엣지
 
@@ -484,9 +553,18 @@ draft 앞: 12초 미만 → pause(route=draft), 예약 불확실 → pause(route
 
 6a `draft`를 모드 인자로 넓힌다. 에이전트 모드: 프롬프트 `day_card_agent.md`의 "초안" 지시 + `<story>` 블록, 도구 없이 호출, content의 JSON 객체 파싱. JSON이 아니면 12초 이상 남았을 때만 1회 재시도(예약 포함), 그래도 아니면 빈 카드(모든 필드 `null`, `places: []`). 스키마 위반은 재시도하지 않고 그대로 `check_draft`로 보낸다(docs/03). 스키마를 통과한 카드면 `candidate`로 둔다.
 
-### 10.3 유효 후보 (BE-Q99)
+### 10.3 유효 후보 (BE-Q99·BE-Q122, 보완 6)
 
-`candidate` = 지금까지 Card_Schema를 통과한 카드 중 마지막 것(`draft` 결과, 모델의 `check_draft`·`submit_card` 인자 중 통과한 것). 빈 카드(모든 필드 `null`, 장소 0)도 Card_Schema는 통과하므로 **유효 후보에서 빈 카드는 뺀다**(필드가 하나라도 값이 있어야 한다, 임시 BE-Q122). LLM 오류에서 `candidate`가 있으면 `fallback`(`READY degraded`), 없으면 `FAILED` + 503. 커밋 때 `bestCard`로 복사한다(§7.1 폐쇄용).
+| 카드 | 정의 | 에이전트 모드 유효 후보 |
+|---|---|---|
+| 정보 없는 카드 | Card_Schema는 통과하지만 `title`·`summary`·`reason`·`estimatedMinutes`·`question`이 모두 `null`이고 `places`가 빈 배열(장소 하위 값도 없음). `draft`가 JSON을 못 얻었을 때 만드는 빈 카드가 여기에 해당 | **아니다** |
+| `places`만 빈 카드 | 위 다섯 필드 중 하나 이상에 값이 있고 `places = []` | **맞다**(6a와 같이 `MISSING(places)` 플래그, BE-Q76) |
+| 그 밖 Card_Schema 통과 카드 | — | 맞다 |
+| Card_Schema 위반 카드 | — | 아니다(`check_draft`가 `schemaErrors`로 보고) |
+
+- `candidate` = 지금까지 유효 후보였던 카드 중 마지막 것(`draft` 결과, 모델의 `check_draft`·`submit_card` 인자 중 통과한 것). LLM 오류·예산 소진에서 `candidate`가 있으면 `fallback`(`READY degraded`), 없으면 `FAILED` + 503. 커밋 때 `bestCard`로 복사한다(§7.1 폐쇄용).
+- 6a와의 정합: 레벨 0은 바꾸지 않는다. 6a에서 정보 없는 카드는 모델이 모든 필드를 `null`로 보낸 JSON에서만 생기고 6a는 그것을 후보로 보고 `READY`(모든 필드 `MISSING`)로 돌려준다. 이 규칙은 `pipeline` 모드에서 그대로다. 에이전트 모드만 정보 없는 카드를 후보에서 빼는 이유는, 에이전트 모드에서는 서버가 빈 카드를 만들어 다음 노드로 넘기고(docs/03 `draft` 규칙), 오류로 끝날 때 빈 카드를 `READY degraded`로 주면 계획자에게 쓸 값이 없기 때문이다. `places`만 빈 카드는 두 모드 모두 유효하다.
+- 정상 종료(Gate 통과)에는 이 정의를 쓰지 않는다. 모델이 정보 없는 카드를 제출해 Gate를 통과하면 6a와 같이 `READY`(모든 필드 `MISSING`)다.
 
 ### 10.4 `decide`
 
@@ -561,6 +639,7 @@ draft 앞: 12초 미만 → pause(route=draft), 예약 불확실 → pause(route
 | `pipeline` | `PIPELINE` | 비종료 | 6a 500 그대로 |
 | 그 밖 | — | — | 503 `CONFIG_AGENT_MODE`(생성은 할당량 전) |
 
+- 6a의 비종료 500 `NON_TERMINAL_SESSION`은 **`agentMode = PIPELINE`인 세션이 비종료 상태일 때(데이터 이상)만** 유지한다(보완 10). `agentMode = AGENT` 세션은 어느 모드에서든 이 문서의 재개(§5–§7)와 모드 전환 규칙을 따르고 500으로 남지 않는다. `agentMode`가 없는 항목(6a 이전 형식)은 `PIPELINE`으로 본다.
 - 폐쇄는 잠금을 잡고 하므로 동시에 들어온 에이전트 실행(전환 직전 시작)과 겹치지 않는다. 잠금 중이면 409 BUSY이고 다음 요청이 폐쇄한다.
 - `GET`은 모드와 무관하게 저장된 상태를 돌려준다.
 - 템플릿 `AgentMode` `AllowedValues: [pipeline, agent]`, 기본 `pipeline`(6a와 같음). `dev`에서 `agent`로 바꾸는 것은 AWS 담당 배포 파라미터다.
@@ -680,9 +759,9 @@ AiCardFunction 정책에 세 번째 문장:
 | `test_agent_logging.py`·`test_agent_tracing.py` | 6a 검사를 에이전트 경로로 넓힘(체크포인트 DEBUG 본문 포함) |
 | `test_template.py`(수정) | 체크포인트 테이블, IAM 세 번째 문장, 다른 함수 권한 없음, `AgentMode` 값, `AiFaultInject` 세 겹 차단 평가, `AgentTokens` 알람 |
 
-Fake 시나리오(Req 19.2 + 추가): `happy`, `ask_once`, `no_tool_call`, `no_tool_call_twice`, `bad_json_args`, `unknown_tool`, `parallel_calls`, `gate_reject_twice`, `timeout`, `http_500`, `http_401`, `http_400`, `budget_exhausted`(6회 모두 검사), `question_rejected`(개인정보 질문·같은 path), `private_place_ask`, `slow_agent`(시간 부족 → pause), `token_heavy`(토큰 예산 소진). 단계는 **예약 순번**(`Reservation.index`)으로 고른다. 예약은 AiSession에 누적되므로 프로세스·재개·복구를 넘어 결정적이다(Req 19.3). 호출마다 메시지 요약과 도구 이름 목록을 기록한다.
+Fake 시나리오(Req 19.2 + 추가): `happy`, `ask_once`, `no_tool_call`, `no_tool_call_twice`, `bad_json_args`, `unknown_tool`, `parallel_calls`, `gate_reject_twice`, `timeout`, `http_500`, `http_401`, `http_400`, `budget_exhausted`(6회 모두 검사), `question_rejected`(개인정보 질문·같은 path), `private_place_ask`, `slow_agent`(시간 부족 → pause), `token_heavy`(토큰 예산 소진). 단계는 **그래프 상태의 응답 받은 호출 수**(`budget.modelCalls`, 체크포인트에 있음)로 고른다. 그래서 응답 뒤 저장 전 강제 종료(F4)로 같은 작업을 다시 부르면 같은 응답을 받고, 복구 결과가 장애 없는 실행과 같다(P45). 체크포인트는 프로세스·재개를 넘어 남으므로 결정적이다(Req 19.3). 예약 순번은 상한 검사에만 쓴다. 호출마다 메시지 요약과 도구 이름 목록을 기록한다.
 
-### 20.2 속성 기반 (hypothesis, P37–P47 확정)
+### 20.2 속성 기반 (hypothesis, P37–P48 확정)
 
 | # | 성질 | 생성기 | 근거 |
 |---|---|---|---|
@@ -694,9 +773,10 @@ Fake 시나리오(Req 19.2 + 추가): `happy`, `ask_once`, `no_tool_call`, `no_t
 | P42 | 개인정보가 탐지된 답변은 Sources에 없고, ToolMessage·로그·trace·EMF에 사연·답변·카드 문자열(한글 4자 이상 창)이 없다 | 사연·답변(개인정보 표본) | Req 10.3, 17 |
 | P43 | 어떤 경로로 끝나도 `READY` 카드는 Final_Check 차단 조건이 없다(6a P29 확장) | 도구 호출 열 + 카드 생성기 | Req 1.4 |
 | P44 | SessionView는 상태별 규칙을 지키고 `ASKING`일 때만 `question`이 있다(6a P31 확장) | 세션 항목 | Req 14 |
-| P45 | 한 턴 안의 임의 장애 지점(F1–F7·F14)에서 복구한 결과는 장애 없는 실행과 같은 `outcome`·카드이고, 추가 모델 호출 수 ≤ "모델 응답 뒤 결과 저장 전" 장애 수 | 장애 지점 집합, 결정적 Fake | Req 7, §7 |
-| P46 | 체크포인트 항목의 `ttl` ≤ AiSession `ttl`, 다른 가지(늦은 쓰기)가 있어도 tip은 커밋 기준의 자손 | 시각·포크 | §6.2·§6.4 |
-| P47 | `pipeline` 모드에서 비종료 에이전트 세션은 한 번의 잠금 요청으로 종료 상태가 되고 모델 호출 0 | 세션 상태 | §13 |
+| P45 | 한 턴 안의 임의 장애 지점(F1–F7·F14·F16)에서 복구한 결과는 장애 없는 실행과 같은 `outcome`·카드이고, 추가 모델 호출 수 ≤ "모델 응답 뒤 결과 저장 전" 장애 수 | 장애 지점 집합, 결정적 Fake | Req 7, §7 |
+| P46 | 체크포인트 항목의 `ttl` ≤ AiSession `ttl`. 임의의 늦은 쓰기·포크·표지 오염에서 tip은 커밋 기준의 자손이고, 모든 조상이 이번 턴·`turnRuns`의 실행·알려진 `resumeId`만 담으며, 같은 턴의 더 큰 시도 가지가 있으면 그 가지에서 고른다 | 시각·포크·표지 | §6.2·§6.4·§6.7 |
+| P47 | `pipeline` 모드에서 비종료 에이전트 세션은 한 번의 잠금 요청으로 종료 상태가 되고 모델 호출 0. `PIPELINE` 비종료 세션은 500이고 바뀌지 않는다 | 세션 상태·모드 | §13 |
+| P48 | docs/03 규칙대로 움직이는 프론트 모형(WORKING 자동 이어가기, 연속 2회 WORKING 뒤 finish, BUSY 2초 뒤 GET, CLOSED 뒤 GET)과 임의 장애(울타리 닫힘, 예약 불확실, 강제 종료, 동시 요청)에서 세션은 정해진 요청 수 안에 종료 상태가 되거나 오류로 끝나고, 같은 턴 시도는 4를 넘지 않는다 | 장애 열·응답 열 | §9.3, BE-Q121 |
 
 6a P29–P36은 그대로 통과해야 한다.
 
@@ -729,7 +809,10 @@ Fake 시나리오(Req 19.2 + 추가): `happy`, `ask_once`, `no_tool_call`, `no_t
 ## 21. 오프라인 평가 (Req 23)
 
 - `tests/fixtures/stories.json` 15건: 데모 사연 1, 비공개 장소 2, 연락처·동호수 2, 원문에 없는 장소를 부르기 쉬운 사연 3, 인젝션 2, 빈칸이 많은 사연 2, 장소가 4곳 이상 나오는 사연 1, 짧은 사연 1, 혼합 1. 사연마다 `answers`(질문 `path`별 자동 답, 없으면 건너뛰기), `legitPlaces`(T22·평가용)를 둔다. 모두 합성 문장이다.
-- `scripts/eval_agent.py`: 같은 `LLM_*` 설정으로 사연마다 ① 단발 ② 레벨 0 ③ 에이전트를 실행한다. ①은 레벨 0의 `draft` 출력(6a 단발 프롬프트 `day_card.md` 1회 호출)에 검사만 적용한 값이다(수리·폴백 전, 권장안 BE-Q112). ②는 같은 실행의 레벨 0 최종 카드라 ①과 ②는 같은 모델 출력에서 나온다. ③은 메모리 체크포인터로 에이전트를 끝까지 돌린다(질문은 자동 답). AWS·DynamoDB를 쓰지 않는다.
+- `scripts/eval_agent.py`: 같은 `LLM_*` 설정으로 사연마다 레벨 0 실행 1회와 에이전트 실행 1회를 한다.
+  - ① 단발과 ② 레벨 0은 **같은 `draft` 출력(레벨 0 단발 프롬프트 `day_card.md` 1회 호출, 재시도 포함)의 후처리 전후 비교**다(BE-Q112 승인). ①은 그 출력에 검사만 적용한 값(규칙 노드·폴백 전), ②는 같은 출력에 규칙 노드·Gate·폴백·Final_Check를 적용한 최종 카드다. ①과 ②의 차이는 후처리의 효과이고 모델 출력의 차이가 아니다.
+  - ③ 에이전트는 **별도의 모델 호출**(에이전트 프롬프트, 메모리 체크포인터, 질문은 자동 답)이다. ③과 ①·②의 차이에는 프롬프트·도구 루프·모델 출력의 무작위성이 모두 섞여 있으므로, 결과 표에 그 점을 적고 사연마다 반복 횟수(기본 3회)의 중앙값을 함께 낸다.
+  - AWS·DynamoDB를 쓰지 않는다.
 - 출력: 사연 × 방식별 `NOT_IN_SOURCE`·`MISSING`·`PRIVACY` 잔존 수, 호출 수, 지연(중앙값·p95), `degraded`, 질문 수. 결과 파일에 모델·설정·프롬프트 버전·`llmMode`·자동 답 규칙. 에이전트가 낫지 않은 유형도 그대로 적는다.
 - Fake 실행은 단위 테스트(`test_eval_agent.py`)로 도구가 도는지만 확인한다. 실제 공급자 실행은 BE-Q6·BE-Q7·BE-Q10 확정 뒤 LLM 담당이 한다.
 
@@ -745,7 +828,7 @@ Fake 시나리오(Req 19.2 + 추가): `happy`, `ask_once`, `no_tool_call`, `no_t
 | BE-Q96 | 결정 | 잠금과 `pendingResume` 원자적, `if_not_exists`(§5.2) |
 | BE-Q97 | 결정 | 조건부 예약, 환불 없음, 불확실하면 호출 안 함, `BudgetService` 주입(§8) |
 | BE-Q98 | 결정 | §8.4 |
-| BE-Q99 | 결정 + 임시 세부 | 스키마 통과 카드, 빈 카드 제외는 임시(BE-Q122) |
+| BE-Q99 | 결정 | 스키마 통과 카드, 정보 없는 카드 제외(BE-Q122, §10.3) |
 | BE-Q100 | 결정 | 그래프 전 `WORKING` 저장(§4.1) |
 | BE-Q101 | 결정 | 모델 없는 결정적 폐쇄(§13) |
 | BE-Q102 | 결정 | §19 |
@@ -753,29 +836,31 @@ Fake 시나리오(Req 19.2 + 추가): `happy`, `ask_once`, `no_tool_call`, `no_t
 | BE-Q104 | 결정 | 실행별 `ttl_seconds = 세션 ttl − now − 60초`(§6.4). 라이브러리 내부 속성 의존은 BE-Q119 |
 | BE-Q105 | 임시 | 직렬화 길이, 200KB 경고(§6.6) |
 | BE-Q106 | 임시 | 저장 여유 5초, 커밋 여유 2.5초, AWS 측정 후 조정(§9) |
-| BE-Q107 | 권장안 | 파라미터 `AiFaultInject`, 환경 변수 `FAULT_INJECT`(§18.3) |
+| BE-Q107 | 결정(승인) | 파라미터 `AiFaultInject`, 환경 변수 `FAULT_INJECT`(§18.3) |
 | BE-Q108 | 임시 | 호출 직전 9초 지연 |
 | BE-Q109 | 임시 | §5.4 표 |
 | BE-Q110 | 결정 | 30초 |
-| BE-Q111 | 권장안 | §20.5 |
-| BE-Q112 | 권장안 | ① = 레벨 0 `draft` 출력에 검사만(§21) |
+| BE-Q111 | 결정(승인) | §20.5 |
+| BE-Q112 | 결정(승인) | ①·②는 같은 `draft` 출력의 후처리 전후, ③은 별도 호출(§21) |
 | BE-Q113 | 결정 | `turnAttempts` > 3이면 폐쇄(§7.3) |
 | BE-Q114 | 임시 | 알람 5분 합계 300,000 |
 | BE-Q115 | 결정(이 설계) | 경로·유형만 담은 JSON, 원문 없음(§10.5) |
-| BE-Q116 | 권장안 | 비공개 장소 질문만 서버가 결정적으로 반영(§11.2) |
+| BE-Q116 | 결정(승인) | 비공개 장소 질문만 서버가 결정적으로 반영(§11.2) |
 | BE-Q117 | 결정 | 6a BE-Q86 연장 |
 
 ### 22.2 신규 (BE-Q118부터)
 
 | # | 질문 | 상태 | 내용 |
 |---|---|---|---|
-| BE-Q118 | 같은 질문에 다른 답이 다시 오면 | 임시 | 첫 답 우선(`if_not_exists`). 두 번째 요청은 같은 질문이면 멱등 처리되고 값은 바뀌지 않는다. 프론트는 답을 보낸 뒤 바꿀 UI가 없으므로 영향이 작다 |
-| BE-Q119 | 실행별 TTL·울타리를 위해 `DynamoDBSaver` 내부 속성(`repo`, `storage`의 `ttl_seconds`, 동기 메서드)을 다루는 것 | 임시 | 잠금 파일 버전(1.3.0)에서 단위 테스트로 고정. 버전을 올리면 테스트가 먼저 깨진다. 대안: 실행마다 saver 생성(클라이언트 공유 불가, 생성 비용) |
-| BE-Q120 | 입력 토큰 추정 나눗수 | 임시 | 2(6a와 같음). 한국어 과소 추정 가능, 커밋 때 실제값 보정. BE-Q9 실측 뒤 조정 |
-| BE-Q121 | 울타리·중단 해제 때 `turn`을 올리지 않은 `WORKING` 응답 | 임시(프론트 리뷰) | docs/03 `turn` 규칙과 어긋나지 않는다고 보지만 프론트가 같은 `turn`의 `WORKING`을 처리하는지 확인 필요 |
-| BE-Q122 | 빈 카드(값 없는 카드)를 유효 후보에서 뺄지 | 임시 | 뺀다. LLM 오류 시 빈 카드면 `FAILED` + 503(직접 작성)이 사용자에게 낫다 |
-| BE-Q123 | 질문 허용 `path` | 임시 | §11.1 목록 |
+| BE-Q118 | 같은 질문에 다른 답이 다시 오면 | 결정(승인) | 첫 답 우선(`if_not_exists`). 두 번째 요청은 같은 질문이면 멱등 처리되고 값은 바뀌지 않는다 |
+| BE-Q119 | 실행별 TTL·울타리를 위해 `DynamoDBSaver` 내부 속성을 다루는 것 | 결정(승인), 한계 §24 | 잠금 파일 버전(1.3.0) 고정과 호환성 테스트(§24.1) |
+| BE-Q120 | 입력 토큰 추정 나눗수 | 결정(승인), 한계 §24 | 2. 커밋 때 실제 usage로 보정 |
+| BE-Q121 | 울타리·중단 해제 때 `turn`을 올리지 않은 `WORKING` 응답 | 임시(프론트 리뷰) | §9.3 결합 규칙과 P48로 검증. 프론트가 같은 `turn`의 `WORKING`을 처리하는지 리뷰 필요 |
+| BE-Q122 | 유효 후보에서 뺄 빈 카드의 범위 | 결정 | 정보 없는 카드만 뺀다. `places`만 빈 카드는 유효(§10.3) |
+| BE-Q123 | 질문 허용 `path` | 결정(승인) | §11.1 목록 |
 | BE-Q124 | trace의 Tool_Error·재촉·pause 표기 | 임시(프론트 리뷰) | §14 |
+| BE-Q125 | 울타리 시간(24초)과 체크포인트 SDK 시도 1회 | 임시 | §6.1·§9.1. AWS에서 쓰기 p99를 재고 조정 |
+| BE-Q126 | `turnRuns` 목록과 `runAttempt` 표지 | 임시 | §6.2. 목록 길이는 시도 상한(4)으로 묶인다 |
 
 ### 22.3 그대로 남는 기존 미결
 
@@ -786,4 +871,30 @@ BE-Q6·BE-Q7·BE-Q9·BE-Q10·BE-Q11·BE-Q12(공급자 관련), BE-Q13·FE-Q7(메
 - Req 2.5(BE-Q100), Req 4.3(BE-Q93), Req 4.4(BE-Q96), Req 7.1–7.4(BE-Q94·BE-Q95), Req 7.6(BE-Q113), Req 11.3(BE-Q98), Req 11.4(BE-Q97), Req 13.3(BE-Q99), Req 15.2(BE-Q101), Req 15.5(BE-Q102)의 "미결" 표시는 이 문서 §22.1의 결정으로 대체된다. requirements.md에는 상태 표의 상태 열과 해당 줄의 표시만 고친다(요구사항 문장은 바꾸지 않는다).
 - Req 7.2는 두 후보 중 "모델을 다시 부르지 않고 체크포인트 상태로 커밋"을 택했다(§6.3).
 - Req 11.4의 "세지 못한 호출"은 예약 방식으로 없어진다(실제 호출 ≤ 예약 ≤ 6).
-- Req 20.3의 속성 목록(P37–P44)은 §20.2에서 P37–P47로 확정했다(P45–P47 추가, 내용은 Req 7·§6·Req 15).
+- Req 20.3의 속성 목록(P37–P44)은 §20.2에서 P37–P48로 확정했다(P45–P48 추가, 내용은 Req 7·§6·Req 15·§9.3).
+
+## 24. 알려진 한계와 호환성 검증 (보완 5)
+
+### 24.1 `DynamoDBSaver` 내부 속성 의존 (BE-Q119)
+
+- 쓰는 내부 요소: `DynamoDBSaver.repo`·`.storage`(실행별 `ttl_seconds`), `put`·`put_writes`·`get_tuple`·`list`·`delete_thread`(동기 메서드), 페이로드 직렬화 경로(크기 측정), 키 형식(`CHECKPOINT_`·`CHUNK_`·`WRITES_`, 테스트·정리용).
+- 호환성 테스트(`test_agent_checkpoint_compat.py`):
+  1. 설치된 `langgraph-checkpoint-aws`·`langgraph`·`langgraph-checkpoint` 버전이 잠금 파일과 같다(다르면 실패, 이 절을 다시 검토하라는 메시지).
+  2. `repo.ttl_seconds`·`storage.ttl_seconds` 속성이 있고, 실행별 값으로 쓴 모든 항목(메타·청크·쓰기)의 `ttl`이 그 값 이하다(moto).
+  3. 얕은 복사 실행 객체 두 개가 서로의 `ttl_seconds`를 바꾸지 않는다(로컬 어댑터 동시 요청).
+  4. `aput`·`aput_writes`·`aget_tuple`·`alist` 덮어쓰기 뒤 실행 중 스레드 수가 늘지 않는다(`threading.active_count`).
+  5. 쓰는 DynamoDB 연산이 IAM 5개(Get·Put·Query·BatchGet·BatchWrite) 밖으로 나가지 않는다(botocore 이벤트 훅으로 연산 이름 기록).
+  6. metadata 표지(`runTurn`·`runId`·`runAttempt`·`resumeId`)가 `alist` 결과에 그대로 나온다(V5).
+- 라이브러리를 올릴 때는 이 테스트와 V1–V13 프로토타입(§설계 검증)을 다시 돌린다. 내부 속성이 없어지면 대안은 실행마다 saver를 새로 만드는 것(boto 클라이언트 생성 비용)이다.
+
+### 24.2 토큰 추정 (BE-Q120)
+
+- 추정은 글자 수 / 2다. 한국어는 토크나이저에 따라 글자당 1토큰 이상일 수 있어 **과소 추정**될 수 있다. 실제 usage가 오면 커밋 때 보정되고, 보정 전 초과는 그 호출 1회분으로 묶인다.
+- 공급자가 usage를 주지 않으면 보정이 없다. 그 세션의 `tokenInEstimated > 0`으로 표시하고 `AgentTokens`는 추정치를 포함한다고 README에 적는다.
+- 검증: 로컬 스텁이 돌려준 usage와 추정치의 비를 테스트 로그로 남기고, 공급자 실측(BE-Q9) 때 같은 비를 재서 나눗수를 다시 정한다.
+
+### 24.3 그 밖
+
+- 울타리는 늦은 쓰기를 막지 못한다(§6.7). 정합성은 계보·표지 선택이 지킨다.
+- 외부 LLM 호출은 정확히 한 번이 아니다(§8.5). 세션당 6회 상한만 보장한다.
+- moto·Floci는 실제 병렬성과 DynamoDB 지연을 재현하지 않는다. 잠금·예약의 동시성과 시간 예산은 AWS(T20·T21)에서 판정한다.
