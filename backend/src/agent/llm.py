@@ -29,6 +29,7 @@ _log = logging.getLogger("haru.ai")
 FAKE, OPENAI_COMPAT = "fake", "openai_compat"
 DEV_STACK = "haru-dev"
 QUIET_LOGGERS = ("openai", "httpx", "httpcore", "langchain", "langchain_core", "langchain_openai", "langgraph", "langsmith",
+                 "langgraph_checkpoint_aws",
                  # DEBUG에서 PutItem 요청·응답 본문(사연·카드)을 그대로 찍는다(6a 구현 중 test_ai_logging에서 확인)
                  "boto3", "botocore", "urllib3")
 
@@ -229,13 +230,20 @@ def classify(exc: BaseException) -> str:
 
 
 class LlmCaller:
-    """요청 1건(세션 생성 1회)에 쓰는 호출기. Fake는 시나리오 진행 상태를 이 객체가 들고 있다."""
+    """요청 1건에 쓰는 호출기. Fake는 시나리오 진행 상태를 이 객체가 들고 있다.
 
-    def __init__(self, settings: LlmSettings, *, fake: Any = None, env: Mapping[str, str] | None = None) -> None:
+    6b: budget(BudgetService)을 받으면 호출 직전에 예약한다(BE-Q97). 예약 예외(FenceLost·BudgetExhausted·
+    ReservationUncertain)는 LlmError가 아니고 그대로 올라간다. tools를 받으면 bind_tools로 묶는다.
+    call_index는 Fake 시나리오 순번(그래프 상태의 응답 받은 호출 수)이다. 재개·복구에서도 같은 응답을 고르기 위해서다.
+    """
+
+    def __init__(self, settings: LlmSettings, *, fake: Any = None, env: Mapping[str, str] | None = None, budget: Any = None) -> None:
         self.settings = settings
         self._env = os.environ if env is None else env
         self.fake = fake
         self.error = settings.error
+        self.budget = budget
+        self.calls_made = 0
         if settings.provider == FAKE and fake is None and self.error is None:
             from agent.fake_llm import FakeScenarioChatModel
 
@@ -248,16 +256,43 @@ class LlmCaller:
     def mode(self) -> str:
         return self.settings.mode
 
-    async def ainvoke(self, messages: list[Any], deadline_s: float) -> Any:
+    def remaining_calls(self) -> int | None:
+        return None if self.budget is None else self.budget.remaining_calls()
+
+    def _bind(self, model: Any, tools: list[Any] | None) -> Any:
+        if not tools:
+            return model
+        kwargs: dict[str, Any] = {}
+        if self.settings.parallel_tool_calls == "false":
+            kwargs["parallel_tool_calls"] = False
+        if self.settings.tool_choice:
+            kwargs["tool_choice"] = self.settings.tool_choice
+        return model.bind_tools(tools, **kwargs)
+
+    def _reserve(self, messages: list[Any], tools: list[Any] | None) -> None:
+        if self.budget is not None:
+            from agent.budget import estimate_tokens
+
+            self.last_reservation = self.budget.reserve(estimate_tokens(messages, tools))
+
+    async def ainvoke(self, messages: list[Any], deadline_s: float, *, tools: list[Any] | None = None, call_index: int | None = None) -> Any:
         s = self.settings
+        self.last_reservation = None
         if self.error:
             _log.warning("ai_llm reason=%s", self.error)
             raise LlmError(CONFIG, reason=self.error)
         if deadline_s <= 0:
             raise LlmError(TIME_BUDGET)
+        from agent.fault import slow_delay_s
+
+        delay = slow_delay_s(self._env)
         if s.provider == FAKE:
-            return await self._call(self.fake, messages, deadline_s)
-        key = api_key(s, self._env)
+            if call_index is not None:
+                self.fake.index = call_index
+            self._reserve(messages, tools)
+            self.calls_made += 1
+            return await self._call(self._bind(self.fake, tools), messages, deadline_s, delay)
+        key = api_key(s, self._env)  # 키 읽기 실패는 예약 전에(예약을 낭비하지 않는다)
         import httpx
         from langchain_openai import ChatOpenAI
         from pydantic import SecretStr
@@ -268,15 +303,22 @@ class LlmCaller:
             kwargs["temperature"] = s.temperature
         if s.extra_body:
             kwargs["extra_body"] = s.extra_body
+        self._reserve(messages, tools)
+        self.calls_made += 1
         async with httpx.AsyncClient(timeout=timeout) as http:
             model = ChatOpenAI(base_url=s.base_url, api_key=SecretStr(key), model=s.model, timeout=timeout, max_retries=0,
                                max_tokens=s.max_tokens, use_responses_api=False, http_async_client=http, **kwargs)
-            return await self._call(model, messages, deadline_s)
+            return await self._call(self._bind(model, tools), messages, deadline_s, delay)
 
     @staticmethod
-    async def _call(model: Any, messages: list[Any], deadline_s: float) -> Any:
+    async def _call(model: Any, messages: list[Any], deadline_s: float, delay_s: float = 0.0) -> Any:
+        async def run() -> Any:
+            if delay_s:
+                await asyncio.sleep(delay_s)  # ai-slow(dev 전용). deadline 안에서 취소된다
+            return await model.ainvoke(messages)
+
         try:
-            return await asyncio.wait_for(model.ainvoke(messages), timeout=deadline_s)
+            return await asyncio.wait_for(run(), timeout=deadline_s)
         except LlmError:
             raise
         except Exception as e:  # noqa: BLE001 - 공급자 오류는 모두 LLM_Error(코드 없는 500 금지)
