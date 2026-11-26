@@ -20,7 +20,8 @@ pytestmark = pytest.mark.integration
 
 def _concrete(route_key: str) -> tuple[str, str]:
     method, path = route_key.split(" ", 1)
-    return method, path.replace("{planId}", "pln_00000000000000000000000000").replace("{claimId}", "clm_00000000000000000000000000")
+    return method, path.replace("{planId}", "pln_00000000000000000000000000").replace("{claimId}", "clm_00000000000000000000000000").replace(
+        "{sessionId}", "ais_00000000000000000000000000")
 
 
 def _foreign_token(stack) -> str:

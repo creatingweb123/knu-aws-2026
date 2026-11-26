@@ -247,17 +247,17 @@
   - [x] 15.4 로컬 실행: `docker compose up -d --build` 후 `pytest -m local tests/local` — **기존 16건 + 새 사례 전부 통과**, 조건부 사례는 해당 환경 변수로 한 번씩 다시 띄워 실행. 건수·날짜·기준 커밋을 기록. T 판정 근거 아님(BE-Q15).
     - _Requirements: 19.9, 19.13_
 
-- [ ] 16. AWS 통합 테스트 작성 (`tests/integration/test_ai.py`, 실행·판정은 AWS 담당)
+- [x] 16. AWS 통합 테스트 작성 (`tests/integration/test_ai.py`, 실행·판정은 AWS 담당)
   - 선행: 9, 15
-  - [ ] 16.1 `conftest.py`: 테스트가 만든 `sessionId`와 `AIQUOTA#{sub}#{KST 날짜}`를 정리 대상으로 등록해 지우는 확장(기존 Cognito·`PLAN#`·`USER#`·`IDEM#` 정리 유지), 함수 환경 변수 읽기 헬퍼(`lambda:GetFunctionConfiguration`), 결과 파일에 `scenario`·`llmMode`. `tests/unit/test_integration_cleanup.py`에 새 정리 대상 사례 추가.
+  - [x] 16.1 `conftest.py`: 테스트가 만든 `sessionId`와 `AIQUOTA#{sub}#{KST 날짜}`를 정리 대상으로 등록해 지우는 확장(기존 Cognito·`PLAN#`·`USER#`·`IDEM#` 정리 유지), 함수 환경 변수 읽기 헬퍼(`lambda:GetFunctionConfiguration`), 결과 파일에 `scenario`·`llmMode`. `tests/unit/test_integration_cleanup.py`에 새 정리 대상 사례 추가.
     - _Requirements: 19.10–19.12_
-  - [ ] 16.2 `test_T12_invalid_key`(마커 `fault`): 함수가 `LLM_PROVIDER=openai_compat`이고 `LLM_API_KEY_PARAM`이 있을 때만 판정, 아니면 사유 있는 skip("실제 공급자 없음, T12 미검증"). 합성 사연 → 503 `AI_UNAVAILABLE`, AiSession `FAILED`·`llmError=HTTP_401`, 그 사용자 Plan 0건. **실제 공급자 검증 전까지 미검증으로 유지**하고 skip·보조 사례를 통과로 세지 않는다.
+  - [x] 16.2 `test_T12_invalid_key`(마커 `fault`): 함수가 `LLM_PROVIDER=openai_compat`이고 `LLM_API_KEY_PARAM`이 있을 때만 판정, 아니면 사유 있는 skip("실제 공급자 없음, T12 미검증"). 합성 사연 → 503 `AI_UNAVAILABLE`, AiSession `FAILED`·`llmError=HTTP_401`, 그 사용자 Plan 0건. **실제 공급자 검증 전까지 미검증으로 유지**하고 skip·보조 사례를 통과로 세지 않는다.
     - _Requirements: 19.10 · T12, BE-Q83_
-  - [ ] 16.3 `test_T12_aux_ssm_missing`(마커 `fault`): 파라미터 없음 → 503·`KEY_READ_FAILED`, 결과 파일 `scenario: "T12-aux-ssm-missing"`, T12 통과로 세지 않음.
+  - [x] 16.3 `test_T12_aux_ssm_missing`(마커 `fault`): 파라미터 없음 → 503·`KEY_READ_FAILED`, 결과 파일 `scenario: "T12-aux-ssm-missing"`, T12 통과로 세지 않음.
     - _Requirements: 19.11 · BE-Q83_
-  - [ ] 16.4 `test_ai_routes_fake`(기본, 함수 `LLM_PROVIDER=fake`인 dev에서만): 생성·GET·turns·남의 세션 404·11번째 429, 결과 `llmMode: fake`(공급자 품질 근거 아님). T1이 AI 경로 3개를 포함하는지 확인.
+  - [x] 16.4 `test_ai_routes_fake`(기본, 함수 `LLM_PROVIDER=fake`인 dev에서만): 생성·GET·turns·남의 세션 404·11번째 429, 결과 `llmMode: fake`(공급자 품질 근거 아님). T1이 AI 경로 3개를 포함하는지 확인.
     - _Requirements: 19.12, 15.10 · BE-Q86_
-  - [ ] 16.5 수집 확인: `pytest -m integration tests/integration --collect-only`, `pytest -m "integration and fault" tests/integration --collect-only` 오류 없음(실행 안 함). `STACK_NAME` 없이 실행하면 모두 skip.
+  - [x] 16.5 수집 확인: `pytest -m integration tests/integration --collect-only`, `pytest -m "integration and fault" tests/integration --collect-only` 오류 없음(실행 안 함). `STACK_NAME` 없이 실행하면 모두 skip.
     - _Requirements: 19.10–19.12_
 
 - [ ] 17. Checkpoint D - 전체 회귀와 변경 범위

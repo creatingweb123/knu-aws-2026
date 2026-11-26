@@ -40,6 +40,9 @@ class Stack:
     created_plan_ids: list[str] = field(default_factory=list)
     # 멱등 키 항목의 PK(`IDEM#{sub}#{key}`). 키마다 파티션이 따로라 USER#·PLAN# 파티션 조회로는 찾을 수 없다.
     created_idem_pks: list[str] = field(default_factory=list)
+    # AI 세션(`AISESSION#{id}`/META)과 하루 할당량(`AIQUOTA#{sub}#{KST yyyymmdd}`/META, 6a).
+    created_ai_session_ids: list[str] = field(default_factory=list)
+    created_ai_quota_pks: list[str] = field(default_factory=list)
 
 
 def _boto(service: str, config=None):
@@ -131,6 +134,12 @@ def _cleanup(s: Stack, idp=None, ddb=None) -> None:
             "idem_key", pk,
             lambda pk=pk: ddb.delete_item(TableName=s.table_name, Key={"PK": {"S": pk}, "SK": {"S": "META"}}),
         )
+
+    for sid in dict.fromkeys(s.created_ai_session_ids):
+        attempt("ai_session", sid,
+                lambda sid=sid: ddb.delete_item(TableName=s.table_name, Key={"PK": {"S": f"AISESSION#{sid}"}, "SK": {"S": "META"}}))
+    for pk in dict.fromkeys(s.created_ai_quota_pks):
+        attempt("ai_quota", pk, lambda pk=pk: ddb.delete_item(TableName=s.table_name, Key={"PK": {"S": pk}, "SK": {"S": "META"}}))
 
     if failures:
         path = save_result("cleanup-failures", {"failures": failures})
@@ -242,3 +251,63 @@ def create_plan(stack: Stack, token: str, title: str = "통합 테스트 산책"
     assert status == 201, body
     stack.created_plan_ids.append(body["plan"]["planId"])
     return body["plan"]["planId"]
+
+
+# ---------------------------------------------------------------------------
+# 6a: AI 하루 카드
+# ---------------------------------------------------------------------------
+
+
+def kst_day(now=None) -> str:
+    from datetime import datetime, timedelta, timezone
+
+    return (now or datetime.now(timezone.utc)).astimezone(timezone(timedelta(hours=9))).strftime("%Y%m%d")
+
+
+def register_ai_quota(stack: Stack, token: str) -> None:
+    """요청 전에 오늘(KST)과 내일 할당량 키를 정리 대상으로 등록한다(실행 중 자정을 넘어도 지우도록)."""
+    from datetime import datetime, timedelta, timezone
+
+    sub = token_sub(token)
+    now = datetime.now(timezone.utc)
+    for day in dict.fromkeys([kst_day(now), kst_day(now + timedelta(minutes=10))]):
+        stack.created_ai_quota_pks.append(f"AIQUOTA#{sub}#{day}")
+
+
+def ai_create(stack: Stack, token: str, story: str) -> tuple[int, Any]:
+    """POST /ai/card-sessions. 할당량 키는 요청 전, 세션 ID는 200 응답에서 등록한다.
+
+    502·503 응답에는 sessionId가 없으므로 그 세션은 find_ai_sessions로 찾아 등록한다.
+    """
+    register_ai_quota(stack, token)
+    status, body = call(stack, "POST", "/ai/card-sessions", token=token, body={"story": story})
+    if status == 200 and isinstance(body, dict) and body.get("sessionId"):
+        stack.created_ai_session_ids.append(body["sessionId"])
+    return status, body
+
+
+def find_ai_sessions(stack: Stack, sub: str) -> list[dict[str, Any]]:
+    """그 사용자의 AiSession(판정·정리용). AiSession에는 소유자 인덱스가 없어 dev 테이블을 필터 스캔한다.
+
+    AI 테스트에서만 쓰고 결과를 정리 대상으로 등록한다(_cleanup 자체는 스캔하지 않는다).
+    """
+    import boto3
+    from boto3.dynamodb.conditions import Attr
+
+    table = boto3.resource("dynamodb", region_name=REGION).Table(stack.table_name)
+    items, kwargs = [], {"FilterExpression": Attr("PK").begins_with("AISESSION#") & Attr("ownerId").eq(sub), "ConsistentRead": True}
+    while True:
+        page = table.scan(**kwargs)
+        items += page["Items"]
+        if "LastEvaluatedKey" not in page:
+            break
+        kwargs["ExclusiveStartKey"] = page["LastEvaluatedKey"]
+    stack.created_ai_session_ids.extend(i["sessionId"] for i in items)
+    return items
+
+
+def function_env(stack_name: str, logical_id: str) -> dict[str, str]:
+    """배포된 함수의 환경 변수(lambda:GetFunctionConfiguration). 판정 전제(공급자·키 이름)를 확인한다."""
+    cfn = _boto("cloudformation")
+    name = cfn.describe_stack_resource(StackName=stack_name, LogicalResourceId=logical_id)["StackResourceDetail"]["PhysicalResourceId"]
+    return _boto("lambda").get_function_configuration(FunctionName=name).get("Environment", {}).get("Variables", {})

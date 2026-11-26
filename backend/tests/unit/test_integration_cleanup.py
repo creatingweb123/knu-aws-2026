@@ -134,3 +134,41 @@ def test_create_plan_failure_still_registers_idem_key(monkeypatch):
         it.create_plan(s, id_token("u-2"))
     assert len(s.created_idem_pks) == 1 and s.created_idem_pks[0].startswith("IDEM#u-2#")
     assert s.created_plan_ids == []
+
+
+def test_ai_session_and_quota_items_are_deleted(ddb):
+    """6a: 테스트가 등록한 AiSession·AiQuota만 지운다."""
+    put(ddb, "AISESSION#ais_1")
+    put(ddb, "AIQUOTA#u1#20261126")
+    put(ddb, "AISESSION#ais_other")
+    s = stack(created_ai_session_ids=["ais_1", "ais_1"], created_ai_quota_pks=["AIQUOTA#u1#20261126"])
+    it._cleanup(s, idp=FakeIdp(), ddb=ddb)
+    assert keys(ddb) == {("AISESSION#ais_other", "META")}
+
+
+def test_ai_create_registers_quota_before_request_and_session_after(monkeypatch):
+    seen = {}
+
+    def fake_call(stack_, method, path, *, token=None, body=None, headers=None):
+        seen["quota_before"] = list(stack_.created_ai_quota_pks)
+        return 200, {"sessionId": "ais_9"}
+
+    monkeypatch.setattr(it, "call", fake_call)
+    s = stack()
+    it.ai_create(s, id_token("u-3"), "합성 사연")
+    assert seen["quota_before"] and all(pk.startswith("AIQUOTA#u-3#") for pk in seen["quota_before"])
+    assert s.created_ai_session_ids == ["ais_9"]
+
+
+def test_ai_create_failure_registers_quota_only(monkeypatch):
+    monkeypatch.setattr(it, "call", lambda *a, **k: (503, {"error": {"code": "AI_UNAVAILABLE"}}))
+    s = stack()
+    it.ai_create(s, id_token("u-4"), "합성 사연")
+    assert s.created_ai_session_ids == [] and s.created_ai_quota_pks
+
+
+def test_kst_day_boundary():
+    from datetime import datetime, timezone
+
+    assert it.kst_day(datetime(2026, 11, 26, 14, 59, 59, 999000, tzinfo=timezone.utc)) == "20261126"
+    assert it.kst_day(datetime(2026, 11, 26, 15, 0, tzinfo=timezone.utc)) == "20261127"
