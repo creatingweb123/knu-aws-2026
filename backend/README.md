@@ -586,9 +586,11 @@ cd backend
 # .env를 compose 변수 보간에 쓴다. 값은 컨테이너 환경 변수로만 들어간다(docker inspect로 볼 수 있으니 실행 뒤 되돌린다).
 AGENT_MODE=agent docker compose --env-file <.env 경로> up -d --no-deps --force-recreate api
 LOCAL_REAL_PROVIDER=1 LOCAL_AGENT_MODE=agent .venv/bin/pytest -m local tests/local/test_local_agent_real.py -s
-# 끝나면 기본 설정(pipeline, fake)으로 되돌린다
-docker compose up -d --no-deps --force-recreate api
+# 끝나면 기본 설정(pipeline, fake)으로 되돌린다. 값을 명시해야 한다(아래 주의)
+LLM_PROVIDER=fake LLM_API_KEY= LLM_BASE_URL= LLM_MODEL= LLM_EXTRA_BODY= AGENT_MODE=pipeline docker compose up -d --no-deps --force-recreate api
 ```
+
+주의: `api` 서비스는 compose 프로젝트 디렉터리의 `.env`를 `env_file`로 읽는다(`backend/docker-compose.yml`). 그 디렉터리에 키가 든 `.env`가 있으면 명시하지 않은 `docker compose up`은 그 공급자와 `AGENT_MODE`를 그대로 쓴다. 복구와 실행 모두 위처럼 값을 셸에 명시한다. 복구 뒤 컨테이너의 `LLM_API_KEY` 길이가 0인지 확인한다(`docker inspect`로 길이만 본다).
 
 오프라인 평가(NoopBudget, 메모리 체크포인터. DynamoDB를 쓰지 않는다):
 
