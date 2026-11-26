@@ -223,16 +223,16 @@
   - [x] 12.5 템플릿 단위 테스트 (`tests/unit/test_template.py`): AiCardFunction 설정 전부, `LLM_API_KEY` 미정의, LangSmith 변수 2개·API 키 변수 없음, IAM(액션 3개·LeadingKeys 2개·`Query`/`Scan`/`index/*`/`GetParameters*`/`kms:*` 없음, SSM 문장 조건부·ARN 하나), RouteSettings 3개, Rules·Conditions 평가(5단계 fault guard 테스트 방식: `Stage`·`LlmProvider`·스택 이름 조합별 결과), `AgentMode` AllowedValues, 다른 함수 불변(권한·환경 변수·CodeUri), `HaruAgentCheckpoints` 리소스 없음, 경로가 `routes.py`와 같음.
     - _Requirements: 15.1–15.10, 19.8_
 
-- [ ] 13. 빌드 검증 (`scripts/check_ai_build.py`)
+- [x] 13. 빌드 검증 (`scripts/check_ai_build.py`)
   - 선행: 12
-  - [ ] 13.1 `scripts/check_ai_build.py`: design §17.3의 1–5(다른 함수 금지 패키지 검사, AiCardFunction 크기·상위 패키지·250MB, 런타임 컨테이너 import 시간 5회·그래프 Fake 1회·`zoneinfo`, **각 Lambda 산출물 독립 import·실행**(인증 없는 이벤트 → 401, `sys.modules` 검사, `PlansFunction`의 `ai_metrics` 계산, PreSignUp 표본 이벤트), 결과 JSON 출력).
+  - [x] 13.1 `scripts/check_ai_build.py`: design §17.3의 1–5(다른 함수 금지 패키지 검사, AiCardFunction 크기·상위 패키지·250MB, 런타임 컨테이너 import 시간 5회·그래프 Fake 1회·`zoneinfo`, **각 Lambda 산출물 독립 import·실행**(인증 없는 이벤트 → 401, `sys.modules` 검사, `PlansFunction`의 `ai_metrics` 계산, PreSignUp 표본 이벤트), 결과 JSON 출력).
     - _Requirements: 16.3, 16.6, 16.8 · BE-Q18_
-  - [ ] 13.2 `cfn-lint template.yaml` 0건, `sam validate --lint` 통과, `sam build --use-container` 성공. `--require-hashes` 동작 확인(2.2).
+  - [x] 13.2 `cfn-lint template.yaml` 0건, `sam validate --lint` 통과, `sam build --use-container` 성공. `--require-hashes` 동작 확인(2.2).
     - _Requirements: 15.8, 16.7_
-  - [ ] 13.3 `check_ai_build.py` 실행과 기록: 압축 해제·zip 크기, import 시간(중앙값·최댓값), 함수별 독립 실행 결과를 README 초안에 적고 설계 단계 값(125.4MB, 49.8MB, 0.74–0.91초)과 비교. 배포 형식은 SAM ZIP 유지.
+  - [x] 13.3 `check_ai_build.py` 실행과 기록: 압축 해제·zip 크기, import 시간(중앙값·최댓값), 함수별 독립 실행 결과를 README 초안에 적고 설계 단계 값(125.4MB, 49.8MB, 0.74–0.91초)과 비교. 배포 형식은 SAM ZIP 유지.
     - _Requirements: 16.8 · BE-Q18_
 
-- [ ] 14. Checkpoint C - SAM·빌드
+- [x] 14. Checkpoint C - SAM·빌드
   - 13.2·13.3 통과, `pytest tests/unit` 실패 0건(296건 포함). 다른 함수 산출물에 AI 패키지 0개, 각 함수 독립 실행 통과.
   - _Requirements: 15.8, 16.3, 19.13_
 
