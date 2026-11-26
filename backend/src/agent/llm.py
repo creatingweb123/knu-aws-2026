@@ -237,7 +237,8 @@ class LlmCaller:
     call_index는 Fake 시나리오 순번(그래프 상태의 응답 받은 호출 수)이다. 재개·복구에서도 같은 응답을 고르기 위해서다.
     """
 
-    def __init__(self, settings: LlmSettings, *, fake: Any = None, env: Mapping[str, str] | None = None, budget: Any = None) -> None:
+    def __init__(self, settings: LlmSettings, *, fake: Any = None, env: Mapping[str, str] | None = None, budget: Any = None,
+                 agent: bool = False) -> None:
         self.settings = settings
         self._env = os.environ if env is None else env
         self.fake = fake
@@ -248,7 +249,7 @@ class LlmCaller:
             from agent.fake_llm import FakeScenarioChatModel
 
             try:
-                self.fake = FakeScenarioChatModel.for_scenario(settings.fake_scenario)
+                self.fake = FakeScenarioChatModel.for_scenario(settings.fake_scenario, agent=agent)
             except ValueError:
                 self.error = "CONFIG_FAKE_SCENARIO"
 

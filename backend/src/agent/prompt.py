@@ -56,3 +56,37 @@ def retry_message(kind: str, paths: tuple[str, ...] | list[str]) -> HumanMessage
     if kind != "NOT_JSON" and "places" in paths:
         text += " " + PLACES_RULE
     return HumanMessage(text)
+
+
+# ---------------------------------------------------------------------------
+# 6b 에이전트 프롬프트 (design §12, BE-AI-03)
+# ---------------------------------------------------------------------------
+
+AGENT_PROMPT_FILE = Path(__file__).resolve().parents[1] / "prompts" / "day_card_agent.md"
+DRAFT_MARK = "## 초안"
+
+
+@lru_cache(maxsize=1)
+def agent_prompt_text() -> str:
+    return AGENT_PROMPT_FILE.read_text(encoding="utf-8")
+
+
+def agent_system_prompt() -> str:
+    """도구 사용 단계의 시스템 프롬프트(초안 절 제외)."""
+    return agent_prompt_text().split(DRAFT_MARK)[0].rstrip() + "\n"
+
+
+def agent_draft_instruction() -> str:
+    return agent_prompt_text().split(DRAFT_MARK, 1)[1].strip()
+
+
+def agent_prompt_version() -> str:
+    return hashlib.sha256(agent_prompt_text().encode("utf-8")).hexdigest()[:12]
+
+
+def agent_draft_messages(story: str) -> list[BaseMessage]:
+    return [SystemMessage(agent_system_prompt() + "\n" + agent_draft_instruction()), HumanMessage(user_message(story))]
+
+
+def answer_block(text: str) -> str:
+    return "<answer>\n" + neutralize(text) + "\n</answer>"

@@ -27,6 +27,8 @@ class LlmStub:
     def __init__(self) -> None:
         self.mode = "ok"
         self.content: str | list[str] = json.dumps(DEFAULT_CARD, ensure_ascii=False)
+        # 6b: 응답 메시지를 직접 정한다(도구 호출). 원소는 assistant message dict(content·tool_calls). 지정하면 content보다 우선
+        self.messages: list[dict[str, Any]] | None = None
         self.drip_interval = 0.2
         self.requests: list[dict[str, Any]] = []
         self.closed_early = 0
@@ -78,9 +80,15 @@ class LlmStub:
             text = "```json\n" + text + "\n```"
         elif mode == "prose":
             text = "카드를 정리했어요.\n" + text + "\n확인해 주세요."
+        message: dict[str, Any] = {"role": "assistant", "content": text}
+        finish = "stop"
+        if self.messages:
+            message = {"role": "assistant", **self.messages[min(n, len(self.messages) - 1)]}
+            if message.get("tool_calls"):
+                finish = "tool_calls"
         msg: dict[str, Any] = {
             "id": "stub-1", "object": "chat.completion", "created": 1, "model": "stub-model",
-            "choices": [{"index": 0, "finish_reason": "stop", "message": {"role": "assistant", "content": text}}],
+            "choices": [{"index": 0, "finish_reason": finish, "message": message}],
         }
         if mode not in ("no_usage",):
             msg["usage"] = {"prompt_tokens": 120, "completion_tokens": 60, "total_tokens": 180}
@@ -127,3 +135,11 @@ class LlmStub:
         h.send_header("Content-Length", str(len(data)))
         h.end_headers()
         h.wfile.write(data)
+
+
+def tool_message(*calls: tuple[str, Any], content: str | None = None) -> dict[str, Any]:
+    """OpenAI 형식 tool_calls. 인자가 str이면 원문 그대로(잘못된 JSON 시험용), dict면 JSON 문자열."""
+    return {"content": content, "tool_calls": [
+        {"id": f"call_{i}", "type": "function",
+         "function": {"name": name, "arguments": args if isinstance(args, str) else json.dumps(args, ensure_ascii=False)}}
+        for i, (name, args) in enumerate(calls)]}
