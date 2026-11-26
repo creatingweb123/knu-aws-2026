@@ -382,20 +382,22 @@ BE-Q6의 **개발·검증용** 공급자는 NVIDIA NIM(`nvidia/nemotron-3.5-ligh
 | `LLM_EXTRA_BODY` 권장 값(BE-Q9) | `{"chat_template_kwargs":{"enable_thinking":false}}` |
 
 발견한 것
-- 장소가 5곳 나오는 사연(`many_places`)에서 모델이 프롬프트의 "장소는 0–3곳"을 어기고 5곳을 두 번 모두 냈다(경로 `places`의 SCHEMA) → 502. BE-Q127(후보 B)로 프롬프트와 재시도 메시지에 장소 선택 규칙을 넣었다(`promptVersion` `ca6ada9ac3ef`). 재검증 결과는 아래 "BE-Q127 재검증"(**대기: 키 없음**).
+- 장소가 5곳 나오는 사연(`many_places`)에서 모델이 프롬프트의 "장소는 0–3곳"을 어기고 5곳을 두 번 모두 냈다(경로 `places`의 SCHEMA) → 502. BE-Q127(후보 B)로 프롬프트와 재시도 메시지에 장소 선택 규칙을 넣었다(`promptVersion` `ca6ada9ac3ef`). 재검증 결과는 아래 "BE-Q127 재검증"(2026-11-27, 3회 통과).
 - 잘못된 키가 403이다. BE-Q128로 T12 판정을 401 또는 403으로 넓혔다.
 - 레벨 0 결과의 품질(원문 대조·개인정보)은 15건 1회 실행이라 평가가 아니다. 비교 평가는 `scripts/eval_agent.py`(6b)로 한다.
 
-#### BE-Q127 재검증 (대기: `LLM_API_KEY` 없음, 2026-11-26 23:47 확인)
+#### BE-Q127 재검증 (2026-11-27, 3회)
 
-장소 5곳 사연(`many_places`)을 프롬프트 규칙(사연 순서로 최대 3곳) 적용 뒤 실제 공급자로 3회 돌린다. 판정: 세 번 모두 `READY` 또는 `degraded` 카드(502 아님), 장소 수 ≤ 3, `legit_order`가 증가 순서(사연 순서). 하나라도 어기면 BE-Q127을 다시 연다. 서버가 배열을 자르지 않는 원칙은 그대로다.
+판정 기준: 세 번 모두 `READY`(502 아님), 장소 3곳 이하, 장소가 사연 순서(`legit_order`가 증가). 명령: `probe_provider.py --env-file <.env> --only pipeline --ids many_places --reps 3`. 결과 파일 `test-results/provider-probe-20261127T002242.json`(커밋하지 않음).
 
-```bash
-cd backend
-.venv/bin/python scripts/probe_provider.py --env-file <키가 든 .env 경로> --only pipeline --ids many_places --reps 3
-```
+| 회차 | 결과 | 시도 | 모델 호출 | 장소 수 | legit_order | 플래그 | 지연(초) |
+|---|---|---|---|---|---|---|---|
+| 1 | READY | 1 | 1 | 3 | [0, 1, 2] | MISSING 3 | 1.66 |
+| 2 | READY | 1 | 1 | 3 | [0, 1, 2] | MISSING 2 | 1.19 |
+| 3 | READY(degraded) | 2 | 2 | 3 | [0, 1, 2] | NOT_IN_SOURCE 2, MISSING 1 | 3.01 |
 
-결과는 `test-results/provider-probe-*.json`(gitignore)에 남고, 장소 이름은 남지 않는다. 결과 표는 키가 준비된 뒤 여기에 붙인다.
+- 판정: 통과(3/3). 장소는 사연 순서 앞 3곳이었고, 서버가 배열을 자르지 않았다.
+- 3회차는 첫 응답이 스키마를 어겨(`SCHEMA`) 재시도했다. 재시도 카드에 원문에 없는 항목 2건이 남아 degraded가 됐다. 기준 밖의 사례지만 그대로 적는다.
 
 ### 10.6 429 세 종류 (BE-Q92)
 
@@ -455,7 +457,7 @@ cd backend
 | 로컬(Docker) | 기본 `pipeline`에서 기존 23건 통과. `AGENT_MODE=agent FAKE_LLM_SCENARIO=ask_once`로 다시 띄워 새 9건 통과(`LOCAL_AGENT_MODE=agent LOCAL_COMPOSE_CONTROL=1`). `llmMode: fake`, 판정 근거 아님(BE-Q15) |
 | SAM | `cfn-lint` 0건, `sam validate --lint` 통과, `sam build --use-container` 성공(`--require-hashes`) |
 | AWS 통합 테스트 | T18–T22 작성·수집만(`-m integration` 26건, `-m "integration and fault"` 3건). 실행·판정은 AWS 담당 |
-| 실제 공급자 | NVIDIA NIM 개발용 trial로 6a 확인은 끝났다(10.5절). 6b 에이전트 스모크·오프라인 평가·BE-Q127 재검증은 **`LLM_API_KEY`가 없어 대기**(2026-11-26 23:47 확인, `knu-aws-2026/backend/.env`). 실행 절차는 11.9절. 실제 공급자 호출은 0회다 |
+| 실제 공급자 | 2026-11-27 측정. 키·Thinking OFF 확인, BE-Q127 3/3 통과, T12 정상 키 기준 기록 생성. 로컬 스모크 5건은 **1건 실패(contact_1, 503)로 중단**해 동시 5요청과 15×3 평가는 실행하지 않았다. 원인과 결정 사항은 11.10절, BE-Q129 |
 
 ### 11.2 배포 전 주의 (AWS 담당)
 
@@ -529,9 +531,9 @@ cd backend
 - 출력: READY·degraded·실패 수, `NOT_IN_SOURCE`·`MISSING`·`PRIVACY`·`NEW_PLACE`(legitPlaces 밖) 잔존 수, 호출·토큰·지연(중앙값·p95), 질문 수, 사연별로 에이전트가 레벨 0보다 나은지(BETTER·WORSE·SAME·MIXED). 결과 파일은 `test-results/`(gitignore)에 둔다.
 - NVIDIA trial 결과는 개발용이며 운영 공급자 결정 근거가 아니다(10.10절).
 
-### 11.9 실제 공급자 검증 절차 (작업 20.2–20.4, 대기)
+### 11.9 실제 공급자 검증 절차 (작업 20.2–20.4)
 
-상태(2026-11-26 23:47): `knu-aws-2026/backend/.env`에 `LLM_API_KEY`가 없다(다른 `.env`와 셸 환경에도 없다). 그래서 실제 공급자 호출은 한 번도 하지 않았다. 아래 순서로 키가 들어온 뒤 실행한다. 키 값은 출력·복사·커밋하지 않는다. 도구는 `--env-file`로 `.env`를 읽고 값은 출력하지 않는다.
+상태(2026-11-27): 키 설정을 확인했다. 1·2·3 단계는 끝났다. 4단계 스모크에서 실패해 5·6단계는 실행하지 않았다(11.10절). 키 값은 출력·복사·커밋하지 않는다. 도구는 `--env-file`로 `.env`를 읽고 값은 출력하지 않는다.
 
 | 순서 | 확인할 것 | 방법 | 기준 |
 |---|---|---|---|
@@ -563,7 +565,52 @@ docker compose up -d --no-deps --force-recreate api
 - 429: 한 번 나오면 10초 쉰다. 3회 연속이면 우회하지 않고 멈춘다. 결과 파일에 `aborted`와 그때까지 행이 남는다(`complete: false`).
 - 결과 파일과 표는 `test-results/`에 두고 커밋하지 않는다. 요약만 README 11.10절에 옮긴다.
 
-### 11.10 실제 공급자 결과 (대기)
+### 11.10 실제 공급자 결과 (2026-11-27)
 
-키 준비 뒤 채운다. 비교 대상은 ① 최초 draft, ② 레벨 0 최종, ③ 에이전트다. 정상 READY·degraded READY·FAILED 비율, NOT_IN_SOURCE·MISSING·PRIVACY·NEW_PLACE, 모델 호출·입력·출력 토큰, 질문·게이트 거부·자체 수정, 응답 시간 중앙값·p95·최댓값, 타임아웃·공급자 오류, 사연별 개선·악화를 적는다. ①과 ②는 같은 draft 호출의 출력이다. NoopBudget 평가 결과와 Floci 통합 스모크 결과는 따로 적는다.
+측정 조건: 커밋 `a35440c` 기준. 모델 `nvidia/nemotron-3.5-lightning-30b-a3b`, `LLM_EXTRA_BODY={"chat_template_kwargs":{"enable_thinking":false}}`, `LLM_PARALLEL_TOOL_CALLS=false`, `LLM_TEMPERATURE=0`, `LLM_MAX_TOKENS=800`, 연결 2초·읽기 8초·재시도 0. 세션 예산(호출 6회, 입력 토큰 3만), 턴 27초, 울타리 24초는 그대로 두었다. 스모크는 로컬 어댑터와 Floci DynamoDB를 썼다(AWS가 아니다). 키 값은 기록하지 않았고 실행 뒤 컨테이너 설정을 기본값으로 되돌렸다.
 
+| 단계 | 결과 | 판정 |
+|---|---|---|
+| 1. 키·공급자 | 정상 키 요청 200 | 통과 |
+| 1. Thinking OFF | 설정 적용: `content` 69자, 추론 0자, 종료 `stop`. 설정 없이: `content` 0자, 추론 663자, 길이 제한(`length`)에서 종료 | 통과 |
+| 2. BE-Q127 장소 5곳 3회 | 3/3 READY, 장소 3곳, 사연 순서. 3회차 degraded(위 BE-Q127 절) | 통과 |
+| 3. T12 정상 키 기준 기록 | `test-results/provider-probe-20261127T002222.json`. 같은 엔드포인트·모델, `thinking_off` 200. `t12_baseline()` 확인 통과 | 기록 생성 |
+| 4. 로컬 스모크 5건 | 4건 READY(2건 degraded), **1건 FAILED(503)** | **실패, 중단** |
+| 5. 같은 턴 동시 5요청 | 미실행(4단계 실패로 중단) | 미실행 |
+| 6. 오프라인 평가 15×3 | 미실행(4단계 실패로 중단) | 미실행 |
+
+#### 4단계 스모크 상세
+
+HTTP 지연은 1.0–5.9초였고 27초를 넘긴 요청은 없었다. 모델 호출과 예약은 그 세션의 `modelCalls`·`modelCallsReserved`다.
+
+| 사연 | 흐름(HTTP, 결과, 초) | 결과 | 질문(건너뜀) | 호출 / 예약 | 입력 / 출력 토큰(보고값) | 플래그·자체 수정 |
+|---|---|---|---|---|---|---|
+| demo | 200 ASKING 5.0 → 200 ASKING 4.1 → 200 READY 1.3 | READY, degraded | 2(2) | 6 / 6 | 10,744 / 776 | 없음. 예산 소진 뒤 자체 정리 |
+| private_place_1 | 200 ASKING 4.8 → 200 ASKING 5.0 → 200 READY 1.1 | READY, degraded | 2(2) | 6 / 6 | 11,627 / 739 | PRIVACY 2, NOT_IN_SOURCE 2 / REMOVED 1, KEPT_FLAGGED 2 |
+| contact_1 | 200 ASKING 3.4 → 200 ASKING 1.0 → **503 AI_UNAVAILABLE 2.4** | **FAILED** | 2(2) | 6 / 6 | 10,482 / 795 (세션 기록) | 후보 카드 없음 |
+| injection_1 | 200 ASKING 2.5 → 200 READY 5.9 | READY | 1(1) | 5 / 5 | 8,401 / 785 | MISSING 1 |
+| missing_1 | 200 READY 3.2 | READY | 0 | 3 / 3 | 4,032 / 383 | 자체 수정 REWRITTEN 1 |
+
+- 체크포인트: 종료된 세션(READY·FAILED)의 체크포인트는 모두 삭제됐다. contact_1 세션도 0건이다.
+- 테스트 출력의 `contact_1: llmMode None` 줄은 기록 누락이다. 503 응답에는 세션을 읽지 않아 `llmMode`가 없다. 실패 사유는 `HTTP 503` 줄이다.
+- 자동 답 규칙의 결과: demo와 private_place_1의 `estimatedMinutes` 질문은 선택지에 `45분`이 없어 건너뛰었다(픽스처 규칙 그대로).
+
+#### 4단계 실패 원인 (contact_1)
+
+- 증상: 두 번째 턴(답변 뒤)이 503 `AI_UNAVAILABLE`로 끝났다. 세션은 `FAILED`, `llmError=BUDGET_CALLS`, 모델 호출 6회 모두 사용, `submit_card`를 부르지 못했다.
+- 첫 초안: `check_draft`가 `title`의 스키마 위반(1–40자)을 보고했다. 에이전트 모드는 스키마 위반 초안을 재시도하지 않는다(설계 §4.1, §10). 그래서 후보 카드가 없었다.
+- 모델의 시도: 제목을 질문으로 고치려 했다. 질문 경로 `title`은 허용 목록(BE-Q123)에 없어 `PATH_NOT_ALLOWED`로 거부된다. 또 질문 한도(2개)를 넘긴 호출과 인자 검증 실패(`INVALID_ARGS`)가 섞였다. 호출 6회가 이렇게 소진됐다.
+- 같은 사연의 진단 재현 2회: 저장소 밖 스크립트로 메타데이터(`finish_reason`, 출력 토큰, 도구 이름, 오류 코드, 질문 길이)만 기록했다. 두 번 모두 `BUDGET_CALLS`로 `FAILED`였다. 한 번은 질문을 4번 냈고(한도 2 초과 거부), 한 번은 `title` 질문을 세 번 낸 뒤 인자 오류를 냈다. 세 번(스모크 1, 진단 2) 모두 실패했다.
+- 안전성: 잘못된 카드는 나가지 않았다. 사연은 유지되고 사용자는 503을 받아 직접 작성으로 간다. 문제는 가용성이다.
+- 레벨 0과 비교: 같은 사연의 6a 측정(2026-11-26, 1회)은 READY, 모델 호출 1회였다. 조건이 달라 직접 비교는 아니다.
+- 예산: demo와 private_place_1은 호출 6회를 다 쓴 뒤 자체 정리로 degraded READY가 됐다. 6회 상한이 실제 모델 행동에서 빠듯하다는 신호다.
+
+#### 필요한 결정 (BE-Q129, docs/08)
+
+프롬프트 변경, 설계 변경, 예산 변경은 이번 실행에서 하지 않았다. 아래 중 하나를 골라야 한다.
+
+- A. 에이전트 모드에서 스키마 위반 초안을 레벨 0처럼 한 번 재시도한다. 설계 §4.1·§10 변경이고, 재시도 한 번이 예산 6회를 쓴다.
+- B. 프롬프트에 "스키마 위반은 질문하지 말고 `submit_card`로 고친다"를 넣는다. 프롬프트 변경이고 모델 준수에 기댄다.
+- C. 현재 동작을 유지한다. 이런 사연은 503으로 끝나고 직접 작성으로 간다. 이 비용을 받아들이는 결정이 필요하다.
+
+판정 기준(스모크 5건 READY, 예약 6 이하 등)은 낮추지 않았다. 동시 5요청과 15×3 평가는 BE-Q129 결정 뒤 실행한다.
