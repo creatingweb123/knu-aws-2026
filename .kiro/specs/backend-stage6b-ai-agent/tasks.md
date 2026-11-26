@@ -258,7 +258,8 @@ push 전 확인(각 Checkpoint와 push마다)
 
 ### 공급자 검증 (개발용 NVIDIA NIM, BE-Q6 개발용 결정 승인됨, 합성 사연만)
 
-- [ ] 20. 실제 공급자 호환성·스모크 (**20.1·20.4 완료. 20.2는 스모크 실패로 중단(BE-Q129 결정 대기), 20.3 미실행. 2026-11-27 측정, README 11.10절**)
+- [x] 20. 실제 공급자 호환성·스모크 (**2026-11-27에 GPT-6 Luna 게이트웨이로 20.1–20.4 모두 완료, README 11.12절. NVIDIA 시기 20.2는 스모크 실패로 중단(11.10·11.11절)**)
+  - 공급자 변경(2026-11-27): 개발용 공급자를 GPT-6 Luna 게이트웨이(`LLM_EXTRA_BODY={"reasoning_effort":"none"}`)로 바꾸고 전 단계를 다시 실행했다. 추론 끄기 본문은 공급자마다 다르다(NVIDIA `chat_template_kwargs`, GPT `reasoning_effort`). 출시 기본 모드 제안은 README 11.13절.
   - 선행: 20.1 없음, 20.2는 10, 20.3은 18
   - [x] 20.1 6a 파이프라인과 요청 필드 확인(`scripts/probe_provider.py`, 2026-11-26, 커밋 `2e306a9`): Thinking 기본 켜짐 → `LLM_EXTRA_BODY={"chat_template_kwargs":{"enable_thinking":false}}` 필수, `max_completion_tokens`·`max_tokens`·`temperature=0`·`tools`·`parallel_tool_calls=false`·ToolMessage 후속·usage 동작, 레벨 0 합성 15건 14 READY·1건 502(장소 5곳, BE-Q127), 중앙값 1.13초·최대 4.33초·타임아웃 0, 잘못된 키 403(BE-Q128), 6a 핸들러 끝까지 200 READY. README 10.5·10.9·10.10.
     - _Requirements: 19.4 · BE-Q6(개발용), BE-Q9, BE-Q12_
@@ -272,6 +273,10 @@ push 전 확인(각 Checkpoint와 push마다)
     - 상태(2026-11-27): 결정과 반영(커밋 `c69ac89`)은 끝났다. **BE-Q127 재검증 3/3 통과**(3회 모두 READY, 장소 3곳, 사연 순서. 3회차 degraded). **T12 정상 키 기준 기록 생성**(`test-results/provider-probe-20261127T002222.json`, 커밋하지 않음). 무효 키 403 재확인은 하지 않았다(6a 20.1 실측을 유지).
     - _Requirements: 13.4, 22 · BE-Q83, BE-Q91_
   - 각 하위 작업 뒤 **push 전 확인(실제 키 0회 포함) → commit → push.** `test-results/`는 커밋하지 않는다.
+  - GPT-6 Luna 결과(2026-11-27, 상세는 README 11.12절):
+    - 20.2 재실행: 스모크 5건 5/5 READY, degraded 0, 예약 = 호출, 체크포인트 0건, `problems` 없음. `test-results/local-real-agent-smoke-20261127T025419.json`. 동시 5요청 통과, `test-results/local-real-agent-concurrent-20261127T025435.json`.
+    - 20.3 재실행: 15건 × 3회, 45행 × 3방식 완료. `test-results/gpt-eval-15x3-20261127.json`. 에이전트 READY 45/45, 레벨 0 43/45(degraded 2건은 `contact_2`). 에이전트가 낫지 않은 사연은 3건(demo, private_place_2, missing_2). 결과는 개발용 trial이며 운영 결정 근거가 아니다. contact_1은 개발 사례라 독립 held-out 평가가 아니다.
+    - 20.4 재검증: BE-Q127 many_places 3/3 READY. 실패 사례 3종 ×3회 9/9 READY. 잘못된 키 HTTP 401, T12 기준 기록 `test-results/provider-probe-20261127T024834.json`.
 
 ## 보완 (BE-Q129, 2026-11-27): 에이전트 초안 재시도와 프롬프트 일반 규칙
 
@@ -287,9 +292,9 @@ push 전 확인(각 Checkpoint와 push마다)
 - [x] B7. 회귀: 단위 전체, 로컬 pipeline 23건, 로컬 agent 페이크 28건(실제 공급자 사례 10건은 건너뜀). README 11.11절.
 - [x] B8. contact_1 진단 3회(같은 조건): 에이전트 3/3 FAILED(`BUDGET_CALLS`), 레벨 0 3/3 READY. 초안 재시도는 3회 모두 실행됐고, 두 번째 초안도 스키마 위반(제목 47자)이었다.
 - [x] B9. 스모크 5건(최종 이미지): READY 3건(1건 degraded), FAILED 2건(`private_place_1`, `contact_1`). **기준 불충족, 중단.** 직전 이미지 실행은 READY 4건, FAILED 1건(`contact_1`).
-- [ ] B10. 동시 5요청 검증: 미실행(B9 실패로 중단).
-- [ ] B11. 합성 사연 15건 × 3회 오프라인 평가: 미실행(B9 실패로 중단).
-- [ ] B12. 추가 결정: 제목 길이 위반이 예산 안에서 해결되지 않는 문제. 후보는 README 11.11절 "필요한 결정". 결정 전에는 프롬프트를 더 고치지 않는다.
+- [x] B10. 동시 5요청 검증: GPT-6 Luna에서 통과(2026-11-27, README 11.12절). NVIDIA 시기에는 B9 실패로 실행하지 않았다.
+- [x] B11. 합성 사연 15건 × 3회 오프라인 평가: GPT-6 Luna로 완료(2026-11-27, 45행 × 3방식, README 11.12절). 에이전트 READY 45/45. contact_1은 개발 사례라 독립 평가가 아니다.
+- [ ] B12. 추가 결정: 제목 길이 위반이 예산 안에서 해결되지 않는 문제(NVIDIA에서 재현). GPT-6 Luna에서는 재발이 없었다(재검증 9/9, 15×3 스키마 위반 0). 제목 강제 절삭은 채택하지 않는다(사용자 지시). 공급자 의존 문제라 운영 공급자 확정 뒤 다시 확인한다. 후보는 README 11.11절. 결정 전에는 프롬프트를 더 고치지 않는다.
 
 ### 별도 승인 그룹
 
