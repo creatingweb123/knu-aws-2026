@@ -28,68 +28,68 @@
 
 ### 묶음 L: 승인·AWS 없이 하는 작업
 
-- [ ] 1. 공통 모듈 (`src/common`)
+- [x] 1. 공통 모듈 (`src/common`)
   - 선행: 없음
-  - [ ] 1.1 `common/errors.py`: `AI_QUOTA_EXCEEDED`(429), `AI_SESSION_CLOSED`(409), `AI_SESSION_BUSY`(409, 6a 미사용), `AI_INVALID_OUTPUT`(502), `AI_UNAVAILABLE`(503)와 기본 메시지. 기존 코드·상태 조합 불변.
+  - [x] 1.1 `common/errors.py`: `AI_QUOTA_EXCEEDED`(429), `AI_SESSION_CLOSED`(409), `AI_SESSION_BUSY`(409, 6a 미사용), `AI_INVALID_OUTPUT`(502), `AI_UNAVAILABLE`(503)와 기본 메시지. 기존 코드·상태 조합 불변.
     - _Requirements: 12.4, 1.10 · §3.6_
-  - [ ] 1.2 `common/ids.py`: `new_session_id()`(`ais_` + ULID), `is_session_id(s)`(형식 검사).
+  - [x] 1.2 `common/ids.py`: `new_session_id()`(`ais_` + ULID), `is_session_id(s)`(형식 검사).
     - _Requirements: 1.9, 2.4 · BE-Q77_
-  - [ ] 1.3 `common/metrics.py`: `emf_line(..., unit="Count")`, `emit(..., unit="Count")`(5단계와 같은 시그니처), 상수 `AI_LATENCY_MS`·`AI_FAILURE`·`AI_INVALID_OUTPUT`. 기존 3종 출력은 바이트 단위로 같다.
+  - [x] 1.3 `common/metrics.py`: `emf_line(..., unit="Count")`, `emit(..., unit="Count")`(5단계와 같은 시그니처), 상수 `AI_LATENCY_MS`·`AI_FAILURE`·`AI_INVALID_OUTPUT`. 기존 3종 출력은 바이트 단위로 같다.
     - _Requirements: 18.1, 18.2 · BE-OBS-01, BE-Q37_
-  - [ ] 1.4 `common/ddb.py`: `use_table(t)`만 추가. 나머지 diff 0.
+  - [x] 1.4 `common/ddb.py`: `use_table(t)`만 추가. 나머지 diff 0.
     - _Requirements: 7.6, 12.5 · BE-Q85, BE-Q48(미결 유지)_
-  - [ ] 1.5 `common/validation.py`: `AiPlaceDraft`·`AiCardDraft`(Card_Schema, strict, extra ignore), 정규화 함수(design §3.1: 키 없음·공백 → `null`, `whyChosen` `""` 유지, `places` 없음 → `[]`), `AiSessionCreate`(`story` 1–1000), `AiTurn`(`expectedTurn` ≥1, `finish`), `AiAnswer`(`choice`·`text`·`skipped` 중 정확히 하나, 길이), `_FIELD_MESSAGES`에 새 필드. `PlanCreate` 불변.
+  - [x] 1.5 `common/validation.py`: `AiPlaceDraft`·`AiCardDraft`(Card_Schema, strict, extra ignore), 정규화 함수(design §3.1: 키 없음·공백 → `null`, `whyChosen` `""` 유지, `places` 없음 → `[]`), `AiSessionCreate`(`story` 1–1000), `AiTurn`(`expectedTurn` ≥1, `finish`), `AiAnswer`(`choice`·`text`·`skipped` 중 정확히 하나, 길이), `_FIELD_MESSAGES`에 새 필드. `PlanCreate` 불변.
     - _Requirements: 1.2, 3.1, 4.4, 9.3 · BE-Q91_
-  - [ ] 1.6 공통 모듈 단위 테스트
+  - [x] 1.6 공통 모듈 단위 테스트
     - `test_errors.py`: 새 코드·상태, `emf_line` 단위 지정, 기존 `test_emf_line_format` 불변.
     - `test_ids.py`: `ais_` 형식, 잘못된 형식(접두어·길이·문자).
     - `test_ai_card_schema.py`(신규): design §3.1 표의 모든 줄(정상 `null` vs 위반: 숫자 자리 문자열, `"45"`·`45.5`·`45.0`·`True`·9·241, 길이 초과, `places` 4개·비배열·원소 비객체, 알 수 없는 키 무시), 경계값 양 끝, `whyChosen` `""`·`null`.
     - `test_validation.py`: `AiSessionCreate`(0·1·1000·1001자, 비문자열, `details` 키 `story`), `AiTurn`(`expectedTurn` 0·"1"·누락, `answer` 둘 이상·없음·`text` 101자, `skipped: false`).
     - _Requirements: 1.2, 3.1, 4.4, 12.4, 18.2, 19.1 · BE-Q91_
 
-- [ ] 2. 의존성 잠금과 개발 환경
+- [x] 2. 의존성 잠금과 개발 환경
   - 선행: 없음
-  - [ ] 2.1 `src/ai-requirements.in`(직접 의존성: `langgraph==1.2.24`, `langgraph-checkpoint==4.3.2`, `langchain-core==1.8.4`, `langchain-openai==1.8.5`, `langgraph-checkpoint-aws==1.3.0`, `boto3>=1.43.64`, `pydantic==2.14.4`, `python-ulid==4.2.0`). 구현 시점에 PyPI를 다시 확인하고 바꾼 값이 있으면 이유를 주석에 남긴다.
-  - [ ] 2.2 `src/ai-requirements.lock`: `uv pip compile src/ai-requirements.in --python-version 3.12 --python-platform x86_64-manylinux_2_28 --generate-hashes -o src/ai-requirements.lock`. 생성 명령과 날짜를 머리 주석에 남긴다. 해시 설치(`--require-hashes`)가 Lambda 빌드 이미지에서 동작하지 않으면 해시 없는 `==` 잠금으로 바꾸고 README에 적는다.
-  - [ ] 2.3 `requirements-dev.txt`: 잠금 파일의 버전으로 AI 패키지를 설치(해시 없는 설치용 파일이 필요하면 같은 명령으로 생성), `boto3`·`botocore`를 잠금 버전에 맞춘다. 개발 `.venv`를 다시 만들어 1–3단계 단위 296건이 그대로 통과하는지 먼저 확인한다.
-  - [ ] 2.4 `tests/unit/test_ai_lock.py`: 잠금 파일의 모든 패키지 줄이 `==`, 직접 의존성이 모두 있음, `pydantic`·`python-ulid` 버전이 `src/requirements.txt`와 같음, `src/requirements.txt`에 AI 패키지가 없음.
+  - [x] 2.1 `src/ai-requirements.in`(직접 의존성: `langgraph==1.2.24`, `langgraph-checkpoint==4.3.2`, `langchain-core==1.8.4`, `langchain-openai==1.8.5`, `langgraph-checkpoint-aws==1.3.0`, `boto3>=1.43.64`, `pydantic==2.14.4`, `python-ulid==4.2.0`). 구현 시점에 PyPI를 다시 확인하고 바꾼 값이 있으면 이유를 주석에 남긴다.
+  - [x] 2.2 `src/ai-requirements.lock`: `uv pip compile src/ai-requirements.in --python-version 3.12 --python-platform x86_64-manylinux_2_28 --generate-hashes -o src/ai-requirements.lock`. 생성 명령과 날짜를 머리 주석에 남긴다. 해시 설치(`--require-hashes`)가 Lambda 빌드 이미지에서 동작하지 않으면 해시 없는 `==` 잠금으로 바꾸고 README에 적는다.
+  - [x] 2.3 `requirements-dev.txt`: 잠금 파일의 버전으로 AI 패키지를 설치(해시 없는 설치용 파일이 필요하면 같은 명령으로 생성), `boto3`·`botocore`를 잠금 버전에 맞춘다. 개발 `.venv`를 다시 만들어 1–3단계 단위 296건이 그대로 통과하는지 먼저 확인한다.
+  - [x] 2.4 `tests/unit/test_ai_lock.py`: 잠금 파일의 모든 패키지 줄이 `==`, 직접 의존성이 모두 있음, `pydantic`·`python-ulid` 버전이 `src/requirements.txt`와 같음, `src/requirements.txt`에 AI 패키지가 없음.
   - _Requirements: 16.1, 16.2, 16.5, 19.13 · BE-Q18, BE-Q80_
 
-- [ ] 3. AiSession·AiQuota 서비스 (`domain/ai_session_service.py`)
+- [x] 3. AiSession·AiQuota 서비스 (`domain/ai_session_service.py`)
   - 선행: 1.2, 1.4, 1.5
-  - [ ] 3.1 Asia/Seoul 날짜: `quota_day(now_utc) -> (yyyymmdd, ttl_epoch)`, `ZoneInfo` 실패 시 고정 오프셋 대체와 경고 1회(design §6).
+  - [x] 3.1 Asia/Seoul 날짜: `quota_day(now_utc) -> (yyyymmdd, ttl_epoch)`, `ZoneInfo` 실패 시 고정 오프셋 대체와 경고 1회(design §6).
     - _Requirements: 6.2, 6.5 · BE-Q73_
-  - [ ] 3.2 AiQuota: `consume(user_id, now)` — `ADD sessions :one SET ttl = if_not_exists(...)`, 조건 `attribute_not_exists(sessions) OR sessions < :limit`, `AI_DAILY_SESSION_LIMIT`(기본 10). 조건 실패 → 429, 그 밖 → 500 `INTERNAL_ERROR`(사유 `QUOTA_WRITE_FAILED`). 되돌리지 않는다.
+  - [x] 3.2 AiQuota: `consume(user_id, now)` — `ADD sessions :one SET ttl = if_not_exists(...)`, 조건 `attribute_not_exists(sessions) OR sessions < :limit`, `AI_DAILY_SESSION_LIMIT`(기본 10). 조건 실패 → 429, 그 밖 → 500 `INTERNAL_ERROR`(사유 `QUOTA_WRITE_FAILED`). 되돌리지 않는다.
     - _Requirements: 6.1–6.4, 6.6 · BE-AI-10_
-  - [ ] 3.3 AiSession: `build_session_item(...)`(design §5.1 속성 전체, `llmMode`·`llmProviderLabel` 포함, `ttl` = createdAt + 30일), `put_session(item)`(조건 `attribute_not_exists(PK)`), `get_live_session(id)`(`ConsistentRead`, `ttl <= now`·`ttl` 이상이면 `None`), `verify_saved(item)`(design §4.4).
+  - [x] 3.3 AiSession: `build_session_item(...)`(design §5.1 속성 전체, `llmMode`·`llmProviderLabel` 포함, `ttl` = createdAt + 30일), `put_session(item)`(조건 `attribute_not_exists(PK)`), `get_live_session(id)`(`ConsistentRead`, `ttl <= now`·`ttl` 이상이면 `None`), `verify_saved(item)`(design §4.4).
     - _Requirements: 5.1, 5.4, 5.7, 5.8 · BE-AI-07, BE-Q74, BE-Q89_
-  - [ ] 3.4 `serialize_session_view(item)`: 허용 목록 9개 키, 상태별 `card`·`flags`·`notes`, `places` 항상 배열, `question` `null`, 내부 속성(`llmMode` 포함) 제외.
+  - [x] 3.4 `serialize_session_view(item)`: 허용 목록 9개 키, 상태별 `card`·`flags`·`notes`, `places` 항상 배열, `question` `null`, 내부 속성(`llmMode` 포함) 제외.
     - _Requirements: 4.1–4.6, 4.10 · §3.2, BE-Q76_
-  - [ ] 3.5 단위 테스트 (`tests/unit/test_ai_session_service.py`, moto)
+  - [x] 3.5 단위 테스트 (`tests/unit/test_ai_session_service.py`, moto)
     - TTL: `ttl = now`·`now − 1`·`now + 1`, `ttl` 없음·문자열 → 각각 Live/Expired, 항목이 남아 있어도 Expired면 `None`.
     - 저장: 조건 실패, 숫자 `Decimal`, `null` 저장·복원, 시간 값 밀리초 3자리 UTC.
     - AiQuota: 10건 성공·11번째 429, 400 경로는 호출되지 않음(핸들러 테스트에서), 502·503 세션도 1건, 사용자 분리, KST 경계(UTC `14:59:59.999` → 그날 키, `15:00:00.000` → 다음 날 키, 각 `ttl` 값), `ZoneInfo` 실패 대체 경로.
     - 동시성: 스레드 15개 × (남은 한도 10 / 0) → 성공 10 / 0(moto 조건식 확인, 판정은 AWS).
     - `verify_saved`: 우리 항목·다른 항목·없음·조회 실패.
     - _Requirements: 5.8, 6.1–6.5, 19.2–19.4 · BE-Q73, BE-Q89_
-  - [ ] 3.6 Write property test for SessionView (`tests/unit/test_ai_properties.py`)
+  - [x] 3.6 Write property test for SessionView (`tests/unit/test_ai_properties.py`)
     - **Property 31: SessionView는 상태별 규칙을 지키고 허용 목록 밖 키가 없다**
     - 생성기: 임의 상태(`READY`·`FAILED`, 6b 상태 포함)·카드·플래그·메모·내부 속성이 든 AiSession 항목.
     - **Validates: Requirements 4.1, 4.2, 4.3, 4.4**
-  - [ ] 3.7 Write property test for AiQuota (`tests/unit/test_ai_properties.py`)
+  - [x] 3.7 Write property test for AiQuota (`tests/unit/test_ai_properties.py`)
     - **Property 33: 하루 성공한 세션 생성 수는 한도 이하이고, 성공 수 = 모델을 부른 세션 수**
     - 생성기: 한도 1–20, 요청 수 0–30, 사용자 1–3명, 시각(경계 전후). moto 위에서 순서대로·스레드 동시로 실행.
     - **Validates: Requirements 6.1, 6.3, 6.4, 6.5**
 
-- [ ] 4. 카드 파싱과 검사·수리 (`agent/card.py`, `agent/tools.py`, `agent/repair.py`)
+- [x] 4. 카드 파싱과 검사·수리 (`agent/card.py`, `agent/tools.py`, `agent/repair.py`)
   - 선행: 1.5
-  - [ ] 4.1 `agent/card.py`: content 텍스트 추출(블록 목록 포함), 코드 펜스 제거, 첫 `{`에서 `raw_decode`, 정규화 → `AiCardDraft`. 결과 `ok | NOT_JSON | SCHEMA(경로 목록)`. 원문을 결과에 담지 않는다.
+  - [x] 4.1 `agent/card.py`: content 텍스트 추출(블록 목록 포함), 코드 펜스 제거, 첫 `{`에서 `raw_decode`, 정규화 → `AiCardDraft`. 결과 `ok | NOT_JSON | SCHEMA(경로 목록)`. 원문을 결과에 담지 않는다.
     - _Requirements: 9.3, 9.4 · BE-Q91_
-  - [ ] 4.2 `agent/tools.py`: `check_draft(card, sources) -> Report`(경로만, 텍스트 없음), `gate_verdict(report)`, `final_check(card, sources, masked_paths, allowed_nis_activities) -> (flags, blocked)`(design §9.4 표, 플래그 정렬·중복 제거).
+  - [x] 4.2 `agent/tools.py`: `check_draft(card, sources) -> Report`(경로만, 텍스트 없음), `gate_verdict(report)`, `final_check(card, sources, masked_paths, allowed_nis_activities) -> (flags, blocked)`(design §9.4 표, 플래그 정렬·중복 제거).
     - _Requirements: 11.1, 11.4, 11.7–11.9 · BE-Q88, BE-Q22_
-  - [ ] 4.3 `agent/repair.py`: 작업 카드의 `_src` 부여·제거, `apply_rules`(장소 이름·활동의 비공개 장소 제거, `REMOVED`), `apply_fallback`(가리기 → 재검사 → 이름 NOT_IN_SOURCE 제거 → 활동만 위반 `KEPT_FLAGGED`, 길이 초과 자르기, `degraded`), 경로·인덱스 변환(design §10).
+  - [x] 4.3 `agent/repair.py`: 작업 카드의 `_src` 부여·제거, `apply_rules`(장소 이름·활동의 비공개 장소 제거, `REMOVED`), `apply_fallback`(가리기 → 재검사 → 이름 NOT_IN_SOURCE 제거 → 활동만 위반 `KEPT_FLAGGED`, 길이 초과 자르기, `degraded`), 경로·인덱스 변환(design §10).
     - _Requirements: 4.5, 4.7, 4.8, 11.3, 11.5, 11.6 · BE-Q13, BE-Q76_
-  - [ ] 4.4 단위 테스트 (`tests/unit/test_ai_checks.py`)
+  - [x] 4.4 단위 테스트 (`tests/unit/test_ai_checks.py`)
     - JSON 추출: 펜스, 앞뒤 설명문, 두 객체, 배열 최상위, 잘린 JSON, 블록 목록 content.
     - `check_draft`: 원문 대조(장소 이름·활동), 개인정보(카드의 모든 문자열 필드, HIGH·MEDIUM), `missing`(design §3.2 표, `whyChosen` 제외, 빈 `places`).
     - Gate: 각 거부 조건 하나씩, 규칙 노드 뒤 다시 계산하는지(이전 Report를 넘겨도 쓰지 않음).
@@ -98,17 +98,17 @@
     - Final_Check: design §9.4 표의 차단 5종·허용 4종을 각각, Gate 통과 경로도 Final_Check를 거침, 차단 시 `blocked` 사유 코드.
     - 인덱스: design §10.3 예와 같은 결과, 제거가 여러 번일 때 `REMOVED`는 모두 Candidate 기준, `flags`가 뺀 장소를 가리키지 않음.
     - _Requirements: 4.5, 4.7, 4.8, 11.1–11.9, 19.5 · BE-Q88_
-  - [ ] 4.5 Write property test for Final_Check 불변식 (`tests/unit/test_ai_properties.py`)
+  - [x] 4.5 Write property test for Final_Check 불변식 (`tests/unit/test_ai_properties.py`)
     - **Property 29: 규칙 노드·(Gate 거부 시) Fallback·Final_Check를 거친 카드는 차단 조건이 없고, 정상 코드에서 차단이 나오지 않는다**
     - 생성기: 장소 0–3개, 원문 일부·원문에 없는 낱말·개인정보 표본(전화·이메일·주민번호·동호수·차량번호·번지·비공개 장소)을 섞은 문자열, `null` 필드, 사연(근거) 문자열.
     - 확인: `HIGH` 0, 스키마 오류 0, 장소 이름 NOT_IN_SOURCE 0, 장소의 비공개 장소 0, 활동 NOT_IN_SOURCE는 모두 `KEPT_FLAGGED` 메모와 플래그 있음, `blocked`가 비어 있음.
     - **Validates: Requirements 11.4, 11.5, 11.6, 11.7, 11.8, 11.9**
-  - [ ] 4.6 Write property test for 경로 기준 (`tests/unit/test_ai_properties.py`)
+  - [x] 4.6 Write property test for 경로 기준 (`tests/unit/test_ai_properties.py`)
     - **Property 30: `flags`는 최종 카드 경로만, `REMOVED` 메모는 Candidate_Card 경로, `KEPT_FLAGGED`는 최종 카드 경로를 가리킨다**
     - 생성기: 4.5와 같음.
     - **Validates: Requirements 4.6, 4.7, 4.8**
 
-- [ ] 5. Checkpoint A - 공통·서비스·검사 단위 테스트와 회귀
+- [x] 5. Checkpoint A - 공통·서비스·검사 단위 테스트와 회귀
   - `pytest tests/unit` 실패 0건(1–3단계 296건 포함), Property 29·30·31·33 통과(각 100예시 이상). 실패는 원인을 고친 뒤 다음으로 간다.
   - _Requirements: 19.5, 19.13_
 
