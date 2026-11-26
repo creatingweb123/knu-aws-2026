@@ -143,21 +143,21 @@ push 전 확인(각 Checkpoint와 push마다)
 
 - [ ] 10. 핸들러 (`handlers/ai_card.py`)
   - 선행: 1, 3, 8
-  - [ ] 10.1 모드 분기: `agent`이면 에이전트, 미설정·`pipeline`이면 6a, 그 밖 503(할당량 전).
+  - [x] 10.1 모드 분기: `agent`이면 에이전트, 미설정·`pipeline`이면 6a, 그 밖 503(할당량 전).
     - _Requirements: 1.1, 1.2 · BE-Q87_
-  - [ ] 10.2 에이전트 생성(design §4.1: 검증 → 할당량 → `WORKING`·잠금 항목 PutItem → 체크포인트 존재 확인 → 실행 → 커밋 → 응답).
+  - [x] 10.2 에이전트 생성(design §4.1: 검증 → 할당량 → `WORKING`·잠금 항목 PutItem → 체크포인트 존재 확인 → 실행 → 커밋 → 응답).
     - _Requirements: 2 · BE-Q100_
-  - [ ] 10.3 에이전트 턴(design §5.1 ①–⑨: 형태 → 소유 → 모드 → 상태 기반 검증 → 잠금 → 시도 상한 → tip·입력 선택 → 실행 → 커밋 → 삭제), 실행 config(`thread_id`, `checkpoint_id = tip`, metadata 표지, `durability="sync"`, `tracing_context(enabled=False)`).
+  - [x] 10.3 에이전트 턴(design §5.1 ①–⑨: 형태 → 소유 → 모드 → 상태 기반 검증 → 잠금 → 시도 상한 → tip·입력 선택 → 실행 → 커밋 → 삭제), 실행 config(`thread_id`, `checkpoint_id = tip`, metadata 표지, `durability="sync"`, `tracing_context(enabled=False)`).
     - _Requirements: 3, 4, 5, 6.2, 6.4, 7 · BE-Q94–BE-Q96, BE-Q113_
-  - [ ] 10.4 중단 해제(울타리·체크포인트 일시 오류, 같은 `turn`의 `WORKING`), `FenceLost` 500, 결정적 폐쇄(F11–F13).
+  - [x] 10.4 중단 해제(울타리·체크포인트 일시 오류, 같은 `turn`의 `WORKING`), `FenceLost` 500, 결정적 폐쇄(F11–F13).
     - _Requirements: 7.4, 7.6, 12.3 · BE-Q121_
-  - [ ] 10.5 모드 전환(design §13 표): `pipeline` + `AGENT` 비종료 → 잠금 → 결정적 폐쇄 → 커밋 → 삭제. `PIPELINE` 비종료는 6a 500 유지.
+  - [x] 10.5 모드 전환(design §13 표): `pipeline` + `AGENT` 비종료 → 잠금 → 결정적 폐쇄 → 커밋 → 삭제. `PIPELINE` 비종료는 6a 500 유지.
     - _Requirements: 15.1–15.4 · BE-Q101, BE-Q87_
-  - [ ] 10.6 SessionView·trace(design §14: `ask_planner`, Tool_Error·재촉 표기, `pause` 미표기, 원문 인용 없음).
+  - [x] 10.6 SessionView·trace(design §14: `ask_planner`, Tool_Error·재촉 표기, `pause` 미표기, 원문 인용 없음).
     - _Requirements: 14.1–14.5 · BE-Q124_
-  - [ ] 10.7 단위 테스트 (`tests/unit/test_handlers_ai_agent.py`): 3개 경로 흐름, 상태 기반 400, 실패 분기 순서, 모드 전환 표 전 칸, 6a 핸들러 테스트 회귀(레벨 0).
+  - [x] 10.7 단위 테스트 (`tests/unit/test_handlers_ai_agent.py`): 3개 경로 흐름, 상태 기반 400, 실패 분기 순서, 모드 전환 표 전 칸, 6a 핸들러 테스트 회귀(레벨 0).
     - _Requirements: 20.1, 20.5_
-  - [ ] 10.8 장애 복구 테스트 (`tests/unit/test_agent_recovery.py`, 필수): **F0–F17 각각**을 테스트 전용 주입점(잠금·예약·노드 사이·체크포인트 쓰기 n번째·커밋·삭제)으로 만든 뒤 다음 시도로 복구. 각 사례에서 답변 반영 횟수, 추가 모델 호출 수, 최종 `outcome`, `turn`, `turnAttempts`를 확인. 늦은 체크포인트 쓰기(F16: 이전 시도의 쓰기를 새 시도 tip 선택 뒤에 주입), 계보 분기(포크 두 개), 표지 오염(F17), 커밋 결과 불확실(F7: 반영됨/안 됨 두 갈래), 답변 중복 전송(같은 `questionId` 재요청·다른 값 재요청).
+  - [x] 10.8 장애 복구 테스트 (`tests/unit/test_agent_recovery.py`, 필수): **F0–F17 각각**을 테스트 전용 주입점(잠금·예약·노드 사이·체크포인트 쓰기 n번째·커밋·삭제)으로 만든 뒤 다음 시도로 복구. 각 사례에서 답변 반영 횟수, 추가 모델 호출 수, 최종 `outcome`, `turn`, `turnAttempts`를 확인. 늦은 체크포인트 쓰기(F16: 이전 시도의 쓰기를 새 시도 tip 선택 뒤에 주입), 계보 분기(포크 두 개), 표지 오염(F17), 커밋 결과 불확실(F7: 반영됨/안 됨 두 갈래), 답변 중복 전송(같은 `questionId` 재요청·다른 값 재요청).
     - _Requirements: 7, 20.2 · BE-Q94–BE-Q97, BE-Q113, BE-Q118_
   - [ ] 10.9 프론트 모형(`tests/unit/frontend_sim.py`): docs/03 규칙(WORKING 자동 이어가기, 연속 2회 WORKING 뒤 `finish`, BUSY 2초 뒤 GET, CLOSED 뒤 GET, 같은 `turn`의 WORKING 처리).
     - _Requirements: 12.4 · BE-Q121_
