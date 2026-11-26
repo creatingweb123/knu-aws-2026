@@ -52,3 +52,28 @@ def test_prompt_version_tracks_file(monkeypatch, tmp_path):
         assert prompt.prompt_version() != v1 and len(prompt.prompt_version()) == 12
     finally:
         prompt.system_prompt.cache_clear()
+
+
+# ---------------------------------------------------------------- BE-Q127 장소 선택 규칙
+
+
+def test_prompt_has_places_selection_rule():
+    from agent.prompt import system_prompt
+
+    text = system_prompt()
+    assert "4곳 이상" in text and "앞의 3곳" in text and "0–3곳" in text
+
+
+def test_places_retry_adds_rule_only_for_places_schema():
+    from agent.prompt import PLACES_RULE, retry_message
+
+    assert PLACES_RULE in retry_message("SCHEMA", ["places"]).content
+    assert PLACES_RULE in retry_message("SCHEMA", ("title", "places")).content
+    assert PLACES_RULE not in retry_message("SCHEMA", ["places[0].name"]).content  # 원소 필드 오류는 개수 문제가 아니다
+    assert PLACES_RULE not in retry_message("NOT_JSON", []).content
+
+
+def test_prompt_version_pinned_for_be_q127():
+    from agent.prompt import prompt_version
+
+    assert prompt_version() == "ca6ada9ac3ef"  # day_card.md를 바꾸면 이 값을 갱신하고 README에 적는다

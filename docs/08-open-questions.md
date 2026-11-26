@@ -60,7 +60,7 @@
 | BE-Q80 | AI 의존성을 AiCardFunction에만 넣는 빌드 구성. | **결정**: SAM Makefile 빌드(`BuildMethod: makefile`, `CodeUri: src/`), 해시 고정 잠금 파일 `--require-hashes` 설치. `--use-container`에서 동작 확인. 공통 코드 복제·컨테이너 이미지 배포는 쓰지 않는다. |
 | BE-Q81 | SSM SecureString 생성과 KMS 권한. | **결정**: AWS 담당이 배포 전에 만든다(CloudFormation은 SecureString을 만들 수 없다). `ssm:GetParameter`는 그 ARN 하나, `aws/ssm` 관리형 키는 KMS 권한을 따로 주지 않는다. 다른 함수에는 SSM 권한이 없다. |
 | BE-Q82 | `/ai/card-sessions*` 경로 스로틀 값. | **임시**: 생성 rate 2·burst 5, turns 5·10, GET 10·20. BE-Q8 결과로 확정한다. |
-| BE-Q83 | T12 판정 방법. | **결정**: 실제 공급자의 401 응답으로만 판정한다. SSM 파라미터 없음 사례는 보조 검증이고 T12 통과로 세지 않는다. 6a 현재 T12 미검증. |
+| BE-Q83 | T12 판정 방법. | **결정**: 실제 공급자의 401 응답으로만 판정한다. SSM 파라미터 없음 사례는 보조 검증이고 T12 통과로 세지 않는다. 6a 현재 T12 미검증. **BE-Q128로 갱신(2026-11-26)**: 판정 응답을 "실제 공급자의 인증 실패(HTTP 401 또는 403)"로 넓혔다. 정상 키로 같은 엔드포인트·모델이 응답한다는 기준 기록(`T12_BASELINE`)이 있을 때만 인정한다. 503 `AI_UNAVAILABLE`·세션 `FAILED`·Plan 0건 조건은 그대로다. |
 | BE-Q84 | `HaruAgentCheckpoints` SAM 리소스·IAM을 6a에 넣을지. | **결정**: 넣지 않는다(6b). 6a는 로컬 Floci 연결만 확인했다(BE-Q21). |
 | BE-Q85 | AiCardFunction의 DynamoDB·SSM SDK 타임아웃·재시도. BE-Q48(전 함수 공통)은 4단계 브랜치에서 미결이다. | **임시**: AI 함수 안에서만 connect 1초·read 2초·standard 모드 총 2회(`AI_SDK_*`). 다른 함수 설정과 BE-Q48은 바꾸지 않았다. AWS 지연은 미측정. |
 | BE-Q86 | 공급자가 정해지기 전에 `dev` 스택에서 `LLM_PROVIDER=fake`를 허용할지. | **권장안(팀 리뷰 대상)**: 허용하되 세 겹으로 막는다(Rules, `FakeAllowed` = Stage dev ∧ 스택 이름 haru-dev, 런타임 `FAKE_LLM_ALLOWED`와 함수 이름 `haru-dev-`). `llmMode`는 AiSession 내부 속성이고 SessionView·Plan 지표에는 없다. Fake 결과는 공급자 검증·T12가 아니다. |
@@ -71,8 +71,8 @@
 | BE-Q91 | 모델 출력의 정상적인 빈 값과 스키마 위반 구분. | **임시**: 키 없음·`null`·빈 문자열은 정상 빈칸(`MISSING`), 타입·범위·길이·개수 위반만 남은 시간 12초 이상일 때 1회 재시도한다. 위반 필드를 `null`로 바꿔 살리지 않는다. 유효한 후보가 없으면 502. |
 | BE-Q92 | 429 세 종류의 구분. | **임시(프론트 리뷰 대상)**: API Gateway 스로틀 429는 본문이 계약 형식이 아닌 계약 예외, `AI_QUOTA_EXCEEDED`는 계약, 공급자 429는 503 `AI_UNAVAILABLE`(`llmError=HTTP_429`). |
 | BE-Q93–BE-Q126 | 6b 에이전트 설계 질문은 `.kiro/specs/backend-stage6b-ai-agent/`(requirements·design)에 있다. 구현 뒤 이 표로 옮긴다. | — |
-| BE-Q127 | 모델이 장소를 4곳 이상 내면 레벨 0은 `places` 스키마 위반으로 재시도 뒤 502가 된다(NVIDIA NIM, 장소 5곳 사연에서 2회 모두 5곳). | **미결**. 후보: (A) 지금처럼 502(직접 작성, BE-Q91 유지) (B) 재시도 메시지에 "장소는 최대 3곳, 사연 순서대로 앞의 3곳"을 명시(프롬프트 변경, `promptVersion` 바뀜) (C) 서버가 앞 3곳만 남기고 `REMOVED` 메모(BE-Q91의 "위반 필드를 고쳐 살리지 않음"과 충돌). 6a 코드는 바꾸지 않았다. |
-| BE-Q128 | NVIDIA NIM은 잘못된 API 키에 401이 아니라 403을 돌려준다. T12 판정은 "실제 공급자의 401"(BE-Q83)이고 `test_T12_invalid_key`가 `llmError = HTTP_401`을 기대한다. | **미결**. 제품 동작은 문제없다(401·403 모두 LLM 오류 → 503). 후보: T12 판정을 "인증 실패(401 또는 403)"로 넓힘(BE-Q83 수정 필요). 테스트는 아직 바꾸지 않았다. |
+| BE-Q127 | 모델이 장소를 4곳 이상 내면 레벨 0은 `places` 스키마 위반으로 재시도 뒤 502가 된다(NVIDIA NIM, 장소 5곳 사연에서 2회 모두 5곳). | **결정(2026-11-26, 후보 B)**: `day_card.md`에 "공개 장소가 4곳 이상이면 사연에 나온 순서대로 앞의 3곳만"을 넣고, `places` 배열 위반 재시도 메시지에 같은 규칙을 덧붙인다. 서버는 배열을 자르지 않는다. 재시도도 위반이면 502(BE-Q91 유지). `promptVersion` `07fef7232b9c` → `ca6ada9ac3ef`. 실제 공급자 재검증 결과는 `backend/README.md` 10.5절. |
+| BE-Q128 | NVIDIA NIM은 잘못된 API 키에 401이 아니라 403을 돌려준다. T12 판정은 "실제 공급자의 401"(BE-Q83)이었다. | **결정(2026-11-26)**: T12 인증 실패 판정은 HTTP 401 또는 403(`llmError ∈ {HTTP_401, HTTP_403}`). 정상 키로 같은 엔드포인트·모델에 접근할 수 있음을 기록한 `T12_BASELINE`(`scripts/probe_provider.py --only raw` 결과)이 있고 무효 키를 일부러 넣은 경우에만 인정한다. 503·`FAILED`·Plan 0건 조건 유지. AWS 판정은 아직 하지 않았다. |
 
 ## 8.2 프론트엔드 질문
 

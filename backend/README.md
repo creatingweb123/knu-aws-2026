@@ -328,7 +328,7 @@ Docker 없이 확인한 대체 수단: moto 테스트(`tests/unit/test_plan_serv
 
 | 사례 | 파일·마커 | 전제 | 판정 |
 |---|---|---|---|
-| T12 | `test_ai.py::test_T12_invalid_key`(`fault`) | 함수 `LLM_PROVIDER=openai_compat`, `LLM_API_KEY_PARAM` 있음, 그 SecureString에 일부러 무효 키 | 503 `AI_UNAVAILABLE`, AiSession `FAILED`·`llmError=HTTP_401`, Plan 0건. **T12는 이 테스트만 센다(BE-Q83). 지금은 미검증** |
+| T12 | `test_ai.py::test_T12_invalid_key`(`fault`) | 함수 `LLM_PROVIDER=openai_compat`, `LLM_API_KEY_PARAM` 있음, 그 SecureString에 일부러 무효 키, `T12_BASELINE`(정상 키로 같은 엔드포인트·모델을 확인한 `probe_provider.py --only raw` 결과 경로) | 503 `AI_UNAVAILABLE`, AiSession `FAILED`·`llmError ∈ {HTTP_401, HTTP_403}`(BE-Q128), Plan 0건. **T12는 이 테스트만 센다(BE-Q83). 지금은 미검증** |
 | T12 보조 | `test_ai.py::test_T12_aux_ssm_missing`(`fault`) | 키 파라미터 이름이 없는 파라미터를 가리킴 | 503·`KEY_READ_FAILED`. 결과 파일 `scenario: T12-aux-ssm-missing`, **T12 통과로 세지 않는다** |
 | AI 경로(Fake) | `test_ai.py::test_ai_routes_fake` | `haru-dev`, `LlmProvider=fake` | 생성 200·GET·turns 409/200·남의 세션 404·11번째 429. 결과 파일 `llmMode: fake` |
 | T1 | `test_authz.py` | — | `ROUTES`를 돌므로 AI 경로 3개가 자동으로 들어간다(`{sessionId}` 치환 추가) |
@@ -380,8 +380,8 @@ BE-Q6의 **개발·검증용** 공급자는 NVIDIA NIM(`nvidia/nemotron-3.5-ligh
 | `LLM_EXTRA_BODY` 권장 값(BE-Q9) | `{"chat_template_kwargs":{"enable_thinking":false}}` |
 
 발견한 것
-- 장소가 5곳 나오는 사연(`many_places`)에서 모델이 프롬프트의 "장소는 0–3곳"을 어기고 5곳을 두 번 모두 냈다(경로 `places`의 SCHEMA) → 502. 6a 규칙대로다(위반 필드를 고쳐 살리지 않는다, BE-Q91). 처리 방침은 BE-Q127.
-- 잘못된 키가 403이라 T12 판정(`llmError = HTTP_401`, BE-Q83)과 맞지 않는다. BE-Q128.
+- 장소가 5곳 나오는 사연(`many_places`)에서 모델이 프롬프트의 "장소는 0–3곳"을 어기고 5곳을 두 번 모두 냈다(경로 `places`의 SCHEMA) → 502. BE-Q127(후보 B)로 프롬프트와 재시도 메시지에 장소 선택 규칙을 넣었다(`promptVersion` `ca6ada9ac3ef`). 재검증 결과는 아래 "BE-Q127 재검증".
+- 잘못된 키가 403이다. BE-Q128로 T12 판정을 401 또는 403으로 넓혔다.
 - 레벨 0 결과의 품질(원문 대조·개인정보)은 15건 1회 실행이라 평가가 아니다. 비교 평가는 `scripts/eval_agent.py`(6b)로 한다.
 
 ### 10.6 429 세 종류 (BE-Q92)
