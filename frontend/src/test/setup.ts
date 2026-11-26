@@ -45,6 +45,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   server.resetHandlers();
+  server.events.removeAllListeners();
   setTokenProvider(null);
   localStorage.clear();
   sessionStorage.clear();

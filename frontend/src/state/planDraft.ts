@@ -30,6 +30,27 @@ export interface PlanDraft {
   idempotencyKey: string | null;
   keyBodyHash: string | null;
   keyDurationMs: number | null;
+  /** READY 카드를 폼에 넣었는지(처음 "폼에서 다듬기" 때 한 번만, FE-Q25) */
+  cardApplied?: boolean;
+  /** "다시 넣기"를 누른 메모 번호(notes 인덱스) */
+  restoredNotes?: number[];
+  /** AI 실패로 직접 작성에 왔는지(폼 위 안내, FE-CRT-04) */
+  aiFailed?: boolean;
+}
+
+/** AI 상태를 지운 초안(새로 정리하기·AI 실패) */
+export function withoutAi(d: PlanDraft): PlanDraft {
+  return {
+    ...d,
+    sessionId: null,
+    turn: null,
+    card: null,
+    flags: [],
+    notes: [],
+    cardApplied: false,
+    restoredNotes: [],
+    aiFailed: false,
+  };
 }
 
 export const emptyPlace = (): PlaceInput => ({ name: '', activity: '', whyChosen: '' });

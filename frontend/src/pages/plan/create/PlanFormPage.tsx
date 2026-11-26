@@ -14,6 +14,7 @@ import type { PlanForm } from '../../../state/planDraft';
 import { LIMITS, validatePlanForm } from '../../../utils/validation';
 import type { FieldErrors } from '../../../utils/validation';
 import styles from './Create.module.css';
+import { flagFor, placeFlags, removePlaceFlags, withoutFlag } from './cardForm';
 import { preparePublish } from './publish';
 
 type TextKey = Exclude<keyof PlanForm, 'places'>;
@@ -37,15 +38,23 @@ export function PlanFormPage() {
   const clearErrors = (match: (path: string) => boolean) =>
     setErrors((prev) => Object.fromEntries(Object.entries(prev).filter(([p]) => !match(p))));
 
+  // AI flags(FE-CRT-03): 그 경로 입력을 고치면 지운다(FE-Q25)
   const setField = (key: TextKey, value: string) => {
-    update((d) => ({ ...d, form: { ...d.form, [key]: value } }));
+    update((d) => ({ ...d, form: { ...d.form, [key]: value }, flags: withoutFlag(d.flags, key) }));
     if (errors[key]) clearErrors((p) => p === key);
   };
 
   const removePlace = (index: number) => {
-    update((d) => ({ ...d, form: { ...d.form, places: d.form.places.filter((_, i) => i !== index) } }));
+    update((d) => ({
+      ...d,
+      form: { ...d.form, places: d.form.places.filter((_, i) => i !== index) },
+      flags: removePlaceFlags(d.flags, index),
+    }));
     clearErrors((p) => p.startsWith('places'));
   };
+
+  /** 검증 오류가 없을 때만 AI 안내를 입력칸 힌트로 보여 준다 */
+  const hintFor = (key: TextKey, fallback?: string) => flagFor(draft.flags, key) ?? fallback;
 
   const onPublish = () => {
     const errs = validatePlanForm(form);
@@ -92,6 +101,11 @@ export function PlanFormPage() {
       />
 
       <div className={styles.form}>
+        {draft.aiFailed ? (
+          <p className={styles.aiFailed} role="status" data-testid="ai-failed">
+            AI 카드를 만들지 못했어요. 직접 정리해 주세요
+          </p>
+        ) : null}
         <div className={styles.storyRef}>
           <p className={styles.storyRefLabel}>내 사연 (참고용)</p>
           <p className={styles.storyRefText}>{draft.story}</p>
@@ -102,6 +116,7 @@ export function PlanFormPage() {
           value={form.title}
           maxLength={LIMITS.title}
           error={errors.title}
+          hint={hintFor('title')}
           onChange={(e) => setField('title', e.target.value)}
         />
         <TextArea
@@ -110,6 +125,7 @@ export function PlanFormPage() {
           value={form.summary}
           maxLength={LIMITS.summary}
           error={errors.summary}
+          hint={hintFor('summary')}
           onChange={(e) => setField('summary', e.target.value)}
         />
         <TextArea
@@ -118,6 +134,7 @@ export function PlanFormPage() {
           value={form.reason}
           maxLength={LIMITS.reason}
           error={errors.reason}
+          hint={hintFor('reason')}
           onChange={(e) => setField('reason', e.target.value)}
         />
         <TextField
@@ -125,7 +142,7 @@ export function PlanFormPage() {
           inputMode="numeric"
           value={form.estimatedMinutes}
           error={errors.estimatedMinutes}
-          hint="10–240분"
+          hint={hintFor('estimatedMinutes', '10–240분')}
           onChange={(e) => setField('estimatedMinutes', e.target.value)}
         />
 
@@ -135,6 +152,8 @@ export function PlanFormPage() {
             <p className={styles.errorText} role="alert">
               {errors.places}
             </p>
+          ) : flagFor(draft.flags, 'places') ? (
+            <p className={styles.flagText}>{flagFor(draft.flags, 'places')}</p>
           ) : null}
           {form.places.length === 0 ? (
             <p className={styles.emptyPlaces}>장소를 1곳 이상 추가해 주세요(최대 3곳).</p>
@@ -160,6 +179,13 @@ export function PlanFormPage() {
                           {m}
                         </p>
                       ))}
+                      {errs.length === 0
+                        ? placeFlags(draft.flags, i).map((m) => (
+                            <p key={m} className={styles.flagText} data-testid={`place-${i}-flag`}>
+                              {m}
+                            </p>
+                          ))
+                        : null}
                       <div className={styles.placeActions}>
                         <button
                           type="button"
@@ -196,7 +222,7 @@ export function PlanFormPage() {
           value={form.question}
           maxLength={LIMITS.question}
           error={errors.question}
-          hint="이어받은 사람에게 물어보고 싶은 것 하나"
+          hint={hintFor('question', '이어받은 사람에게 물어보고 싶은 것 하나')}
           onChange={(e) => setField('question', e.target.value)}
         />
       </div>

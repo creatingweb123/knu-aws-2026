@@ -42,12 +42,13 @@ async function fillForm() {
 }
 
 describe('사연 입력(FE-CRT-01, FE-CRT-05)', () => {
-  it('안내 문구와 두 버튼, AI 버튼은 6단계 전까지 비활성', async () => {
+  it('안내 문구와 두 버튼', async () => {
     renderApp('/plans/new', 'u-jiyeon');
     await screen.findByTestId('screen-3');
     expect(screen.getByText('집 주소나 개인 정보는 적지 말아주세요.')).toBeInTheDocument();
     expect(screen.getByText(/외부 AI 서비스로 전송/)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'AI와 함께 정리하기' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'AI와 함께 정리하기' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: '직접 작성하기' })).toBeEnabled();
   });
 
   it('사연이 비면 직접 작성으로 가지 않고 오류를 보여 준다', async () => {

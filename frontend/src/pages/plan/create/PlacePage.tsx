@@ -9,6 +9,7 @@ import { TextField } from '../../../components/TextField';
 import { emptyPlace, usePlanDraft } from '../../../state/planDraft';
 import { LIMITS, validatePlace } from '../../../utils/validation';
 import type { FieldErrors } from '../../../utils/validation';
+import { clearPlaceFlags, withoutFlag } from './cardForm';
 import styles from './Create.module.css';
 
 const FORM_PATH = '/plans/new/form';
@@ -62,7 +63,9 @@ export function PlacePage() {
       const next = [...d.form.places];
       if (index === null) next.push(saved);
       else next[index] = saved;
-      return { ...d, form: { ...d.form, places: next } };
+      // 고친 장소의 AI 안내는 지운다(FE-Q25). 추가는 'places'(장소 없음) 안내를 지운다
+      const flags = index === null ? withoutFlag(d.flags, 'places') : clearPlaceFlags(d.flags, index);
+      return { ...d, form: { ...d.form, places: next }, flags };
     });
     if (location.key !== 'default') navigate(-1);
     else navigate(FORM_PATH, { replace: true });

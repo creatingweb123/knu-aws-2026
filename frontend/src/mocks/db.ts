@@ -5,12 +5,23 @@
  * 2단계의 두 탭 경합을 재현할 수 있다(FE-Q10).
  * 저장 항목은 백엔드 DynamoDB 항목에 가깝게 두고(내부 속성 포함), 응답은 핸들러가 계약 형태로 만든다.
  */
-import type { ClaimStatus, PhotoStatus, PlanMetrics, PlanStatus } from '../api/types';
+import type {
+  AiCard,
+  AiNote,
+  AiQuestion,
+  AiSessionStatus,
+  AiTraceStep,
+  ClaimStatus,
+  Flag,
+  PhotoStatus,
+  PlanMetrics,
+  PlanStatus,
+} from '../api/types';
 import { MOCK_USERS } from './session';
 
 export const DB_KEY = 'haru.mock.db';
-/** 저장 형태가 바뀌면 올린다. 다른 버전의 저장값은 새 시드로 바뀐다(2: idempotency 추가) */
-const DB_VERSION = 2;
+/** 저장 형태가 바뀌면 올린다. 다른 버전의 저장값은 새 시드로 바뀐다(2: idempotency, 3: aiSessions) */
+const DB_VERSION = 3;
 export const DAY_MS = 24 * 60 * 60 * 1000;
 export const CLAIM_DURATION_DAYS = 3;
 
@@ -87,6 +98,25 @@ export interface DbIdempotency {
   planId: string;
 }
 
+/** AI 정리 세션(docs/03 §3.2). 화면에 보내는 SessionView 필드 + 목업 진행용 내부 필드 */
+export interface DbAiSession {
+  sessionId: string;
+  ownerId: string;
+  story: string;
+  scenario: string | null;
+  status: AiSessionStatus;
+  turn: number;
+  trace: AiTraceStep[];
+  question: AiQuestion | null;
+  card: AiCard | null;
+  flags: Flag[];
+  notes: AiNote[];
+  degraded: boolean;
+  finishRequested: boolean;
+  /** ai-busy: 409를 준 뒤 GET에서 반영할 결과와 남은 '처리 중' GET 수 */
+  pending?: { view: Omit<DbAiSession, 'pending'>; workingGets: number };
+}
+
 export interface MockDb {
   version: number;
   plans: DbPlan[];
@@ -94,6 +124,7 @@ export interface MockDb {
   records: DbRecord[];
   inbox: DbInboxItem[];
   idempotency: { [userAndKey: string]: DbIdempotency };
+  aiSessions: DbAiSession[];
 }
 
 /** 계약과 같은 밀리초 3자리 UTC 문자열 */
@@ -263,7 +294,7 @@ export function createSeed(now: number = Date.now()): MockDb {
     },
   ];
 
-  return { version: DB_VERSION, plans, claims, records, inbox, idempotency: {} };
+  return { version: DB_VERSION, plans, claims, records, inbox, idempotency: {}, aiSessions: [] };
 }
 
 export function loadDb(): MockDb {

@@ -300,6 +300,11 @@ export interface AiNote {
   action: 'REWRITTEN' | 'REMOVED' | 'ASKED' | 'KEPT_FLAGGED';
   reason: string;
   source: 'STORY' | 'ANSWER';
+  /**
+   * 계약에 없는 임시 필드(FE-Q7·BE-Q13). "다시 넣기"로 되살릴 원래 값과 경고 유형.
+   * MSW만 보낸다. 실제 API에는 없으므로 이 필드가 없으면 "다시 넣기"를 보여 주지 않는다.
+   */
+  restore?: { value: PlaceInput; type: 'PRIVACY' | 'NOT_IN_SOURCE' };
 }
 
 export interface SessionView {

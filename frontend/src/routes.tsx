@@ -19,6 +19,7 @@ import { PhotoReplacePage } from './pages/record/PhotoReplacePage';
 import { RecordPage } from './pages/record/RecordPage';
 import { SendingPage } from './pages/record/SendingPage';
 import { PlanDetailPage } from './pages/plan/PlanDetailPage';
+import { CardPage } from './pages/plan/create/CardPage';
 import { PlacePage } from './pages/plan/create/PlacePage';
 import { PlanFormPage } from './pages/plan/create/PlanFormPage';
 import { PublishedPage } from './pages/plan/create/PublishedPage';
@@ -45,7 +46,14 @@ export interface ScreenRoute {
 export const SCREENS: ScreenRoute[] = [
   { path: '/', screen: '1', name: '둘러보기', tab: true, stage: 2, element: <BrowsePage /> },
   { path: '/plans/new', screen: '3', name: '사연 입력', back: true, stage: 3, element: <StoryPage /> },
-  { path: '/plans/new/card', screen: '3-1', name: 'AI와 함께 정리하기', back: true, stage: 6 },
+  {
+    path: '/plans/new/card',
+    screen: '3-1',
+    name: 'AI와 함께 정리하기',
+    back: true,
+    stage: 6,
+    element: <CardPage />,
+  },
   {
     path: '/plans/new/form',
     screen: '3-2',
