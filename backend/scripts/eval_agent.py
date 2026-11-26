@@ -140,7 +140,8 @@ def _row(outcome: str, res: dict[str, int], **kw: Any) -> dict[str, Any]:
     base = {"outcome": outcome, "http": None, "failure": None, "degraded": False, "calls": 0, "tokens_in": 0, "tokens_out": 0,
             "token_estimated": False, "latency_ms": 0, "turn_ms_max": 0, "turns": 0, "questions": 0, "skipped": 0, "gate_rejects": 0,
             "self_repairs": 0, "llm_error": None, "flags": flags_count([]), "tools": [], "draft_attempts": 0,
-            "first_schema_errors": None, "first_not_in_source": None, "tool_errors": {}, "question_rejects": {}}
+            "first_schema_errors": None, "first_not_in_source": None, "tool_errors": {}, "question_rejects": {},
+            "invalid_kinds": [], "first_schema_paths": None}
     return {**base, **kw, **res}
 
 
@@ -164,7 +165,9 @@ def run_pipeline(env: dict[str, str], fx: dict[str, Any]) -> tuple[dict[str, Any
     draft = _row("DRAFT" if isinstance(first, dict) else "NO_DRAFT", residuals(first, sources, fx["legitPlaces"]),
                  calls=calls, tokens_in=int(state.get("token_in") or 0), tokens_out=int(state.get("token_out") or 0),
                  token_estimated=bool(state.get("token_estimated")), latency_ms=ms, llm_error=state.get("llm_error"),
-                 flags=flags_count([]), draft_attempts=int(state.get("attempts") or 0))
+                 flags=flags_count([]), draft_attempts=int(state.get("attempts") or 0),
+                 invalid_kinds=list(state.get("invalid_kinds") or []),
+                 first_schema_paths=list((state.get("first_report") or {}).get("schemaErrors") or []))
     if status != "READY":
         outcome = "FAILED"
     else:
@@ -174,7 +177,9 @@ def run_pipeline(env: dict[str, str], fx: dict[str, Any]) -> tuple[dict[str, Any
                 tokens_out=int(state.get("token_out") or 0), token_estimated=bool(state.get("token_estimated")), latency_ms=ms,
                 gate_rejects=0 if state.get("gate_ok", True) else 1,  # 레벨 0 게이트는 한 번만 본다. 거부되면 폴백
                 self_repairs=self_repairs(state.get("notes")), llm_error=state.get("llm_error"),
-                flags=flags_count(state.get("flags")), draft_attempts=int(state.get("attempts") or 0))
+                flags=flags_count(state.get("flags")), draft_attempts=int(state.get("attempts") or 0),
+                invalid_kinds=list(state.get("invalid_kinds") or []),
+                first_schema_paths=list((state.get("first_report") or {}).get("schemaErrors") or []))
     return draft, pipe
 
 
@@ -243,6 +248,8 @@ def run_agent(env: dict[str, str], fx: dict[str, Any], pause_s: float) -> dict[s
                 gate_rejects=int(b.get("gateRejects") or 0), self_repairs=self_repairs(result.get("notes")),
                 llm_error=result.get("llm_error"), flags=flags_count(result.get("flags")),
                 tools=[t.get("tool") for t in result.get("trace") or []], draft_attempts=int(b.get("drafts") or 0),
+                invalid_kinds=list(result.get("invalid_kinds") or []),
+                first_schema_paths=None if fr is None else list(fr.get("schemaErrors") or []),
                 first_schema_errors=None if fr is None else len(fr.get("schemaErrors") or []),
                 first_not_in_source=None if fr is None else len(fr.get("notInSource") or []),
                 tool_errors=dict(tool_errors), question_rejects=dict(rejects))
@@ -312,6 +319,9 @@ def summarize(rows: list[dict[str, Any]]) -> dict[str, Any]:
             "latency_ms_median": _med(lat), "latency_ms_p95": nearest_rank(lat, 0.95), "latency_ms_max": max(lat) if lat else None,
             "turn_ms_max": max((r["turn_ms_max"] for r in rs), default=None),
             "draft_attempts_median": _med([r["draft_attempts"] for r in rs]),
+            "schema_violation_runs": sum(1 for r in rs if "SCHEMA" in r["invalid_kinds"]),
+            "json_violation_runs": sum(1 for r in rs if "NOT_JSON" in r["invalid_kinds"]),
+            "title_schema_runs": sum(1 for r in rs if "title" in (r["first_schema_paths"] or [])),
             "draft_retry_runs": sum(1 for r in rs if r["draft_attempts"] >= 2),
             "first_schema_error_runs": sum(1 for r in rs if (r["first_schema_errors"] or 0) > 0),
             "tool_errors": dict(sum((Counter(r["tool_errors"]) for r in rs), Counter())),
@@ -384,6 +394,7 @@ def markdown(report: dict[str, Any]) -> str:
         ("자체 수정 합계(REWRITTEN·REMOVED)", lambda m: _n(s[m]["self_repairs_total"])),
         ("초안 시도 중앙값 / 재시도 실행 수", lambda m: f"{_n(s[m]['draft_attempts_median'])} / {s[m]['draft_retry_runs']}"),
         ("첫 검사 입력의 스키마 위반 실행 수", lambda m: str(s[m]["first_schema_error_runs"])),
+        ("초안 스키마 위반 실행 수 / 제목 위반 실행 수", lambda m: f"{s[m]['schema_violation_runs']} / {s[m]['title_schema_runs']}"),
         ("도구 오류(코드별)", lambda m: ", ".join(f"{k} {v}" for k, v in sorted(s[m]["tool_errors"].items())) or "없음"),
         ("질문 거부(사유별)", lambda m: ", ".join(f"{k} {v}" for k, v in sorted(s[m]["question_rejects"].items())) or "없음"),
         ("응답 시간 ms 중앙값 / p95 / 최댓값", lambda m: f"{_n(s[m]['latency_ms_median'])} / {_n(s[m]['latency_ms_p95'])} / {_n(s[m]['latency_ms_max'])}"),
