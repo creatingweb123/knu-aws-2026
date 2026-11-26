@@ -111,6 +111,27 @@ def flags_count(flags: list[dict[str, Any]] | None) -> dict[str, int]:
     return out
 
 
+def tool_error_counts(messages: list[Any]) -> tuple[Counter, Counter]:
+    """ToolMessage의 오류 코드(도구 오류 전체)와 질문 거부 사유(QUESTION_REJECTED의 reason)를 센다. 원문은 읽지 않는다."""
+    from langchain_core.messages import ToolMessage
+
+    codes: Counter = Counter()
+    rejects: Counter = Counter()
+    for m in messages:
+        if not isinstance(m, ToolMessage) or not isinstance(m.content, str) or not m.content.startswith("{"):
+            continue
+        try:
+            d = json.loads(m.content)
+        except ValueError:
+            continue
+        code = d.get("error")
+        if isinstance(code, str):
+            codes[code] += 1
+            if code == "QUESTION_REJECTED":
+                rejects[str(d.get("reason") or "?")] += 1
+    return codes, rejects
+
+
 def self_repairs(notes: list[dict[str, Any]] | None) -> int:
     return sum(1 for n in notes or [] if isinstance(n, dict) and n.get("action") in ("REWRITTEN", "REMOVED"))
 
@@ -118,7 +139,8 @@ def self_repairs(notes: list[dict[str, Any]] | None) -> int:
 def _row(outcome: str, res: dict[str, int], **kw: Any) -> dict[str, Any]:
     base = {"outcome": outcome, "http": None, "failure": None, "degraded": False, "calls": 0, "tokens_in": 0, "tokens_out": 0,
             "token_estimated": False, "latency_ms": 0, "turn_ms_max": 0, "turns": 0, "questions": 0, "skipped": 0, "gate_rejects": 0,
-            "self_repairs": 0, "llm_error": None, "flags": flags_count([]), "tools": []}
+            "self_repairs": 0, "llm_error": None, "flags": flags_count([]), "tools": [], "draft_attempts": 0,
+            "first_schema_errors": None, "first_not_in_source": None, "tool_errors": {}, "question_rejects": {}}
     return {**base, **kw, **res}
 
 
@@ -142,7 +164,7 @@ def run_pipeline(env: dict[str, str], fx: dict[str, Any]) -> tuple[dict[str, Any
     draft = _row("DRAFT" if isinstance(first, dict) else "NO_DRAFT", residuals(first, sources, fx["legitPlaces"]),
                  calls=calls, tokens_in=int(state.get("token_in") or 0), tokens_out=int(state.get("token_out") or 0),
                  token_estimated=bool(state.get("token_estimated")), latency_ms=ms, llm_error=state.get("llm_error"),
-                 flags=flags_count([]))
+                 flags=flags_count([]), draft_attempts=int(state.get("attempts") or 0))
     if status != "READY":
         outcome = "FAILED"
     else:
@@ -152,7 +174,7 @@ def run_pipeline(env: dict[str, str], fx: dict[str, Any]) -> tuple[dict[str, Any
                 tokens_out=int(state.get("token_out") or 0), token_estimated=bool(state.get("token_estimated")), latency_ms=ms,
                 gate_rejects=0 if state.get("gate_ok", True) else 1,  # 레벨 0 게이트는 한 번만 본다. 거부되면 폴백
                 self_repairs=self_repairs(state.get("notes")), llm_error=state.get("llm_error"),
-                flags=flags_count(state.get("flags")))
+                flags=flags_count(state.get("flags")), draft_attempts=int(state.get("attempts") or 0))
     return draft, pipe
 
 
@@ -205,6 +227,8 @@ def run_agent(env: dict[str, str], fx: dict[str, Any], pause_s: float) -> dict[s
     answers = [a for a in result.get("answers") or [] if isinstance(a, dict)]
     sources = at.sources_for(fx["story"], answers)
     final = result.get("final_card")
+    tool_errors, rejects = tool_error_counts(result.get("messages") or [])
+    fr = result.get("first_report") if isinstance(result.get("first_report"), dict) else None
     if "__interrupt__" in result:
         outcome = "UNFINISHED"
     elif result.get("outcome") == "READY" and final is not None:
@@ -218,7 +242,10 @@ def run_agent(env: dict[str, str], fx: dict[str, Any], pause_s: float) -> dict[s
                 latency_ms=sum(turn_ms), turn_ms_max=max(turn_ms), turns=turns, questions=questions, skipped=skipped,
                 gate_rejects=int(b.get("gateRejects") or 0), self_repairs=self_repairs(result.get("notes")),
                 llm_error=result.get("llm_error"), flags=flags_count(result.get("flags")),
-                tools=[t.get("tool") for t in result.get("trace") or []])
+                tools=[t.get("tool") for t in result.get("trace") or []], draft_attempts=int(b.get("drafts") or 0),
+                first_schema_errors=None if fr is None else len(fr.get("schemaErrors") or []),
+                first_not_in_source=None if fr is None else len(fr.get("notInSource") or []),
+                tool_errors=dict(tool_errors), question_rejects=dict(rejects))
 
 
 # ---------------------------------------------------------------- 집계(순수 함수, 단위 테스트 대상)
@@ -284,6 +311,11 @@ def summarize(rows: list[dict[str, Any]]) -> dict[str, Any]:
             "gate_rejects_total": sum(r["gate_rejects"] for r in rs), "self_repairs_total": sum(r["self_repairs"] for r in rs),
             "latency_ms_median": _med(lat), "latency_ms_p95": nearest_rank(lat, 0.95), "latency_ms_max": max(lat) if lat else None,
             "turn_ms_max": max((r["turn_ms_max"] for r in rs), default=None),
+            "draft_attempts_median": _med([r["draft_attempts"] for r in rs]),
+            "draft_retry_runs": sum(1 for r in rs if r["draft_attempts"] >= 2),
+            "first_schema_error_runs": sum(1 for r in rs if (r["first_schema_errors"] or 0) > 0),
+            "tool_errors": dict(sum((Counter(r["tool_errors"]) for r in rs), Counter())),
+            "question_rejects": dict(sum((Counter(r["question_rejects"]) for r in rs), Counter())),
             "llm_errors": dict(err), "timeouts": err.get("TIMEOUT", 0),
             "provider_errors": sum(v for k, v in err.items() if k and (k.startswith("HTTP_") or k in ("CONNECTION", "KEY_READ_FAILED", "CONFIG", "PROVIDER_RESPONSE"))),
             "rate_limited": err.get("HTTP_429", 0),
@@ -350,6 +382,10 @@ def markdown(report: dict[str, Any]) -> str:
         ("질문 횟수 합계(건너뜀)", lambda m: f"{_n(s[m]['questions_total'])}({_n(s[m]['skipped_total'])})"),
         ("게이트 거부 합계", lambda m: _n(s[m]["gate_rejects_total"])),
         ("자체 수정 합계(REWRITTEN·REMOVED)", lambda m: _n(s[m]["self_repairs_total"])),
+        ("초안 시도 중앙값 / 재시도 실행 수", lambda m: f"{_n(s[m]['draft_attempts_median'])} / {s[m]['draft_retry_runs']}"),
+        ("첫 검사 입력의 스키마 위반 실행 수", lambda m: str(s[m]["first_schema_error_runs"])),
+        ("도구 오류(코드별)", lambda m: ", ".join(f"{k} {v}" for k, v in sorted(s[m]["tool_errors"].items())) or "없음"),
+        ("질문 거부(사유별)", lambda m: ", ".join(f"{k} {v}" for k, v in sorted(s[m]["question_rejects"].items())) or "없음"),
         ("응답 시간 ms 중앙값 / p95 / 최댓값", lambda m: f"{_n(s[m]['latency_ms_median'])} / {_n(s[m]['latency_ms_p95'])} / {_n(s[m]['latency_ms_max'])}"),
         ("타임아웃 / 공급자 오류 / 429 / 예산 중단", lambda m: f"{s[m]['timeouts']} / {s[m]['provider_errors']} / {s[m]['rate_limited']} / {s[m]['budget_stops']}"),
     ]
@@ -388,6 +424,9 @@ def build_report(rows: list[dict[str, Any]], *, mode: str, reps: int, cfg: dict[
         "promptVersion": {"pipeline": prompt_version(), "agent": agent_prompt_version()}, "autoAnswer": AUTO_ANSWER_RULE,
         "methods": {"single": "① 레벨 0 실행의 첫 초안, 검사만(후처리 전)", "pipeline": "② 같은 실행의 최종 카드(규칙·Gate·폴백·Final_Check)",
                     "agent": "③ 별도 호출(에이전트 프롬프트·도구 루프·자동 답·메모리 체크포인터·NoopBudget)"},
+        "first_report_note": ("③의 firstReport·firstProposal은 BE-Q129 보완 뒤 재시도 결과를 포함한다. 첫 초안이 스키마를 어기면 "
+                              "재시도한 초안을 check_draft가 처음 본다. 보완 전 기록과 기준이 다르다. 행의 first_schema_errors는 "
+                              "그 첫 검사 입력의 스키마 위반 수다. ①②의 시도 수는 레벨 0 attempts다."),
         "limits": {"turn_ms": TURN_MS, "fence_s": FENCE_S, "max_turns": MAX_TURNS, "calls": 6, "input_tokens": 30000},
         "aborted": aborted, "rows_done": len(rows),
         "summary": summarize(rows) if rows else {}, "stories": per_story(rows) if rows else [], "rows": rows,

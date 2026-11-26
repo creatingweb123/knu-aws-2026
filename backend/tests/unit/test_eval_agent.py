@@ -180,3 +180,15 @@ def test_no_story_text_or_key_in_output(tmp_path):
         assert text not in blob and text[:15] not in blob
     assert "LLM_API_KEY" not in json.dumps(report["config"])
     assert all(r["agent"]["calls"] <= 6 for r in report["rows"])  # 예산을 완화하지 않는다
+
+
+def test_tool_error_counts_codes_and_question_reasons():
+    from langchain_core.messages import HumanMessage, ToolMessage
+
+    msgs = [HumanMessage("x"), ToolMessage(content='{"error": "QUESTION_REJECTED", "reason": "PATH_NOT_ALLOWED"}', tool_call_id="1"),
+            ToolMessage(content='{"error": "QUESTION_REJECTED", "reason": "QUESTION_LIMIT"}', tool_call_id="2"),
+            ToolMessage(content='{"error": "INVALID_ARGS", "hint": "x"}', tool_call_id="3"),
+            ToolMessage(content="not json", tool_call_id="4")]
+    codes, rejects = ev.tool_error_counts(msgs)
+    assert dict(codes) == {"QUESTION_REJECTED": 2, "INVALID_ARGS": 1}
+    assert dict(rejects) == {"PATH_NOT_ALLOWED": 1, "QUESTION_LIMIT": 1}
