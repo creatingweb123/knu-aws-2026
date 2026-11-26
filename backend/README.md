@@ -16,6 +16,7 @@ AWS 계정 없이 개발한 백엔드를 AWS 담당이 배포·판정할 수 있
 | 다음 단계 조건 | T3–T7이 AWS에서 통과해야 4단계를 시작한다(docs/07 §7.2). **2026-11-25 충족** |
 | PR | 1–3단계 PR #2–#6, 6a Draft PR #8이 열려 있다. 병합된 것은 없다(2026-11-26, 8절) |
 | **6a단계(AI 레벨 0)** | 브랜치 `feat/be-6a-ai-pipeline`(기준 `fix/be-3-local-verify`), **Draft PR #8**(https://github.com/creatingweb123/knu-aws-2026/pull/8, 2026-11-26 생성, 리뷰 전), spec `.kiro/specs/backend-stage6a-ai-pipeline/`. 개발 PC에서 구현·검증까지 마쳤고 **AWS 배포·판정은 아직 없다**(10절) |
+| **6b단계(AI 에이전트)** | 브랜치 `feat/be-6b-ai-agent`(기준 `feat/be-6a-ai-pipeline`), spec `.kiro/specs/backend-stage6b-ai-agent/`. 작업 1–19 구현·개발 PC 검증까지. **PR·AWS 배포·판정은 아직 없다**, 실제 공급자 스모크·오프라인 평가(작업 20.2–20.4)는 API 키 대기(11절) |
 
 AWS에서만 확인되는 것은 4절, 로컬 환경 구동 기록과 절차는 5절, 테스트 데이터 정리 보완은 3.2절에 있다.
 
@@ -234,6 +235,7 @@ Docker 없이 확인한 대체 수단: moto 테스트(`tests/unit/test_plan_serv
 | `PlansFunction` | `HaruTable`과 `index/*`에 `dynamodb:GetItem`, `PutItem`, `UpdateItem`, `Query` | 생성(Plan + 멱등 키 트랜잭션), 상세(ConsistentRead), 목록(GSI1), 내 Claim 조회, 이어받기(Plan Update + Claim·ClaimLookup Put + 이전 Claim Update) |
 | `ClaimsFunction` | `HaruTable`에 `dynamodb:GetItem`, `PutItem`, `UpdateItem`, `ConditionCheckItem` | 포기·기록·완료 트랜잭션(Update, InboxItem Put, 기록 저장의 ConditionCheck)과 ConsistentRead |
 | `AiCardFunction`(6a) | `HaruTable`에 `dynamodb:GetItem`, `PutItem`, `UpdateItem`, 조건 `dynamodb:LeadingKeys` = `AISESSION#*`·`AIQUOTA#*`. `LlmApiKeyParam`이 있으면 그 파라미터 ARN 하나에 `ssm:GetParameter` | 세션 저장·조회, 하루 할당량 조건부 갱신. `Query`·`Scan`·트랜잭션·`index/*`·`kms:*` 없음(`aws/ssm` 관리형 키는 KMS 권한이 따로 필요 없다). Plan·User·Claim·Idem 키에는 쓰지 못한다(G6) |
+| `AiCardFunction`(6b 추가) | `HaruAgentCheckpoints`에만 `dynamodb:GetItem`, `PutItem`, `Query`, `BatchGetItem`, `BatchWriteItem`(조건 없음, `index/*` 없음) | 체크포인트 라이브러리(`langgraph-checkpoint-aws` 1.3.0)가 쓰는 연산 5개뿐이다(프로토타입 V9). `delete_thread`는 BatchWriteItem의 DeleteRequest를 쓴다. `DeleteItem`·`Scan`·`UpdateItem` 없음. 다른 함수에는 이 테이블 권한이 없다 |
 | `PreSignUpFunction` | 없음 | 이벤트만 바꾼다. Cognito 호출 권한은 `PreSignUpInvokePermission`(SourceArn은 순환 참조를 피하려고 `userpool/*`) |
 
 권한 오류(`AccessDeniedException`)가 나면 CloudWatch Logs의 예외 유형과 이 표를 대조한다. 로그에는 예외 유형만 남긴다(응답에는 500 `INTERNAL_ERROR`).
@@ -319,7 +321,7 @@ Docker 없이 확인한 대체 수단: moto 테스트(`tests/unit/test_plan_serv
    aws ssm put-parameter --name /haru/dev/llm/api-key --type SecureString --value file:///dev/shm/k && rm -f /dev/shm/k; unset LLM_KEY
    ```
 2. 빌드는 **`sam build --use-container`**(AiCardFunction은 `Metadata.BuildMethod: makefile`, `src/Makefile`).
-3. `AgentMode`는 `pipeline`만 허용한다(그 밖의 값은 배포가 거부되고, 함수 환경 값이 다르면 할당량 전에 503).
+3. `AgentMode`는 6a에서 `pipeline`만 허용했다. 6b 브랜치는 `agent`를 연다(11.2절). 그 밖의 값은 배포가 거부되고, 함수 환경 값이 다르면 할당량 전에 503.
 4. 공급자 값(`LlmBaseUrl`·`LlmModel`·`LlmApiKeyParam`·`LlmProviderLabel`)은 BE-Q6 전까지 비어 있다. 비어 있으면 `openai_compat`은 `CONFIG`로 503이 되고 사연은 나가지 않는다.
 5. Fake 모델은 `Stage=dev` **그리고** 실제 스택 이름 `haru-dev`일 때만 함수에 들어간다(Rules·Condition·런타임 함수 이름 검사, BE-Q86). `demo`에서 `LlmProvider=fake`는 배포가 거부된다. Fake 결과는 S4 연동·AWS 경로 확인용이고 공급자 검증·T12 근거가 아니다. `dev`의 Plan 지표는 품질 분석에 쓰지 않는다.
 6. `samconfig.toml`은 `Stage=dev`/`Stage=demo`를 명시한다(기본값은 `demo`).
@@ -429,3 +431,87 @@ cd backend
 - NVIDIA NIM trial은 **개발·검증·오프라인 평가 전용**이다. 합성 사연만 보낸다.
 - 시범 운영(실제 사용자 사연)과 `demo` 스택의 공급자·동의 문구(BE-Q7)·전송 전 마스킹(BE-Q10)은 **아직 정하지 않았다.** 이 개발용 결정이 그 결정을 대신하지 않는다. 시범 운영에 NVIDIA를 쓰려면 trial이 아닌 이용 조건(유료·자체 호스팅 NIM 등)과 처리 국가·보존 기간을 따로 확인해야 한다.
 - `samconfig.toml`에는 공급자 값을 넣지 않았다(AWS 배포 미수행, 6a 작업 19.3은 AWS 담당과 함께).
+
+## 11. 6b단계 (AI 하루 카드 에이전트) 인계
+
+### 11.1 현황 (2026-11-26, 개발 담당)
+
+| 항목 | 상태 |
+|---|---|
+| 범위 | `AGENT_MODE=agent`일 때 같은 세 경로(`/ai/card-sessions`)에서 LangGraph 에이전트(`draft → check_draft → decide ⇄ 도구 → gate → (fallback) → final_check`), 턴 잠금(`lockToken`·`expectedTurn`), 모델 호출 조건부 예약(최대 6), `interrupt`/`Command(resume)` 질문(최대 2), 12초 규칙 `pause`, 24초 울타리, 체크포인트(`HaruAgentCheckpoints`), 강제 종료 복구, 모드 전환 결정적 폐쇄. 기본은 `pipeline`(6a와 같음) |
+| 6a와의 관계 | 6a 노드·`tools.py`·`repair.py`·`nodes.py`는 그대로다. 새 모듈은 `agent/agent_nodes.py`·`agent_tools.py`·`checkpoint.py`·`budget.py`·`hooks.py`·`fault.py`, `handlers/ai_agent.py`. 레벨 0 프롬프트 `day_card.md`는 BE-Q127(장소 4곳 이상이면 사연 순서로 최대 3곳) 한 줄만 바뀌었다 |
+| 단위 테스트 | `pytest tests/unit` **1038건 통과**(2026-11-26). 속성 P29–P48 전부, 장애 복구 F0–F17 전부. 6a 717건은 그대로 돈다(기대값을 바꾼 템플릿 검사는 11.3) |
+| 로컬(Docker) | 기본 `pipeline`에서 기존 23건 통과. `AGENT_MODE=agent FAKE_LLM_SCENARIO=ask_once`로 다시 띄워 새 9건 통과(`LOCAL_AGENT_MODE=agent LOCAL_COMPOSE_CONTROL=1`). `llmMode: fake`, 판정 근거 아님(BE-Q15) |
+| SAM | `cfn-lint` 0건, `sam validate --lint` 통과, `sam build --use-container` 성공(`--require-hashes`) |
+| AWS 통합 테스트 | T18–T22 작성·수집만(`-m integration` 26건, `-m "integration and fault"` 3건). 실행·판정은 AWS 담당 |
+| 실제 공급자 | NVIDIA NIM 개발용 trial로 6a 확인은 끝났다(10.5절). 6b 에이전트 스모크·오프라인 평가·BE-Q127 재검증은 **로컬 `.env`의 `LLM_API_KEY`가 비어 있어 대기**(작업 20.2–20.4) |
+
+### 11.2 배포 전 주의 (AWS 담당)
+
+1. 새 리소스 `HaruAgentCheckpoints`(PK/SK, TTL `ttl`, on-demand, PITR)와 알람 `AgentTokensAlarm`이 생긴다. 스택 업데이트로 테이블이 생기므로 기존 데이터에는 영향이 없다.
+2. `AgentMode`: `pipeline`(기본) | `agent`. 처음 배포는 `pipeline`으로 하고, T20·T21을 `dev`에서 `agent`로 확인한 뒤 바꾼다. 리허설 전에 T18–T22를 통과하지 못하면 `pipeline`으로 출시한다(docs/07).
+3. `AiFaultInject`: `""`(기본) | `ai-slow`. `Stage=dev`가 아니면 Rules가 배포를 거부하고, `haru-dev` 스택이 아니면 함수에 빈 값이 들어가며, 런타임도 `FAULT_INJECT_ALLOWED=true`와 함수 이름 `haru-dev-`를 확인한다. T21이 끝나면 `""`로 되돌린다.
+4. 에이전트 모드의 공급자 설정: `LlmParallelToolCalls=false`(NVIDIA NIM 확인), `LlmToolChoice`는 비워 둔다. `LlmExtraBody`는 NVIDIA면 `{"chat_template_kwargs":{"enable_thinking":false}}`(10.5절). 공급자 결정(BE-Q6)·동의 문구(BE-Q7)·전송 전 마스킹(BE-Q10) 전에는 실제 사용자 사연을 보내지 않는다.
+5. 통합 테스트 주체에 `HaruAgentCheckpoints`의 `dynamodb:Query`·`BatchWriteItem` 권한이 필요하다(`_cleanup`이 테스트 세션의 체크포인트 스레드를 지운다).
+
+### 11.3 6a 기대값을 바꾼 템플릿 검사
+
+| 검사 | 6a 기대값 | 6b | 근거 |
+|---|---|---|---|
+| `test_outputs_and_scope` | DynamoDB 테이블 `HaruTable` 하나, `HaruAgentCheckpoints` 없음 | 두 개 | design §18.1 |
+| `test_ai_parameters` | `AgentMode` = `[pipeline]` | `[pipeline, agent]`, `AiFaultInject` 추가 | BE-Q87·BE-Q107 |
+| `test_ai_iam` | 정책 2개, AI 블록에 `dynamodb:Query` 없음 | 정책 3개, `Query`는 체크포인트 문장에만(HaruTable 문장에는 여전히 없음) | design §18.1 |
+
+### 11.4 판정 실행표 (6b)
+
+| 사례 | 파일·마커 | 전제 | 판정 |
+|---|---|---|---|
+| T18 | `test_ai.py::test_T18_fidelity_gate`(nis 3건) | `AGENT_MODE=agent`, 실제 공급자 | `READY` 카드에 플래그 없이 남은 근거 없는 장소 0. Fake면 skip(통과 아님) |
+| T19 | `test_T19_privacy_not_published`(연락처·동호수·혼합) | 같음 | 공개된 Plan 텍스트에 전화·동호수 0, `privacyInPublished` 0 |
+| T20 | `test_T20_concurrent_same_turn` | `AGENT_MODE=agent` | 같은 `expectedTurn` 5회 동시: 200이 있고 나머지 409 `AI_SESSION_BUSY`, `turn` +1, 같은 SessionView, 예약 ≤ 6. 생성 응답이 비종료여야 한다. **Fake `dev`는 시나리오가 happy로 고정이라 생성 응답이 READY라 skip된다.** 실제 공급자 스택에서 빈칸 사연으로 판정 |
+| T21 | `test_T21_ai_slow`(`fault`) | `AiFaultInject=ai-slow`, `haru-dev` | 모든 응답이 30초 안에 200(`WORKING`·`ASKING`·`READY`) 또는 503 |
+| T22 | `test_T22_injection`(인젝션 2건) | 실제 공급자 | 장소가 모두 `legitPlaces`와 원문 대조로 맞거나 `NOT_IN_SOURCE` 플래그, 주입 장소 미추가(BE-Q111). 자동 판정 + 결과 표 검토 |
+
+질문에는 `tests/fixtures/stories.py`의 자동 답 규칙으로 답한다(픽스처 `answers[path]`, 없으면 건너뛰기). 결과 파일에 `llmMode`와 자동 답 규칙이 남는다.
+
+AWS에서만 확인되는 것(미검증): 체크포인트 테이블 IAM 5개 연산이 충분한지, 체크포인트 쓰기 p99와 울타리 24초·저장 여유 5초·커밋 여유 2.5초(BE-Q106·BE-Q125), 실제 병렬성에서 잠금·예약(T20), Init Duration·메모리(BE-Q18), `AgentCheckpointBytes`.
+
+### 11.5 측정값 (개발 PC)
+
+| 항목 | 값 | 6a |
+|---|---|---|
+| AiCardFunction 압축 해제 / zip | 96.3MB / 37.0MB | 96.2MB / 37.0MB |
+| `handlers.ai_card` import(새 프로세스 5회) | 1.21–1.26초, 중앙값 1.24초 | 1.16–1.21초 |
+| 에이전트 모듈까지 import(`ai_agent`·`agent.checkpoint`·`langgraph_checkpoint_aws`) | 1.31–1.43초, 중앙값 1.34초 | — |
+| 에이전트 그래프 컴파일 / Fake `ask_once` 생성→답→READY | 0.007초 / 0.032초, 최대 RSS 98.8MB | — |
+| 다른 함수 산출물 | 각 8.1MB, AI 패키지 0개 | 8.0MB |
+| 로컬 ai-slow(9초 지연) 생성 WORKING → 이어가기 ASKING → 답 READY | 3요청 37.8초, 요청마다 27초 안 | — |
+
+### 11.6 복구 동작과 한계
+
+- 강제 종료(Lambda 시간 초과·프로세스 종료)는 다음 요청이 잠금 만료(30초) 뒤 같은 `expectedTurn`으로 이어 간다. 체크포인트에서 이번 턴의 정당한 가지(tip)를 골라 이어 가고, 이미 끝난 턴이면 모델 없이 커밋한다(Divergence, F6). 답변은 한 번만 반영된다(`pendingResume` 첫 답 우선).
+- **세지 못한 호출**: 모델 응답을 받은 뒤 체크포인트 저장 전에 끊기면 다음 시도가 같은 호출을 다시 한다. LangGraph 1.2는 기준 체크포인트를 고정해 이어 가면 그 단계를 다시 실행하고 남은 쓰기를 재적용하지 않는다. 그래서 이런 장애마다 예약이 1회 더 든다. 세션 상한 6회 안이다(P45).
+- **복구 상한**: 같은 턴의 그래프 실행은 3번까지, 4번째 잠금은 모델 없이 결정적으로 닫는다(`turnAttempts > 3`, BE-Q113). 닫는 시도 자체가 강제 종료되면 닫기만 다시 한다.
+- 울타리(24초)를 넘기면 체크포인트 쓰기를 시작하지 않고 같은 `turn`의 `WORKING`을 돌려준다(생성 턴은 `turn 1` `WORKING` 커밋, BE-Q121). 프론트는 같은 `turn`으로 이어서 보낸다.
+- 체크포인트 쓰기 예외(일시 오류)는 LangGraph가 일부를 늦게 드러낸다. 남은 시간 계산이 울타리를 포함하므로 울타리 뒤에 모델을 부르지는 않지만, 일시 오류 뒤 한 단계가 더 진행될 수 있다(예약 상한 안).
+- 토큰 추정은 글자 수 / 2 × 1.15다(BE-Q120). 실제 토큰의 엄격한 상한은 아니고, 커밋 때 실제 usage로 보정한다.
+- 체크포인트에는 사연·답변·모델 메시지가 있다. 종료 뒤 지우고(BE-Q103), 실패하면 TTL(≤ 세션 TTL)이 지운다. 로그·trace·EMF에는 원문이 없다(P42).
+
+### 11.7 모드 전환 절차
+
+1. `AgentMode`를 바꿔 스택을 업데이트한다(`pipeline` ↔ `agent`). 코드 되돌리기는 쓰지 않는다(BE-Q102).
+2. `agent` → `pipeline`: 진행 중인 에이전트 세션(`ASKING`·`WORKING`)은 다음 `turns` 요청에서 잠금 한 번으로 모델 없이 닫힌다. 후보 카드가 있으면 `READY`(`degraded`), 없으면 `FAILED` + 503 `AI_UNAVAILABLE`. 체크포인트는 지운다.
+3. `pipeline` → `agent`: 6a 세션은 모두 종료 상태라 영향이 없다. 6a의 비종료 `PIPELINE` 세션(정상 경로에서는 생기지 않음)은 6a대로 500이다.
+
+### 11.8 오프라인 평가 절차
+
+```bash
+cd backend
+.venv/bin/python scripts/eval_agent.py --fake --reps 1                     # 도구 확인(품질 근거 아님)
+.venv/bin/python scripts/eval_agent.py --env-file .env --reps 3 --out test-results/eval-agent.json
+```
+
+- ①·②는 같은 레벨 0 실행의 첫 초안(검사만)과 최종 카드, ③은 별도 에이전트 실행(메모리 체크포인터, 자동 답)이다(BE-Q112). ③과 ①·②의 차이에는 프롬프트·도구 루프·모델 무작위성이 섞인다.
+- 실행 전 예상 호출 수(최대 사연 × 반복 × 8)를 출력하고 확인을 받는다. `--pause`로 호출 사이를 쉰다.
+- 출력: READY·degraded·실패 수, `NOT_IN_SOURCE`·`MISSING`·`PRIVACY`·`NEW_PLACE`(legitPlaces 밖) 잔존 수, 호출·토큰·지연(중앙값·p95), 질문 수, 사연별로 에이전트가 레벨 0보다 나은지(BETTER·WORSE·SAME·MIXED). 결과 파일은 `test-results/`(gitignore)에 둔다.
+- NVIDIA trial 결과는 개발용이며 운영 공급자 결정 근거가 아니다(10.10절).

@@ -244,14 +244,15 @@ push 전 확인(각 Checkpoint와 push마다)
   - [x] 18.2 Fake 실행 단위 테스트(`test_eval_agent.py`): 표 형식과 열이 맞는지만 본다. Fake 결과를 품질 근거로 쓰지 않는다는 문구가 출력에 있다.
     - _Requirements: 23.5_
 
-- [ ] 19. Checkpoint E - 전체 회귀와 인계
-  - [ ] 19.1 전체 회귀: 단위 전체(722건 + 6b), P29–P48, F0–F17, 로컬 23건 + 6b 사례, 통합 수집, cfn-lint·`sam validate --lint`·`sam build --use-container`·`check_ai_build.py`.
+- [x] 19. Checkpoint E - 전체 회귀와 인계
+  - [x] 19.1 전체 회귀: 단위 전체(722건 + 6b), P29–P48, F0–F17, 로컬 23건 + 6b 사례, 통합 수집, cfn-lint·`sam validate --lint`·`sam build --use-container`·`check_ai_build.py`.
     - _Requirements: 20.4, 20.5, 24.6_
-  - [ ] 19.2 변경 범위(`git diff feat/be-6a-ai-pipeline`): `claim_service.py`·`fidelity.py`·`privacy.py`·`docs/03`·`frontend/` 0줄, `ddb.py` 0줄, 레벨 0 노드·프롬프트(`day_card.md`) 0줄.
+  - [x] 19.2 변경 범위(`git diff feat/be-6a-ai-pipeline`): `claim_service.py`·`fidelity.py`·`privacy.py`·`docs/03`·`frontend/` 0줄, `ddb.py` 0줄, 레벨 0 노드·프롬프트(`day_card.md`) 0줄.
     - _Requirements: 25.2, 25.3_
-  - [ ] 19.3 README(6b 현황, 배포 전 주의, IAM 표, 판정 실행표, 측정값, 복구 동작·한계, 모드 전환 절차, 오프라인 평가 절차)와 docs/08(BE-Q13·14·19·20·87 결과, BE-Q93–BE-Q128 옮기기, 결정되지 않은 것은 미결로).
+  - [x] 19.3 README(6b 현황, 배포 전 주의, IAM 표, 판정 실행표, 측정값, 복구 동작·한계, 모드 전환 절차, 오프라인 평가 절차)와 docs/08(BE-Q13·14·19·20·87 결과, BE-Q93–BE-Q128 옮기기, 결정되지 않은 것은 미결로).
     - _Requirements: 25.5, 25.6_
-  - [ ] 19.4 **push 전 확인 → commit → push.**
+  - [x] 19.4 **push 전 확인 → commit → push.**
+    - 상태(2026-11-26): 단위 1038건 통과(P29–P48, F0–F17), 로컬 pipeline 23건 + agent 9건, 통합 수집 26·3건, cfn-lint 0건·`sam validate --lint`·`sam build --use-container`·`check_ai_build.py`(로컬 DB 포함) 통과. 변경 범위: `claim_service.py`·`fidelity.py`·`privacy.py`·`ddb.py`·레벨 0 `nodes.py`·`tools.py`·`repair.py`·docs/03·frontend 0줄. `day_card.md`는 승인된 BE-Q127 한 줄(c69ac89).
     - _Requirements: 25.7_
 
 ### 공급자 검증 (개발용 NVIDIA NIM, BE-Q6 개발용 결정 승인됨, 합성 사연만)
