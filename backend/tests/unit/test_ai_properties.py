@@ -188,3 +188,27 @@ def test_property_30_path_bases(candidate, story):
             assert n["action"] == "KEPT_FLAGGED" and tools.place_index(n["path"]) < final_n
     removed = [tools.place_index(n["path"]) for n in notes if n["action"] == "REMOVED"]
     assert len(removed) == len(set(removed)) == cand_n - final_n  # 뺀 장소마다 REMOVED 메모 하나
+
+
+# ---------------------------------------------------------------- P32: 데이터 블록
+
+import re as _re  # noqa: E402
+
+from agent.prompt import FULLWIDTH_LT, user_message  # noqa: E402
+
+TAG_PIECES = ["<story>", "</story>", "<STORY>", "< / story >", "<answer>", "</answer>", "<Story attr>", "<", ">", "/", "story"]
+
+
+# Feature: backend-stage6a-ai-pipeline, Property 32
+@PROPS
+@given(parts=st.lists(st.one_of(st.text(max_size=20), st.sampled_from(TAG_PIECES)), max_size=12))
+def test_property_32_single_data_block(parts):
+    """Property 32: 사용자 메시지의 데이터 블록은 하나이고 닫히지 않으며, 태그의 '<' 외 글자는 원문과 같다.
+    Validates: Requirements 10.2, 10.3"""
+    story = "".join(parts)
+    msg = user_message(story)
+    assert msg.startswith("<story>\n") and msg.endswith("\n</story>")
+    inner = msg[len("<story>\n"): -len("\n</story>")]
+    assert not _re.search(r"<\s*/?\s*(story|answer)\b", inner, _re.I)
+    assert len(inner) == len(story)
+    assert all(a == b or (a == "<" and b == FULLWIDTH_LT) for a, b in zip(story, inner, strict=True))
