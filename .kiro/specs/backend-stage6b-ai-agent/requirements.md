@@ -185,7 +185,7 @@
 #### Acceptance Criteria
 
 1. THE Session_Budget SHALL 모델 호출 6회, 질문 2개, `check_draft` 4회, 게이트 거부 2회(세 번째 거부 → `fallback`), 누적 입력 토큰 30,000이다. 하나라도 소진되면 다음 LLM 노드로 가지 않고 `fallback`으로 간다. [§3.2, BE-AI-08]
-2. THE 모델 호출 수 SHALL `draft` 재시도, `decide`, 도구 없는 응답 재촉, 거부된 질문·Tool_Error 뒤 재호출을 모두 포함한 실제 요청 수다(6a `model_calls` 규칙). 6a 레벨 0의 `draft` 재시도 규칙(12초 이상 남았을 때 1회)은 에이전트 모드에서도 예산에 포함된다.
+2. THE 모델 호출 수 SHALL `draft` 재시도, `decide`, 도구 없는 응답 재촉, 거부된 질문·Tool_Error 뒤 재호출을 모두 포함한 실제 요청 수다(6a `model_calls` 규칙). 6a 레벨 0의 `draft` 재시도 규칙(12초 이상 남았을 때 1회)은 에이전트 모드에서도 예산에 포함된다. 에이전트 `draft`의 재시도(BE-Q129, 스키마 위반 포함)도 같은 예산에 들어가며, 세션 예약 상한 6을 넘지 않는다.
 3. THE `check_draft` 횟수 SHALL 모델이 부른 도구 실행과 `draft` 직후 자동 실행을 셀지, `gate`·`final_check`의 내부 재검사를 셀지 Design에서 정한다(임시, BE-Q98).
 4. THE 예산 카운터 SHALL 세션 전체에 걸쳐 누적되고 턴이 바뀌어도, 복구(Requirement 7)되어도 0으로 돌아가지 않는다. 카운터의 원천(그래프 상태 vs AiSession)과, 모델 응답을 받은 뒤 체크포인트에 남기기 전에 강제 종료되어 **세지 못한 호출**의 처리는 미결이다(BE-Q97). 어느 안이든 세션 하나의 실제 모델 호출 수에 상한이 있어야 하고, 그 상한을 README에 적는다.
 5. THE 입력 토큰 SHALL `AIMessage.usage_metadata`에서 읽고, 없으면 6a와 같이 글자 수로 추정한다(`tokenEstimated`). 다음 호출의 입력이 누적 30,000을 넘을 것으로 추정되면 부르지 않고 `fallback`으로 간다(추정 방법은 Design).
@@ -214,7 +214,7 @@
 1. THE `draft`·`decide` SHALL LLM 호출 오류(6a LLM_Error 분류, `TIME_BUDGET`·`CONFIG`·`KEY_READ_FAILED` 포함)를 노드 안에서 잡아 상태에 `llmError`를 기록하고 예외를 노드 밖으로 내보내지 않는다. 폴백 로직은 `fallback` 노드 한 곳에만 있다. [§3.2]
 2. WHEN LLM 오류이고 후보 카드가 있으면, THE 세션 SHALL `READY`, `degraded = true`(결정적 폴백 카드)다.
 3. WHEN LLM 오류이고 후보 카드가 없으면, THE 세션 SHALL `FAILED`, 응답 503 `AI_UNAVAILABLE`이다. 에이전트 모드에서 "후보 카드"의 정의(빈 카드·스키마 실패 카드 포함 여부)는 미결(BE-Q99).
-4. THE 에이전트 모드의 `draft` SHALL docs/03 §3.2를 따른다: content의 JSON 객체를 카드로 파싱하고, JSON 객체가 아니면 12초 이상 남았을 때만 1회 재시도(예산 포함), 그래도 아니면 빈 카드로 넘긴다. 스키마 검증 실패는 재시도하지 않고 `check_draft`로 보내 `schemaErrors`로 보고한다. 502 `AI_INVALID_OUTPUT`은 레벨 0 전용이고 에이전트 모드에서는 Final_Check 차단(`FALLBACK_INVARIANT`)에만 쓴다(6a BE-Q88).
+4. THE 에이전트 모드의 `draft` SHALL docs/03 §3.2를 따른다: content의 JSON 객체를 카드로 파싱한다(BE-Q129 보완, 2026-11-27). JSON 객체가 아니거나 스키마를 어기면 재시도한다. 초안 시도는 세션당 최대 2회(최초 호출 포함)이고, JSON 오류와 스키마 오류가 한 예산을 나눠 쓴다. 재시도 전 남은 시간이 12초 미만이면 `WORKING`으로 멈춘다. 재시도 메시지는 위반 경로와 스키마 제한만 담고 실패한 응답 원문은 다시 보내지 않는다. 두 번째도 위반이면 마지막으로 파싱된 카드를 `check_draft`로 보내 `schemaErrors`로 보고하고, 파싱된 카드가 없으면 빈 카드로 넘긴다. 정보 없는 카드(스키마는 맞음)는 위반이 아니므로 재시도하지 않는다. 502 `AI_INVALID_OUTPUT`은 레벨 0 전용이고 에이전트 모드에서는 Final_Check 차단(`FALLBACK_INVARIANT`)에만 쓴다(6a BE-Q88).
 5. THE READY·FAILED 세션 SHALL 이후 `GET`에 그 상태의 SessionView 200을, `turns`에 409 `AI_SESSION_CLOSED`를 돌려준다.
 6. THE 예상하지 못한 예외 SHALL 500 `INTERNAL_ERROR`로 끝나고 로그에는 예외 클래스 이름만 남는다. 잠금은 만료로 풀리고 Requirement 7이 복구한다.
 
