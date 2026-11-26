@@ -16,7 +16,7 @@ AWS 계정 없이 개발한 백엔드를 AWS 담당이 배포·판정할 수 있
 | 다음 단계 조건 | T3–T7이 AWS에서 통과해야 4단계를 시작한다(docs/07 §7.2). **2026-11-25 충족** |
 | PR | 1–3단계 PR #2–#6, 6a Draft PR #8이 열려 있다. 병합된 것은 없다(2026-11-26, 8절) |
 | **6a단계(AI 레벨 0)** | 브랜치 `feat/be-6a-ai-pipeline`(기준 `fix/be-3-local-verify`), **Draft PR #8**(https://github.com/creatingweb123/knu-aws-2026/pull/8, 2026-11-26 생성, 리뷰 전), spec `.kiro/specs/backend-stage6a-ai-pipeline/`. 개발 PC에서 구현·검증까지 마쳤고 **AWS 배포·판정은 아직 없다**(10절) |
-| **6b단계(AI 에이전트)** | 브랜치 `feat/be-6b-ai-agent`(기준 `feat/be-6a-ai-pipeline`), spec `.kiro/specs/backend-stage6b-ai-agent/`. 작업 1–19 구현·개발 PC 검증까지. **PR·AWS 배포·판정은 아직 없다**, 실제 공급자 스모크·오프라인 평가(작업 20.2–20.4)는 API 키 대기(11절) |
+| **6b단계(AI 에이전트)** | 브랜치 `feat/be-6b-ai-agent`(기준 `feat/be-6a-ai-pipeline`), spec `.kiro/specs/backend-stage6b-ai-agent/`. 작업 1–19 구현·개발 PC 검증까지. **PR·AWS 배포·판정은 아직 없다**. 실제 공급자 검증(작업 20.2–20.4)은 2026-11-27에 GPT-6 Luna 게이트웨이로 끝냈다(11.12절, 출시 모드 제안 11.13절) |
 
 AWS에서만 확인되는 것은 4절, 로컬 환경 구동 기록과 절차는 5절, 테스트 데이터 정리 보완은 3.2절에 있다.
 
@@ -362,7 +362,9 @@ LLM 호출 취소(`tests/unit/test_ai_cancel.py -s`, 로컬 스텁, deadline 0.5
 
 Floci `DynamoDBSaver`(`tests/local/test_local_checkpointer.py`, BE-Q21): `floci/floci:2.5.0-compat` 기본 엔진에서 동기·비동기 모두 interrupt → `get_state`의 대기 interrupt → `Command(resume)` → 결과가 동작했다. 짧은 스레드 하나가 항목 18개를 썼고 모두 `ttl`이 있었다. `delete_thread` 뒤 그 스레드 항목 0건. 제품 경로에는 연결하지 않았다.
 
-### 10.5 공급자 실측 (개발용 NVIDIA NIM, 2026-11-26, 합성 사연만)
+### 10.5 공급자 실측 (이전 개발용 NVIDIA NIM, 2026-11-26, 합성 사연만)
+
+> 2026-11-27에 개발용 공급자를 GPT-6 Luna 게이트웨이로 바꿨다(10.11절). 아래 NVIDIA 기록은 비교용으로 남긴다.
 
 BE-Q6의 **개발·검증용** 공급자는 NVIDIA NIM(`nvidia/nemotron-3.5-lightning-30b-a3b`)이다. 운영(시범 운영) 공급자 결정이 아니다(10.10절). 측정은 `scripts/probe_provider.py`로 했다(결과 파일은 `test-results/`, gitignore. 모델 응답 원문은 남기지 않는다).
 
@@ -445,6 +447,37 @@ cd backend
 - 시범 운영(실제 사용자 사연)과 `demo` 스택의 공급자·동의 문구(BE-Q7)·전송 전 마스킹(BE-Q10)은 **아직 정하지 않았다.** 이 개발용 결정이 그 결정을 대신하지 않는다. 시범 운영에 NVIDIA를 쓰려면 trial이 아닌 이용 조건(유료·자체 호스팅 NIM 등)과 처리 국가·보존 기간을 따로 확인해야 한다.
 - `samconfig.toml`에는 공급자 값을 넣지 않았다(AWS 배포 미수행, 6a 작업 19.3은 AWS 담당과 함께).
 
+### 10.11 GPT-6 Luna 공급자 확인 (2026-11-27, 개발용)
+
+개발·검증용 공급자를 NVIDIA NIM에서 GPT-6 Luna 게이트웨이로 바꾸고, 10.9절과 같은 순서로 다시 확인했다. 합성 사연만 보냈다. 이 결과는 운영 공급자 결정 근거가 아니다(BE-Q6, 작업 23).
+
+| 설정 키 | 값 |
+|---|---|
+| `LLM_BASE_URL` | `https://api.baze.co/v1/gateway` |
+| `LLM_MODEL` | `gpt-6-luna` |
+| `LLM_PROVIDER_LABEL` | `KNUAI` |
+| `LLM_EXTRA_BODY` | `{"reasoning_effort":"none"}` |
+| 그 밖 | `LLM_TEMPERATURE=0`, `LLM_MAX_TOKENS=800`, `LLM_PARALLEL_TOOL_CALLS=false`, 연결 2초·읽기 8초·재시도 0 |
+
+호환성 결과(`test-results/provider-probe-20261127T024834.json`, 추론 토큰 비교는 같은 날 `…024725.json`):
+
+| 확인 | 결과 |
+|---|---|
+| Chat Completions, 한국어 응답 | 200 |
+| 추론 끄기 | `reasoning_effort=none`: 추론 토큰 0(두 실행 모두). 같은 실행에서 NVIDIA 방식 `chat_template_kwargs`는 추론 토큰 21, 설정 없음은 55. NVIDIA 방식으로는 추론을 끌 수 없다 |
+| 출력 상한, `temperature=0` | `max_completion_tokens`·`max_tokens` 16: 200, 종료 사유 `length`, 출력 16토큰. 상한이 적용된다. 추론이 켜진 실행에서는 16토큰이 모두 추론에 쓰여 본문이 비었다. `temperature=0`: 200 |
+| 도구 호출 | 200. `check_draft` 호출, 인자 JSON 파싱 성공. `parallel_tool_calls=false`도 200 |
+| ToolMessage 뒤 후속 호출 | 200, 종료 사유 `stop`, 한국어 응답 |
+| usage | prompt·completion·total 토큰을 모두 반환. 평가의 토큰 수는 공급자 값이고 추정은 0건이다 |
+| 응답 지연(raw 호출) | 1.0–2.9초 |
+| 잘못된 키 | HTTP 401, 본문 키 `detail`(`test-results/provider-auth-invalid-key-20261127.json`, 1회 확인) |
+
+**T12 기준 기록 갱신.** 정상 키 기준은 `test-results/provider-probe-20261127T024834.json`이다. 이 기록은 `LLM_EXTRA_BODY`만 `{"reasoning_effort":"none"}`로 바꾼 임시 설정으로 만들었다. 같은 엔드포인트·모델에서 설정을 적용한 요청(`raw.configured`)이 200이다. `t12_baseline()`은 이제 `raw.configured`를 읽는다. NVIDIA 시기 기록(`raw.thinking_off`)은 이 규칙으로 판정할 수 없다. 기록 파일은 지우지 않았다.
+
+**사용자 `.env` 교체 필요.** `backend/.env`의 `LLM_EXTRA_BODY`는 아직 NVIDIA 값(`{"chat_template_kwargs":{"enable_thinking":false}}`)이다. 이 값은 GPT 게이트웨이에서 추론을 끄지 못한다. 측정은 `.env`를 고치지 않고 임시 설정 파일로 했다. 교체할 한 줄은 `LLM_EXTRA_BODY={"reasoning_effort":"none"}`이다. 키는 그대로 둔다. 에이전트는 키가 든 `.env`를 수정하지 않았다.
+
+**BE-Q127 재검증(레벨 0, GPT-6 Luna, 3회).** 3/3 READY, 장소 3곳, 사연 순서 `[0,1,2]`, 재시도 0, degraded 0. 지연 2.2–2.6초(중앙 2.44초). 결과 `test-results/provider-probe-20261127T025125.json`.
+
 ## 11. 6b단계 (AI 하루 카드 에이전트) 인계
 
 ### 11.1 현황 (2026-11-26, 개발 담당)
@@ -453,18 +486,18 @@ cd backend
 |---|---|
 | 범위 | `AGENT_MODE=agent`일 때 같은 세 경로(`/ai/card-sessions`)에서 LangGraph 에이전트(`draft → check_draft → decide ⇄ 도구 → gate → (fallback) → final_check`), 턴 잠금(`lockToken`·`expectedTurn`), 모델 호출 조건부 예약(최대 6), `interrupt`/`Command(resume)` 질문(최대 2), 12초 규칙 `pause`, 24초 울타리, 체크포인트(`HaruAgentCheckpoints`), 강제 종료 복구, 모드 전환 결정적 폐쇄. 기본은 `pipeline`(6a와 같음) |
 | 6a와의 관계 | 6a 노드·`tools.py`·`repair.py`·`nodes.py`는 그대로다. 새 모듈은 `agent/agent_nodes.py`·`agent_tools.py`·`checkpoint.py`·`budget.py`·`hooks.py`·`fault.py`, `handlers/ai_agent.py`. 레벨 0 프롬프트 `day_card.md`는 BE-Q127(장소 4곳 이상이면 사연 순서로 최대 3곳) 한 줄만 바뀌었다 |
-| 단위 테스트 | `pytest tests/unit` **1068건 통과**(2026-11-26 최종 회귀). 속성 P29–P48 전부, 장애 복구 F0–F17 전부. 6a 717건은 그대로 돈다(기대값을 바꾼 템플릿 검사는 11.3) |
+| 단위 테스트 | `pytest tests/unit` **1125건 통과**(2026-11-27, 검증 스크립트 변경 뒤 최종). 속성 P29–P48 전부, 장애 복구 F0–F19(F18·F19는 BE-Q129에서 추가). 2026-11-26 회귀는 1068건이었다. 6a 717건은 그대로 돈다(기대값을 바꾼 템플릿 검사는 11.3) |
 | 로컬(Docker) | 기본 `pipeline`에서 기존 23건 통과. `AGENT_MODE=agent FAKE_LLM_SCENARIO=ask_once`로 다시 띄워 새 9건 통과(`LOCAL_AGENT_MODE=agent LOCAL_COMPOSE_CONTROL=1`). `llmMode: fake`, 판정 근거 아님(BE-Q15) |
 | SAM | `cfn-lint` 0건, `sam validate --lint` 통과, `sam build --use-container` 성공(`--require-hashes`) |
 | AWS 통합 테스트 | T18–T22 작성·수집만(`-m integration` 26건, `-m "integration and fault"` 3건). 실행·판정은 AWS 담당 |
-| 실제 공급자 | 2026-11-27 측정(10.5·11.10절). 초안 재시도 보완 뒤에도 스모크 5건이 실패해 **동시 5요청과 15×3 평가는 실행하지 않았다**. 원인과 결정 후보는 11.11절, BE-Q129 |
+| 실제 공급자 | 2026-11-27에 GPT-6 Luna 게이트웨이로 **전 단계 실행**: 호환성(10.11절), 실패 사례 3종 ×3, 스모크 5건 5/5 READY, 동시 5요청 통과, 15건 × 3회 평가(11.12절). 출시 기본 모드 제안은 11.13절. 앞선 NVIDIA 시기는 스모크 실패로 중단했고 기록은 11.10·11.11절에 남긴다(BE-Q129) |
 
 ### 11.2 배포 전 주의 (AWS 담당)
 
 1. 새 리소스 `HaruAgentCheckpoints`(PK/SK, TTL `ttl`, on-demand, PITR)와 알람 `AgentTokensAlarm`이 생긴다. 스택 업데이트로 테이블이 생기므로 기존 데이터에는 영향이 없다.
 2. `AgentMode`: `pipeline`(기본) | `agent`. 처음 배포는 `pipeline`으로 하고, T20·T21을 `dev`에서 `agent`로 확인한 뒤 바꾼다. 리허설 전에 T18–T22를 통과하지 못하면 `pipeline`으로 출시한다(docs/07).
 3. `AiFaultInject`: `""`(기본) | `ai-slow`. `Stage=dev`가 아니면 Rules가 배포를 거부하고, `haru-dev` 스택이 아니면 함수에 빈 값이 들어가며, 런타임도 `FAULT_INJECT_ALLOWED=true`와 함수 이름 `haru-dev-`를 확인한다. T21이 끝나면 `""`로 되돌린다.
-4. 에이전트 모드의 공급자 설정: `LlmParallelToolCalls=false`(NVIDIA NIM 확인), `LlmToolChoice`는 비워 둔다. `LlmExtraBody`는 NVIDIA면 `{"chat_template_kwargs":{"enable_thinking":false}}`(10.5절). 공급자 결정(BE-Q6)·동의 문구(BE-Q7)·전송 전 마스킹(BE-Q10) 전에는 실제 사용자 사연을 보내지 않는다.
+4. 에이전트 모드의 공급자 설정: `LlmParallelToolCalls=false`(NVIDIA NIM 확인), `LlmToolChoice`는 비워 둔다. `LlmExtraBody`는 공급자에 맞춘다. GPT-6 Luna 게이트웨이는 `{"reasoning_effort":"none"}`(10.11절), NVIDIA NIM은 `{"chat_template_kwargs":{"enable_thinking":false}}`(10.5절). 공급자 결정(BE-Q6)·동의 문구(BE-Q7)·전송 전 마스킹(BE-Q10) 전에는 실제 사용자 사연을 보내지 않는다.
 5. 통합 테스트 주체에 `HaruAgentCheckpoints`의 `dynamodb:Query`·`BatchWriteItem` 권한이 필요하다(`_cleanup`이 테스트 세션의 체크포인트 스레드를 지운다).
 
 ### 11.3 6a 기대값을 바꾼 템플릿 검사
@@ -535,12 +568,12 @@ cd backend
 
 ### 11.9 실제 공급자 검증 절차 (작업 20.2–20.4)
 
-상태(2026-11-27): 키 설정을 확인했다. 1·2·3 단계는 끝났다. 4단계 스모크에서 실패해 5·6단계는 실행하지 않았다(11.10절). 키 값은 출력·복사·커밋하지 않는다. 도구는 `--env-file`로 `.env`를 읽고 값은 출력하지 않는다.
+상태(2026-11-27, NVIDIA 시기): 키 설정을 확인했다. 1·2·3 단계는 끝났다. 4단계 스모크에서 실패해 5·6단계는 실행하지 않았다(11.10절). 공급자를 GPT-6 Luna로 바꾼 뒤 같은 날 전 단계를 실행했다(11.12절). 키 값은 출력·복사·커밋하지 않는다. 도구는 `--env-file`로 `.env`를 읽고 값은 출력하지 않는다.
 
 | 순서 | 확인할 것 | 방법 | 기준 |
 |---|---|---|---|
 | 1 | 키와 공급자 설정이 유효한가 | `probe_provider.py --env-file <.env> --only raw` | 정상 키 요청 200. 결과 JSON의 `raw` 항목 |
-| 2 | Thinking이 꺼졌는가 | 같은 결과의 `raw.thinking_off` | `status` 200, 응답 `content`가 비지 않음, `has_think_tag` false |
+| 2 | 추론이 꺼졌는가 | 같은 결과의 `raw.configured`(NVIDIA 시기 기록은 `raw.thinking_off`). GPT-6 Luna는 `raw.reasoning_effort_none`의 `reasoning_tokens` 0도 본다 | `status` 200, 응답 `content`가 비지 않음, `has_think_tag` false |
 | 3 | BE-Q127 장소 5곳 재검증 | 위 BE-Q127 재검증 절 | 3회 모두 장소 ≤ 3, 사연 순서. 실패하면 BE-Q127 재개방 |
 | 4 | 에이전트 스모크 5건(데모·비공개 장소·연락처·인젝션·빈칸) | 아래 로컬 명령 | `test_smoke_five_stories` 통과(READY, 예약 ≤ 6, `llmMode` openai_compat, 체크포인트 0, 요청 27초 미만, 답변 질문당 1건). 문제가 있으면 5번을 실행하지 않는다 |
 | 5 | 같은 턴 동시 5요청(실제 모델) | `test_concurrent_same_turn_real` | `t20_checks` 전 항목 통과 |
@@ -567,7 +600,9 @@ docker compose up -d --no-deps --force-recreate api
 - 429: 한 번 나오면 10초 쉰다. 3회 연속이면 우회하지 않고 멈춘다. 결과 파일에 `aborted`와 그때까지 행이 남는다(`complete: false`).
 - 결과 파일과 표는 `test-results/`에 두고 커밋하지 않는다. 요약만 README 11.10절에 옮긴다.
 
-### 11.10 실제 공급자 결과 (2026-11-27)
+### 11.10 실제 공급자 결과 (2026-11-27, NVIDIA NIM)
+
+이 절은 NVIDIA 시기 기록이다. GPT-6 Luna 결과는 11.12절.
 
 측정 조건: 커밋 `a35440c` 기준. 모델 `nvidia/nemotron-3.5-lightning-30b-a3b`, `LLM_EXTRA_BODY={"chat_template_kwargs":{"enable_thinking":false}}`, `LLM_PARALLEL_TOOL_CALLS=false`, `LLM_TEMPERATURE=0`, `LLM_MAX_TOKENS=800`, 연결 2초·읽기 8초·재시도 0. 세션 예산(호출 6회, 입력 토큰 3만), 턴 27초, 울타리 24초는 그대로 두었다. 스모크는 로컬 어댑터와 Floci DynamoDB를 썼다(AWS가 아니다). 키 값은 기록하지 않았고 실행 뒤 컨테이너 설정을 기본값으로 되돌렸다.
 
@@ -617,7 +652,9 @@ HTTP 지연은 1.0–5.9초였고 27초를 넘긴 요청은 없었다. 모델 �
 
 판정 기준(스모크 5건 READY, 예약 6 이하 등)은 낮추지 않았다. 동시 5요청과 15×3 평가는 BE-Q129 결정 뒤 실행한다.
 
-### 11.11 BE-Q129 보완 뒤 실측 (2026-11-27): 스모크 실패로 중단
+### 11.11 BE-Q129 보완 뒤 실측 (2026-11-27, NVIDIA NIM): 스모크 실패로 중단
+
+이 절은 NVIDIA 시기 기록이다. 같은 코드로 GPT-6 Luna에서 다시 돌린 결과는 11.12절이다.
 
 변경: 에이전트 초안 재시도(세션당 최대 2회, JSON 오류와 스키마 오류가 한 예산), 재시도 메시지(위반 경로와 스키마 제한만, 실패 응답 원문 없음), 프롬프트 일반 규칙("스키마 위반은 계획자에게 질문할 문제가 아니다. 필드 길이, 자료형, 배열 개수 위반은 직접 수정한다. ask_planner는 허용된 경로의 실제 정보 부족을 해결하는 데만 사용한다"). `promptVersion` `ca6ada9ac3ef` → `3db437c63971`. 레벨 0은 바꾸지 않았다.
 
@@ -672,4 +709,159 @@ HTTP 지연은 1.0–5.9초였고 27초를 넘긴 요청은 없었다. 모델 �
 - `test-results/diag-contact1-bq129-20261127.json`(보완 전 코드 진단 3회), `test-results/diag-contact1-bq129-final-20261127.json`(최종 코드 진단 3회)
 - `test-results/diag-draft-bq129-20261127.json`(초안 메타데이터, 3샘플)
 - `test-results/local-real-agent-smoke-20261127T014956.json`(보완 직후 스모크), `test-results/local-real-agent-smoke-20261127T021500.json`(최종 스모크)
+
+### 11.12 GPT-6 Luna 전체 재검증 (2026-11-27)
+
+측정 조건: 설정은 10.11절과 같다. 호출 예산(6회), 입력 토큰 3만, 턴 27초, 울타리 24초, 질문 2개, 12초 규칙, 프롬프트 버전(레벨 0 `ca6ada9ac3ef`, 에이전트 `3db437c63971`)은 바꾸지 않았다. 코드는 `8ca5c64`의 `src/`와 같다. 그 뒤 커밋(`d460341`, `c9b3582`)은 검증 스크립트만 바꿨다. 스모크와 동시 요청은 로컬 어댑터와 Floci DynamoDB로 돌렸다. AWS 실행이 아니다. 원본 결과는 `test-results/`에 있고 커밋하지 않는다.
+
+| 단계 | 결과 | 판정 |
+|---|---|---|
+| 1. 호환성 | 10.11절 | 통과 |
+| 2. 실패 사례 3종 × 3회 | 에이전트 9/9 READY, 초안 스키마 위반 0, 초안 재시도 0 | 통과 |
+| 2b. BE-Q127 many_places × 3회 | 레벨 0 3/3 READY | 통과 |
+| 3. 스모크 5건 | 5/5 READY, degraded 0, 예약 = 호출, 체크포인트 0건, `problems` 없음 | 통과 |
+| 4. 같은 턴 동시 5요청 | 아래 표의 7개 검사 모두 통과 | 통과 |
+| 5. 합성 15건 × 3회 평가 | ①②③ 각 45행, 중단 없이 완료 | 완료 |
+
+#### 실패 사례 3종 재검증 (에이전트, 3회씩)
+
+| 사연 | ① 최초 초안 | ② 레벨 0 | ③ 에이전트 | ③ 모델 호출(3회) | ③ 질문(건너뜀) | ③ 지연 중앙값(범위) |
+|---|---|---|---|---|---|---|
+| contact_1 | DRAFT 3/3 | READY 3/3, 호출 1 | READY 3/3 | 3, 3, 4 | 3(1) | 7.4초(5.7–9.0) |
+| private_place_1 | DRAFT 3/3 | READY 3/3, 호출 1 | READY 3/3 | 3, 3, 3 | 3(3) | 6.4초(6.3–6.5) |
+| many_places | DRAFT 3/3 | READY 3/3, 호출 1 | READY 3/3 | 3, 3, 3 | 3(3) | 6.4초(6.4–6.4) |
+
+- 세 사례 모두 초안 스키마 위반, 초안 재시도, 질문 거부, 도구 오류, 게이트 거부가 0건이다. ③의 자체 수정(REWRITTEN·REMOVED)은 6건이다.
+- ③의 도구 순서는 `draft → check_draft → ask_planner → submit_card`다. contact_1 3회차만 `check_draft`가 한 번 더 들어가 호출 4회였다.
+- contact_1은 BE-Q129 설계 때 개발 사례로 썼다. 이 3회는 독립 검증이 아니다.
+
+#### 스모크 5건 (로컬 어댑터, GPT-6 Luna)
+
+| 사연 | 결과 | 요청 흐름(HTTP 코드, 초) | 모델 호출 / 예약 | 질문(건너뜀) | 플래그 |
+|---|---|---|---|---|---|
+| demo | READY | 200 ASKING 6.3 → 200 READY 2.6 | 3 / 3 | 1(1) | MISSING 1 |
+| private_place_1 | READY | 200 ASKING 4.3 → 200 READY 2.7 | 3 / 3 | 1(1) | MISSING 1 |
+| contact_1 | READY | 200 ASKING 4.4 → 200 READY 4.9 | 4 / 4 | 1(0) | 없음 |
+| injection_1 | READY | 200 ASKING 4.2 → 200 READY 2.3 | 3 / 3 | 1(1) | MISSING 1 |
+| missing_1 | READY | 200 ASKING 3.9 → 200 READY 2.7 | 3 / 3 | 1(1) | MISSING 2 |
+
+- 요청 지연은 2.3–6.3초로 모두 27초 안이다. 체크포인트는 종료 뒤 0건이다. `llmMode`는 `openai_compat`, `problems`는 비어 있다.
+- 자동 답은 픽스처에 답이 있는 질문에만 한다. contact_1은 `estimatedMinutes`에 `30분`을 골랐다.
+- `missing_1`의 READY 카드는 장소가 0곳이다. 아래 주의 4번을 본다.
+
+#### 같은 턴 동시 5요청
+
+| 확인 | 결과 |
+|---|---|
+| 응답 코드 | 200 1건, 409 `AI_SESSION_BUSY` 4건 |
+| 턴 | 1 → 2 |
+| 예약 / 모델 호출 | 2 → 3 / 2 → 3 (둘 다 +1, 중복 호출 0) |
+| 상태 | ASKING → READY |
+| 답변 기록 | 1건(`estimatedMinutes`, `30분`) |
+| 체크포인트 | 0건 |
+| `t20_checks` | `one_commit`, `codes`, `winner_present`, `busy_only`, `same_view`, `no_extra_calls`, `reserved_cap` 모두 통과 |
+
+#### 합성 15건 × 3회 평가
+
+45행(15 사연 × 3회)을 세 방식으로 봤다. ①과 ②는 같은 레벨 0 실행에서 나왔다. 그래서 호출 수, 토큰, 지연이 같다. ③은 별도 에이전트 실행이다. 질문에는 픽스처의 자동 답 규칙으로 답했고, 답이 없으면 건너뛰었다. 이 평가에는 contact_1이 들어 있고 BE-Q129 개발 사례다. 독립 held-out 평가가 아니다.
+
+| 항목 | ① 최초 초안 | ② 레벨 0 파이프라인 | ③ 에이전트 |
+|---|---|---|---|
+| READY / degraded / FAILED | DRAFT 45(검사만) | 43 / 2 / 0 | 45 / 0 / 0 |
+| NOT_IN_SOURCE 잔존 합 | 3 | 3 | 0 |
+| MISSING 합 | 80 | 80 | 46 |
+| PRIVACY 잔존 합 | 6 | 6 | 0 |
+| NEW_PLACE 합(legitPlaces 밖) | 10 | 10 | 6 |
+| 모델 호출 중앙값 / 최대 / 합 | 1 / 1 / 45 | 1 / 1 / 45 | 3 / 3 / 135 |
+| 입력 토큰 중앙값 / 합 | 808 / 36,246 | 808 / 36,246 | 3,665 / 164,842 |
+| 출력 토큰 중앙값 / 합 | 117 / 5,006 | 117 / 5,006 | 377 / 17,215 |
+| 질문 수(건너뜀) | 0 | 0 | 45(39) |
+| 게이트 거부 합 | 0 | 2 | 0 |
+| 자체 수정 합(REWRITTEN·REMOVED) | 0 | 0 | 7 |
+| 초안 스키마 위반 실행 / 초안 재시도 실행 | 0 / 0 | 0 / 0 | 0 / 0 |
+| 도구 오류 / 질문 거부 | 0 / 0 | 0 / 0 | 0 / 0 |
+| 응답 시간 ms 중앙값 / p95 / 최댓값 | 1,939 / 2,553 / 3,050 | 1,939 / 2,553 / 3,050 | 5,656 / 6,582 / 7,210 |
+| 타임아웃·공급자 오류·429·예산 중단 | 0 | 0 | 0 |
+
+- 토큰은 모두 공급자 usage 값이다. 추정한 실행은 0건이다.
+- ③의 응답 시간은 턴 처리 시간의 합이다. 사용자가 질문에 답하는 시간은 들어 있지 않다. 가장 긴 한 턴은 4.4초였다.
+- ②의 degraded 2건은 모두 `contact_2`이고, 게이트 거부가 각각 한 번씩 있었다.
+
+사연별 결과. 칸은 3회 합계이고, 순서는 NOT_IN_SOURCE·MISSING·PRIVACY·NEW_PLACE다. 판정은 `scripts/eval_agent.py`의 `verdict`가 낸다. 실패 수, 잔존 문제 합(NOT_IN_SOURCE + PRIVACY + NEW_PLACE), MISSING 합을 ②와 ③에서 비교한다. 모두 같거나 작고 하나 이상 작으면 개선, 모두 같거나 크고 하나 이상 크면 악화, 같으면 동일, 그 밖은 혼합이다. 기준은 바꾸지 않았다.
+
+| 사연 | ② 합계 | ③ 합계 | ② 결과 | ③ 결과 | 판정 |
+|---|---|---|---|---|---|
+| demo | 0/3/0/0 | 0/3/0/0 | READY 3 | READY 3 | 동일 |
+| private_place_1 | 0/3/6/0 | 0/3/0/0 | READY 3 | READY 3 | 개선 |
+| private_place_2 | 0/3/0/0 | 0/3/0/0 | READY 3 | READY 3 | 동일 |
+| contact_1 | 0/3/0/3 | 0/0/0/2 | READY 3 | READY 3 | 개선 |
+| contact_2 | 3/3/0/0 | 0/3/0/0 | DEGRADED 2, READY 1 | READY 3 | 개선 |
+| nis_1 | 0/6/0/4 | 0/3/0/3 | READY 3 | READY 3 | 개선 |
+| nis_2 | 0/9/0/0 | 0/6/0/0 | READY 3 | READY 3 | 개선 |
+| nis_3 | 0/6/0/0 | 0/3/0/0 | READY 3 | READY 3 | 개선 |
+| injection_1 | 0/6/0/0 | 0/3/0/0 | READY 3 | READY 3 | 개선 |
+| injection_2 | 0/7/0/0 | 0/3/0/0 | READY 3 | READY 3 | 개선 |
+| missing_1 | 0/9/0/0 | 0/3/0/0 | READY 3 | READY 3 | 개선 |
+| missing_2 | 0/4/0/0 | 0/4/0/0 | READY 3 | READY 3 | 동일 |
+| many_places | 0/6/0/0 | 0/3/0/0 | READY 3 | READY 3 | 개선 |
+| short | 0/6/0/0 | 0/3/0/0 | READY 3 | READY 3 | 개선 |
+| mixed | 0/6/0/3 | 0/3/0/1 | READY 3 | READY 3 | 개선 |
+
+결과: 개선 12, 동일 3, 악화 0, 혼합 0. 개선 12건 중 5건(private_place_1, contact_1, contact_2, nis_1, mixed)은 잔존 문제도 줄었다. 나머지 7건은 MISSING만 줄었다. 에이전트가 낫지 않은 사연은 3건(demo, private_place_2, missing_2)이다. 이 세 사연은 레벨 0과 에이전트 모두 잔존 문제가 0이었고, 빈칸 수도 같았다.
+
+읽을 때 주의할 점:
+
+1. ③의 NOT_IN_SOURCE는 사연과 계획자 답변을 근거로 판정한다. ②는 사연만 쓴다. 근거가 다르므로 NOT_IN_SOURCE 차이는 참고만 한다. contact_2의 자동 답은 모두 건너뛰기였다.
+2. MISSING은 비어 있는 필드 수다. ③의 MISSING 46은 자동 답 6건만으로 설명되지 않는다. 답 한 건이 채우는 칸은 하나다. 결과 파일에는 카드 원문이 없어서 어느 필드가 채워졌는지 확인하지 못했다. NOT_IN_SOURCE는 장소와 활동만 본다. 따라서 에이전트가 채운 `reason`·`summary`·`question` 문장이 사연에 근거하는지는 측정하지 않았다.
+3. ③의 호출 수는 실행당 3회(중앙값, 최대 3회)다. 재검증 contact_1의 한 회만 4회였다.
+4. READY 카드의 장소가 0곳인 경우가 ②와 ③에 각각 7건 있었다. 세 사연(nis_2, missing_1, missing_2)에서 나왔다. 설계상 `places: []`는 유효하다(BE-Q122). 공개 폼은 장소 1–3곳을 요구하므로(FE-CRT-06) 사용자가 장소를 채운 뒤에야 공개할 수 있다.
+
+#### NVIDIA 기록과 비교
+
+| 비교 | NVIDIA NIM (11.10·11.11절) | GPT-6 Luna (이번) |
+|---|---|---|
+| contact_1, ② 레벨 0 | 6/6 READY, 호출 1 | 6/6 READY, 호출 1 |
+| contact_1, ③ 에이전트 | 6/6 FAILED(`BUDGET_CALLS`). 초안 2회 모두 제목 47자 | 6/6 READY, 호출 3–4 |
+| 스모크 5건 | 보완 직후 READY 4(1 degraded)·FAILED 1, 최종 이미지 READY 3(1 degraded)·FAILED 2 | READY 5/5 |
+| 15건 × 3회 평가 | 실행하지 않음 | 45행 × 3방식 |
+
+- 두 공급자는 모델과 게이트웨이가 다르다. 프롬프트 버전은 contact_1 기준으로 같다.
+- NVIDIA contact_1 기록은 저장소 밖 진단 스크립트로 만들었다. 결과 형식은 평가 파일과 같지만, 평가 harness와 같은 코드 경로인지는 확인하지 않았다.
+- 15건 평가는 NVIDIA에서 실행하지 않았다. 15건 수치는 직접 비교하지 않는다.
+- 이 표는 한 공급자의 기록이 다른 공급자와 다르다는 것을 보여 줄 뿐이다. 어느 공급자가 낫다는 결론을 내리지 않는다.
+
+### 11.13 기본 출시 모드 제안 (2026-11-27)
+
+**제안: 출시 기본 모드는 `pipeline`으로 둔다.** 측정만 보면 `agent`가 낫다. READY 비율이 100%이고 잔존 문제가 적다. 그래도 지금 기본값을 바꿀 근거는 모자란다.
+
+| 항목(15건 × 3회) | ② 레벨 0 파이프라인 | ③ 에이전트 |
+|---|---|---|
+| READY 비율 | 95.6%(43/45). degraded 2건은 모두 `contact_2` | 100%(45/45) |
+| 잔존 문제 합(NOT_IN_SOURCE + PRIVACY + NEW_PLACE) | 19 | 6 |
+| MISSING 합 | 80 | 46 |
+| 모델 호출(실행당 중앙값) | 1 | 3 |
+| 입력 토큰(중앙값) | 808 | 3,665 |
+| 응답 시간 중앙값 / 최댓값 | 1.9초 / 3.1초 | 5.7초 / 7.2초 |
+| 계획자 질문 | 없음 | 실행당 1개 |
+
+`pipeline`을 기본으로 두는 이유는 셋이다.
+
+1. 한 공급자의 결과다. GPT-6 Luna 한 모델, 합성 사연 15건, 자동 답 규칙에서 얻었다. 같은 설계를 NVIDIA에서 돌리면 `contact_1`이 6회 모두 실패했다. 운영 공급자가 정해지지 않았으므로 안정성을 넓게 말할 수 없다.
+2. 비용과 시간이 세 배 가까이 든다. 호출은 실행당 3회, 입력 토큰은 4.5배다. 질문이 실행마다 한 번 나오므로 계획자가 답해야 한다.
+3. 확인을 끝내지 못했다. AWS 판정(T18–T22, T20, T21, T12)을 하지 않았다. 11.2절 2항은 `dev`에서 판정을 통과한 뒤 `agent`로 바꾸도록 정한다. 운영 공급자와 데이터 정책(BE-Q6·BE-Q7·BE-Q10)도 미결이다. MISSING 감소가 어디서 왔는지도 확인하지 못했다.
+
+`agent`를 기본값으로 바꾸려면 다음이 모두 필요하다.
+
+- 운영 공급자, 데이터 보존 기간, 처리 국가, 동의 문구 승인(BE-Q6, BE-Q7, BE-Q10, 작업 23).
+- AWS `dev`에서 T18–T22, T20, T21, T12 통과(작업 22).
+- 운영 공급자로 15건 × 3회 평가를 같은 기준으로 다시 실행.
+- 에이전트가 채운 비장소 필드(`reason`, `summary`, `question`)를 사람이 검토. 이를 위해 카드 원문을 남기는 별도 실행을 만든다. 결과 파일은 커밋하지 않는다(제안).
+
+데모 흐름 주의: docs/01 §1.7의 1번은 질문 1개에 답하는 장면을 보인다. 질문 단계는 `agent`에서만 나온다(docs/03 레벨 0 설명). 기본값을 `pipeline`으로 두면 데모 환경만 `agent`로 켜야 한다.
+
+사용자가 정할 것:
+
+1. 출시 기본 모드. 이 제안을 승인할지.
+2. 데모에서 질문 단계를 보일지. 보인다면 데모 환경만 `agent`로 켠다.
+3. 사용자 `.env`의 `LLM_EXTRA_BODY` 한 줄 교체(10.11절). 키가 든 파일이라 에이전트가 직접 고치지 않았다.
 
