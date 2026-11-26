@@ -3,6 +3,7 @@ import { cleanup, configure } from '@testing-library/react';
 import { afterAll, afterEach, beforeAll, beforeEach } from 'vitest';
 
 import { setUnauthorizedHandler } from '../api/client';
+import { setAuthService } from '../auth/authService';
 import { setTokenProvider } from '../auth/tokens';
 import { setPhotoProcessMs } from '../mocks/photos';
 import { server } from './server';
@@ -47,6 +48,7 @@ afterEach(() => {
   server.resetHandlers();
   server.events.removeAllListeners();
   setTokenProvider(null);
+  setAuthService(null);
   localStorage.clear();
   sessionStorage.clear();
 });

@@ -4,11 +4,11 @@
 
 ## 상태
 
-| 항목   | 상태                                                                                                   |
-| ------ | ------------------------------------------------------------------------------------------------------ |
-| 단계   | **1단계 완료**(세팅, 공통 컴포넌트, API 타입·클라이언트, MSW 목업, 라우트 골격). 2–4단계는 이어서 진행 |
-| 연동   | MSW 목업 모드만. 실제 API 전환은 S2(백엔드 4단계 배포 후), Cognito 로그인은 7단계                      |
-| 스타일 | CSS Modules(FE-Q3 결정). 토큰은 `src/styles/tokens.css`, 색은 추정값(FE-Q5, FE-Q14)                    |
+| 항목   | 상태                                                                                                             |
+| ------ | ---------------------------------------------------------------------------------------------------------------- |
+| 단계   | 1–6단계 완료(MSW 목업으로 전 화면 동작). 7단계는 로그인·Amplify 연동 코드까지(실제 Cognito·배포는 AWS 계정 필요) |
+| 연동   | MSW 목업 모드에서 확인. 실제 API·Cognito 전환은 백엔드 dev 스택 배포 후(S1–S5)                                   |
+| 스타일 | CSS Modules(FE-Q3 결정). 토큰은 `src/styles/tokens.css`, 색은 추정값(FE-Q5, FE-Q14)                              |
 
 ## 시작
 
@@ -35,11 +35,11 @@ PowerShell에서 `npm.ps1` 실행이 막혀 있으면 `npm.cmd`로 실행한다.
 
 환경 변수만 바꿔 전환한다. 값은 `.env.example`의 표와 docs/02 §2.4.7을 따른다.
 
-| 모드              | 설정                                                             | 비고                                                                      |
-| ----------------- | ---------------------------------------------------------------- | ------------------------------------------------------------------------- |
-| MSW 목업          | `VITE_USE_MOCK=true`                                             | 1–6단계 개발 기본값                                                       |
-| 로컬 백엔드       | `VITE_USE_MOCK=false`, `VITE_API_BASE_URL=http://localhost:3000` | 백엔드 Docker 환경 첫 실행 확인 전(backend/README.md 5절). 로그인은 7단계 |
-| `dev`/`demo` 스택 | SAM 출력값                                                       | S1–S5                                                                     |
+| 모드              | 설정                                                             | 비고                                                                                                           |
+| ----------------- | ---------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| MSW 목업          | `VITE_USE_MOCK=true`                                             | 1–6단계 개발 기본값                                                                                            |
+| 로컬 백엔드       | `VITE_USE_MOCK=false`, `VITE_API_BASE_URL=http://localhost:3000` | 로그인: Floci 시드 사용자(`VITE_COGNITO_ENDPOINT`) 또는 `VITE_AUTH_MODE=dev-jwt`(시드 인물 버튼, FE-Q8·FE-Q26) |
+| `dev`/`demo` 스택 | SAM 출력값                                                       | S1–S5                                                                                                          |
 
 ## 목업 사용 방법
 
@@ -82,7 +82,7 @@ docs/02 §2.10을 따른다.
 ```
 src/
   api/        types.ts(docs/03과 같은 이름), client.ts(모든 요청), errors.ts, queries/, mutations/
-  auth/       tokens.ts(getIdToken, 7단계에 Amplify로 교체), RequireAuth.tsx
+  auth/       authService.ts(방식 선택), cognito.ts(Amplify), devJwt.ts(개발 빌드 전용), tokens.ts, RequireAuth.tsx
   components/ Header, BottomTab, PrimaryButton, StatusBadge, RouteTimeline, TextField/TextArea,
               Toast, ResultScreen, PageTitle, Layout, DevMockBar(개발 전용)
   pages/      login/ browse/ plan/(상세·이어받기, create/ 하루 남기기) me/(내 하루·포기)
@@ -120,3 +120,4 @@ src/
 | FE-Q24 | 사진 목업: 업로드 주소, 3초 처리, `photo-fail`·`photo-slow`·`photo-upload-fail`                      |
 | FE-Q25 | AI 정리 세부(실패 뒤 빈 폼, 카드는 처음 한 번만 폼에, flags는 고치면 지움, 예약 표시, 타임아웃 35초) |
 | FE-Q7  | "다시 넣기"는 MSW 임시 필드 `notes[].restore`가 있을 때만(실제 API에는 없음)                         |
+| FE-Q26 | 로그인 입력 규칙(이메일·비밀번호 8자·닉네임 1–20자), dev JWT 시드 인물, 로그아웃 없음                |
