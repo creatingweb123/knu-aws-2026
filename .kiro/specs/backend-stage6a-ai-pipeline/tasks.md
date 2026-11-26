@@ -192,7 +192,7 @@
     - 생성기: 임의 사연(개인정보 표본 포함), Fake 응답 카드, 시나리오.
     - **Validates: Requirements 4.9, 13.1, 13.2, 13.8**
 
-- [ ] 10. Checkpoint B - AI 경로 단위 테스트와 회귀
+- [x] 10. Checkpoint B - AI 경로 단위 테스트와 회귀
   - `pytest tests/unit` 실패 0건(296건 포함), Property 29–36 중 지금까지의 7개 통과, `test_ai_cancel.py`의 반환 시간 최댓값 기록. 실제 공급자 호출 0회(스텁·Fake만, 소켓 대상은 127.0.0.1뿐인지 테스트가 확인).
   - _Requirements: 8.6, 8.7, 19.13_
 
@@ -210,17 +210,17 @@
   - [ ] 11.4 의존성 분리 테스트 (`tests/unit/test_ai_isolation.py`): 하위 프로세스에서 `langgraph`·`langchain*`·`openai`·`langsmith` import를 막고 `handlers.plans`·`handlers.me`·`handlers.claims`·`domain.ai_metrics`·`domain.ai_session_service`를 import하고 `compute_metrics`를 표본 세션으로 실행. 다른 핸들러가 `agent`를 import하지 않음(AST).
     - _Requirements: 16.3, 15.9_
 
-- [ ] 12. SAM 템플릿 (`template.yaml`, `samconfig.toml`, `src/Makefile`)
+- [x] 12. SAM 템플릿 (`template.yaml`, `samconfig.toml`, `src/Makefile`)
   - 선행: 2.2, 9.4
-  - [ ] 12.1 Parameters: `Stage`(5단계와 같은 정의), `LlmProvider`(`openai_compat`·`fake`), `LlmBaseUrl`, `LlmModel`, `LlmApiKeyParam`(`AllowedPattern`), `LlmProviderLabel`, `LlmTemperature`, `LlmMaxTokens`, `LlmConnectTimeoutS`, `LlmReadTimeoutS`, `LlmExtraBody`, `LlmToolChoice`, `LlmParallelToolCalls`, `AgentMode`(`AllowedValues: [pipeline]`), `AiDailySessionLimit`. Rules(Fake는 dev만), Conditions(`IsDev`, `FakeAllowed`, `HasLlmKeyParam`). `samconfig.toml`: dev `Stage=dev`, demo `Stage=demo`, 공급자 값은 넣지 않음.
+  - [x] 12.1 Parameters: `Stage`(5단계와 같은 정의), `LlmProvider`(`openai_compat`·`fake`), `LlmBaseUrl`, `LlmModel`, `LlmApiKeyParam`(`AllowedPattern`), `LlmProviderLabel`, `LlmTemperature`, `LlmMaxTokens`, `LlmConnectTimeoutS`, `LlmReadTimeoutS`, `LlmExtraBody`, `LlmToolChoice`, `LlmParallelToolCalls`, `AgentMode`(`AllowedValues: [pipeline]`), `AiDailySessionLimit`. Rules(Fake는 dev만), Conditions(`IsDev`, `FakeAllowed`, `HasLlmKeyParam`). `samconfig.toml`: dev `Stage=dev`, demo `Stage=demo`, 공급자 값은 넣지 않음.
     - _Requirements: 15.2, 15.10 · BE-Q86, BE-Q87_
-  - [ ] 12.2 `AiCardFunction`: `CodeUri: src/`, `Metadata.BuildMethod: makefile`, `Handler: handlers.ai_card.handler`, 27초, 1024MB, x86_64, 이벤트 3개, 환경 변수(`LLM_PROVIDER`는 `!If FakeAllowed`, `FAKE_LLM_ALLOWED`, `LLM_API_KEY_PARAM`은 조건부, `LLM_API_KEY` 없음, AI SDK 설정 값), 정책(design §14.3: LeadingKeys, 조건부 SSM). Globals의 LangSmith 변수 2개 유지.
+  - [x] 12.2 `AiCardFunction`: `CodeUri: src/`, `Metadata.BuildMethod: makefile`, `Handler: handlers.ai_card.handler`, 27초, 1024MB, x86_64, 이벤트 3개, 환경 변수(`LLM_PROVIDER`는 `!If FakeAllowed`, `FAKE_LLM_ALLOWED`, `LLM_API_KEY_PARAM`은 조건부, `LLM_API_KEY` 없음, AI SDK 설정 값), 정책(design §14.3: LeadingKeys, 조건부 SSM). Globals의 LangSmith 변수 2개 유지.
     - _Requirements: 12.1, 15.1–15.6, 7.5 · BE-Q81, BE-Q84_
-  - [ ] 12.3 HttpApi `RouteSettings`: 경로 3개 임시값(design §19.2).
+  - [x] 12.3 HttpApi `RouteSettings`: 경로 3개 임시값(design §19.2).
     - _Requirements: 15.7 · BE-Q82, BE-Q92_
-  - [ ] 12.4 `src/Makefile`: `build-AiCardFunction`(design §17.1).
+  - [x] 12.4 `src/Makefile`: `build-AiCardFunction`(design §17.1).
     - _Requirements: 16.4, 16.5, 16.7 · BE-Q80_
-  - [ ] 12.5 템플릿 단위 테스트 (`tests/unit/test_template.py`): AiCardFunction 설정 전부, `LLM_API_KEY` 미정의, LangSmith 변수 2개·API 키 변수 없음, IAM(액션 3개·LeadingKeys 2개·`Query`/`Scan`/`index/*`/`GetParameters*`/`kms:*` 없음, SSM 문장 조건부·ARN 하나), RouteSettings 3개, Rules·Conditions 평가(5단계 fault guard 테스트 방식: `Stage`·`LlmProvider`·스택 이름 조합별 결과), `AgentMode` AllowedValues, 다른 함수 불변(권한·환경 변수·CodeUri), `HaruAgentCheckpoints` 리소스 없음, 경로가 `routes.py`와 같음.
+  - [x] 12.5 템플릿 단위 테스트 (`tests/unit/test_template.py`): AiCardFunction 설정 전부, `LLM_API_KEY` 미정의, LangSmith 변수 2개·API 키 변수 없음, IAM(액션 3개·LeadingKeys 2개·`Query`/`Scan`/`index/*`/`GetParameters*`/`kms:*` 없음, SSM 문장 조건부·ARN 하나), RouteSettings 3개, Rules·Conditions 평가(5단계 fault guard 테스트 방식: `Stage`·`LlmProvider`·스택 이름 조합별 결과), `AgentMode` AllowedValues, 다른 함수 불변(권한·환경 변수·CodeUri), `HaruAgentCheckpoints` 리소스 없음, 경로가 `routes.py`와 같음.
     - _Requirements: 15.1–15.10, 19.8_
 
 - [ ] 13. 빌드 검증 (`scripts/check_ai_build.py`)

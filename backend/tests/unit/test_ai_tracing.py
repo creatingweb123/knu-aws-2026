@@ -40,6 +40,13 @@ def tracing_on(monkeypatch):
             monkeypatch.setattr(langsmith.client.Client, name, record(name))
     monkeypatch.setattr(langsmith.run_trees.RunTree, "post", record("RunTree.post"))
     monkeypatch.setattr(langsmith.run_trees.RunTree, "patch", record("RunTree.patch"))
+    import requests
+
+    def no_http(self, request, **k):  # langsmith 백그라운드 전송(requests)도 막는다
+        sent.append(f"http:{request.url.split('/')[2]}")
+        raise requests.ConnectionError("테스트에서 차단")
+
+    monkeypatch.setattr(requests.Session, "send", no_http)
 
     real_connect = socket.socket.connect
 
@@ -78,5 +85,11 @@ def test_control_without_tracing_context_is_caught(tracing_on):
     from langchain_core.tracers.langchain import wait_for_all_tracers
 
     wait_for_all_tracers()
+    from langsmith.run_trees import get_cached_client
+
+    try:
+        get_cached_client().flush()  # 백그라운드 큐를 여기서 비운다(뒤 테스트로 전송이 넘어가지 않게)
+    except Exception:  # noqa: BLE001 - 차단된 전송의 오류는 무시
+        pass
     assert tracing_on, "차단 장치가 실제 전송 시도를 잡아야 한다"
     print("control:", sorted(set(tracing_on)))

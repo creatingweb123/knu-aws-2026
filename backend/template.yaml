@@ -1,14 +1,87 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Transform: AWS::Serverless-2016-10-31
 Description: >-
-  이어온 하루 백엔드 1·2단계 (HttpApi + JWT authorizer, Cognito, HaruTable, GET /me, /plans).
-  CloudFront·웹 버킷·사진·AI 리소스는 이후 단계에서 추가한다.
+  이어온 하루 백엔드 1–3단계와 6a단계 (HttpApi + JWT authorizer, Cognito, HaruTable, /me, /plans, /claims,
+  AI 하루 카드 레벨 0 /ai/card-sessions). CloudFront·웹 버킷·사진·6b 체크포인트 테이블은 이후 단계에서 추가한다.
 
 Parameters:
   AllowedOrigins:
     Type: CommaDelimitedList
     Default: http://localhost:5173
     Description: API CORS 허용 Origin. CloudFront 도메인은 7단계에서 추가한다(BE-INFRA-03).
+  Stage:
+    Type: String
+    AllowedValues: [dev, demo]
+    Default: demo
+    Description: samconfig.toml의 dev/demo가 명시한다. 기본을 demo로 두어 Fake 모델이 기본 차단된다(BE-Q86, 5단계와 같은 정의).
+  # --- AI 하루 카드 (6a, docs/03 §3.2 설정 키). 공급자·모델 값은 BE-Q6 확정 전까지 빈 값이다(samconfig에 넣지 않는다).
+  LlmProvider:
+    Type: String
+    AllowedValues: [openai_compat, fake]
+    Default: openai_compat
+    Description: fake는 Stage=dev이고 실제 스택 이름이 haru-dev일 때만 함수에 들어간다(BE-Q86). 결과는 실제 공급자 검증이 아니다.
+  LlmBaseUrl:
+    Type: String
+    Default: ""
+    Description: /chat/completions 앞까지. 빈 값이면 openai_compat은 CONFIG(503)로 끝나 사연이 나가지 않는다.
+  LlmModel:
+    Type: String
+    Default: ""
+  LlmApiKeyParam:
+    Type: String
+    Default: ""
+    AllowedPattern: ^$|^(/[A-Za-z0-9_.-]+)+$
+    Description: SSM SecureString 이름(/haru/<stage>/llm/api-key). 템플릿은 만들지 않는다(AWS 담당, BE-Q81). 빈 값이면 SSM 권한도 없다.
+  LlmProviderLabel:
+    Type: String
+    Default: ""
+  LlmTemperature:
+    Type: String
+    Default: "0"
+    Description: 빈 값이면 보내지 않는다(1 미만을 거부하는 공급자).
+  LlmMaxTokens:
+    Type: String
+    Default: "800"
+  LlmConnectTimeoutS:
+    Type: String
+    Default: "2"
+  LlmReadTimeoutS:
+    Type: String
+    Default: "8"
+  LlmExtraBody:
+    Type: String
+    Default: ""
+    Description: 공급자별 추가 필드 JSON 객체. 예 {"reasoning_effort":"none"}
+  LlmToolChoice:
+    Type: String
+    AllowedValues: ["", auto, required]
+    Default: ""
+    Description: 6b bind_tools용. 레벨 0은 쓰지 않는다.
+  LlmParallelToolCalls:
+    Type: String
+    AllowedValues: ["", "false"]
+    Default: ""
+    Description: 6b bind_tools용. 레벨 0은 쓰지 않는다.
+  AgentMode:
+    Type: String
+    AllowedValues: [pipeline]
+    Default: pipeline
+    Description: 6a는 레벨 0만 배포한다. agent는 6b에서 연다(BE-Q87).
+  AiDailySessionLimit:
+    Type: String
+    Default: "10"
+
+Conditions:
+  IsDev: !Equals [!Ref Stage, dev]
+  # Rules는 파라미터 값만 검사하므로 실제 스택 이름까지 확인한다(BE-Q86, 5단계 BE-Q59와 같은 방식). 이름은 samconfig dev stack_name과 같다.
+  FakeAllowed: !And [!Condition IsDev, !Equals [!Ref "AWS::StackName", haru-dev]]
+  HasLlmKeyParam: !Not [!Equals [!Ref LlmApiKeyParam, ""]]
+
+Rules:
+  FakeLlmOnlyInDev:
+    Assertions:
+      - Assert: !Or [!Equals [!Ref Stage, dev], !Equals [!Ref LlmProvider, openai_compat]]
+        AssertDescription: LlmProvider=fake는 Stage=dev에서만 쓸 수 있다(BE-Q86).
 
 Globals:
   Function:
@@ -95,6 +168,11 @@ Resources:
         AllowOrigins: !Ref AllowedOrigins
         AllowHeaders: [Authorization, Content-Type, Idempotency-Key]
         AllowMethods: [GET, POST, PUT, OPTIONS]
+      # AI 경로 스로틀(BE-Q82 임시값, design §19.2). 초과 응답 429 {"message":"Too Many Requests"}는 계약 에러 형식이 아니다(BE-Q92).
+      RouteSettings:
+        "POST /ai/card-sessions": { ThrottlingRateLimit: 2, ThrottlingBurstLimit: 5 }
+        "POST /ai/card-sessions/{sessionId}/turns": { ThrottlingRateLimit: 5, ThrottlingBurstLimit: 10 }
+        "GET /ai/card-sessions/{sessionId}": { ThrottlingRateLimit: 10, ThrottlingBurstLimit: 20 }
 
   # 경로는 src/handlers/routes.py와 같아야 한다(tests/unit/test_template.py가 확인).
   MeFunction:
@@ -166,6 +244,69 @@ Resources:
         CompleteClaim:
           Type: HttpApi
           Properties: { ApiId: !Ref HttpApi, Path: "/claims/{claimId}/complete", Method: POST }
+
+  # AI 하루 카드 레벨 0 (6a). AI 의존성은 이 함수 산출물에만 들어간다(src/Makefile, BE-Q80).
+  AiCardFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: makefile
+    Properties:
+      Handler: handlers.ai_card.handler
+      Timeout: 27  # HTTP API 통합 상한 30초보다 짧게(docs/03 §3.2)
+      MemorySize: 1024
+      Architectures: [x86_64]
+      Environment:
+        Variables:
+          LLM_PROVIDER: !If [FakeAllowed, !Ref LlmProvider, openai_compat]
+          FAKE_LLM_ALLOWED: !If [FakeAllowed, "true", "false"]
+          LLM_BASE_URL: !Ref LlmBaseUrl
+          LLM_MODEL: !Ref LlmModel
+          LLM_API_KEY_PARAM: !If [HasLlmKeyParam, !Ref LlmApiKeyParam, !Ref "AWS::NoValue"]
+          LLM_PROVIDER_LABEL: !Ref LlmProviderLabel
+          LLM_TEMPERATURE: !Ref LlmTemperature
+          LLM_MAX_TOKENS: !Ref LlmMaxTokens
+          LLM_CONNECT_TIMEOUT_S: !Ref LlmConnectTimeoutS
+          LLM_READ_TIMEOUT_S: !Ref LlmReadTimeoutS
+          LLM_MAX_RETRIES: "0"
+          LLM_EXTRA_BODY: !Ref LlmExtraBody
+          LLM_TOOL_CHOICE: !Ref LlmToolChoice
+          LLM_PARALLEL_TOOL_CALLS: !Ref LlmParallelToolCalls
+          AGENT_MODE: !Ref AgentMode
+          AI_DAILY_SESSION_LIMIT: !Ref AiDailySessionLimit
+          # AI 함수 전용 SDK 설정(BE-Q85). 다른 함수는 기본값 그대로다(BE-Q48).
+          AI_SDK_CONNECT_TIMEOUT_S: "1"
+          AI_SDK_READ_TIMEOUT_S: "2"
+          AI_SDK_MAX_ATTEMPTS: "2"
+          # LLM_API_KEY는 정의하지 않는다(로컬 전용). 키는 SSM에서 읽는다.
+      Policies:
+        - Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              # 자기 세션·할당량 항목만. Plan·User·Claim·Idem 키에는 쓰지 못한다(G6, BE-INFRA-06).
+              Action: [dynamodb:GetItem, dynamodb:PutItem, dynamodb:UpdateItem]
+              Resource: !GetAtt HaruTable.Arn
+              Condition:
+                ForAllValues:StringLike:
+                  dynamodb:LeadingKeys: ["AISESSION#*", "AIQUOTA#*"]
+        - !If
+          - HasLlmKeyParam
+          - Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                # aws/ssm 관리형 키는 KMS 권한이 따로 필요 없다(design §14.3).
+                Action: ssm:GetParameter
+                Resource: !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter${LlmApiKeyParam}"
+          - !Ref "AWS::NoValue"
+      Events:
+        CreateAiCardSession:
+          Type: HttpApi
+          Properties: { ApiId: !Ref HttpApi, Path: /ai/card-sessions, Method: POST }
+        GetAiCardSession:
+          Type: HttpApi
+          Properties: { ApiId: !Ref HttpApi, Path: "/ai/card-sessions/{sessionId}", Method: GET }
+        AiCardSessionTurn:
+          Type: HttpApi
+          Properties: { ApiId: !Ref HttpApi, Path: "/ai/card-sessions/{sessionId}/turns", Method: POST }
 
   PreSignUpFunction:
     Type: AWS::Serverless::Function

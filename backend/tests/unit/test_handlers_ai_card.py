@@ -321,6 +321,9 @@ def test_init_uses_ai_sdk_config(monkeypatch):
     monkeypatch.setattr(ai_card, "_initialized", False)
     monkeypatch.setenv("TABLE_NAME", "HaruTable")
     monkeypatch.setenv("AWS_DEFAULT_REGION", "ap-northeast-2")
+    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "test")
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "test")
+    monkeypatch.setenv("AWS_EC2_METADATA_DISABLED", "true")
     saved = ddb._table
     try:
         ai_card.init()
