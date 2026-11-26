@@ -236,15 +236,15 @@
   - 13.2·13.3 통과, `pytest tests/unit` 실패 0건(296건 포함). 다른 함수 산출물에 AI 패키지 0개, 각 함수 독립 실행 통과.
   - _Requirements: 15.8, 16.3, 19.13_
 
-- [ ] 15. 로컬 환경과 로컬 통합 테스트
+- [x] 15. 로컬 환경과 로컬 통합 테스트
   - 선행: 9, 11, 13
-  - [ ] 15.1 `docker-compose.yml`(design §17.4·Requirement 17.1의 환경 변수, `STAGE=local`, `FAKE_LLM_ALLOWED=true`, `AGENT_MODE=pipeline`, LangSmith 2개 유지), `local/adapter/Dockerfile`(잠금 파일 설치, 시간대 데이터 확인), `.env.example`(`LLM_PROVIDER=fake`, 빈 `LLM_API_KEY`, 실모델 전환 주석). `local/init` 변경 없음. 리눅스 umask 문제는 `chmod -R go+rX local src` 뒤 기동(README 기존 절차).
+  - [x] 15.1 `docker-compose.yml`(design §17.4·Requirement 17.1의 환경 변수, `STAGE=local`, `FAKE_LLM_ALLOWED=true`, `AGENT_MODE=pipeline`, LangSmith 2개 유지), `local/adapter/Dockerfile`(잠금 파일 설치, 시간대 데이터 확인), `.env.example`(`LLM_PROVIDER=fake`, 빈 `LLM_API_KEY`, 실모델 전환 주석). `local/init` 변경 없음. 리눅스 umask 문제는 `chmod -R go+rX local src` 뒤 기동(README 기존 절차).
     - _Requirements: 17.1–17.4, 13.4_
-  - [ ] 15.2 `tests/local/test_local_ai.py`(마커 `local`): design §20.4 — 생성 → GET → turns(409·200) → `POST /plans`(`AI_EDITED`, DynamoDB에서 지표 확인) → 같은 사용자 `MANUAL` 공개 정상, 남의 세션 404, 11번째 429(전용 사용자), 만료 세션(ttl 과거로 바꾼 항목) 404·지표 제외. `FAKE_LLM_SCENARIO`를 바꿔 띄웠을 때만 도는 사례: `http_401`·`http_429` → 503, `bad_json` → 502, `privacy_high` → degraded. 결과에 `llmMode: fake`.
+  - [x] 15.2 `tests/local/test_local_ai.py`(마커 `local`): design §20.4 — 생성 → GET → turns(409·200) → `POST /plans`(`AI_EDITED`, DynamoDB에서 지표 확인) → 같은 사용자 `MANUAL` 공개 정상, 남의 세션 404, 11번째 429(전용 사용자), 만료 세션(ttl 과거로 바꾼 항목) 404·지표 제외. `FAKE_LLM_SCENARIO`를 바꿔 띄웠을 때만 도는 사례: `http_401`·`http_429` → 503, `bad_json` → 502, `privacy_high` → degraded. 결과에 `llmMode: fake`.
     - _Requirements: 19.9, 14.1, 5.8_
-  - [ ] 15.3 `tests/local/test_local_checkpointer.py`(마커 `local`): design §18 — Floci `HaruAgentCheckpoints`에 `DynamoDBSaver(consistent_read=True, ttl_seconds, boto_config=AI SDK)`로 동기·비동기 각각 interrupt → `get_state` 대기 interrupt → `Command(resume)` → 결과, 항목마다 `ttl`, `delete_thread` 뒤 그 스레드 0건. 스레드 ID `t6a_` + 임의값, 실패해도 정리. 제품 경로에 연결하지 않음.
+  - [x] 15.3 `tests/local/test_local_checkpointer.py`(마커 `local`): design §18 — Floci `HaruAgentCheckpoints`에 `DynamoDBSaver(consistent_read=True, ttl_seconds, boto_config=AI SDK)`로 동기·비동기 각각 interrupt → `get_state` 대기 interrupt → `Command(resume)` → 결과, 항목마다 `ttl`, `delete_thread` 뒤 그 스레드 0건. 스레드 ID `t6a_` + 임의값, 실패해도 정리. 제품 경로에 연결하지 않음.
     - _Requirements: 16.9 · BE-Q21, BE-Q84_
-  - [ ] 15.4 로컬 실행: `docker compose up -d --build` 후 `pytest -m local tests/local` — **기존 16건 + 새 사례 전부 통과**, 조건부 사례는 해당 환경 변수로 한 번씩 다시 띄워 실행. 건수·날짜·기준 커밋을 기록. T 판정 근거 아님(BE-Q15).
+  - [x] 15.4 로컬 실행: `docker compose up -d --build` 후 `pytest -m local tests/local` — **기존 16건 + 새 사례 전부 통과**, 조건부 사례는 해당 환경 변수로 한 번씩 다시 띄워 실행. 건수·날짜·기준 커밋을 기록. T 판정 근거 아님(BE-Q15).
     - _Requirements: 19.9, 19.13_
 
 - [ ] 16. AWS 통합 테스트 작성 (`tests/integration/test_ai.py`, 실행·판정은 AWS 담당)

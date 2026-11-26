@@ -3,7 +3,7 @@
 #   docker compose up -d --build
 #   docker compose logs aws     # init 출력(풀 ID, 클라이언트 ID, LOCAL_JWT_ISSUER)
 #   docker compose down         # 데이터는 floci-data 볼륨에 남는다(-v로 지운다)
-# 이번 범위(1·2단계)에는 SQS·S3·ollama를 넣지 않는다.
+# 이번 범위(1–3단계, 6a)에는 SQS·S3·ollama를 넣지 않는다. 6a의 AI 경로는 Fake 모델이 기본이다.
 name: haru
 
 services:
@@ -52,6 +52,21 @@ services:
       CLAIM_DURATION_DAYS: "3"
       LANGSMITH_TRACING: "false"
       LANGCHAIN_TRACING_V2: "false"
+      # AI 하루 카드 레벨 0 (6a). 기본은 Fake 모델이라 사연이 밖으로 나가지 않는다.
+      # 실모델 전환은 .env에서 LLM_PROVIDER=openai_compat, LLM_BASE_URL, LLM_MODEL, LLM_API_KEY를 채운다(합성 사연만).
+      LLM_PROVIDER: ${LLM_PROVIDER:-fake}
+      FAKE_LLM_ALLOWED: "true"
+      FAKE_LLM_SCENARIO: ${FAKE_LLM_SCENARIO:-happy}
+      AGENT_MODE: pipeline
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      LLM_MODEL: ${LLM_MODEL:-}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_PROVIDER_LABEL: ${LLM_PROVIDER_LABEL:-}
+      LLM_TEMPERATURE: ${LLM_TEMPERATURE-0}
+      LLM_EXTRA_BODY: ${LLM_EXTRA_BODY:-}
+      LLM_CONNECT_TIMEOUT_S: ${LLM_CONNECT_TIMEOUT_S:-2}
+      LLM_READ_TIMEOUT_S: ${LLM_READ_TIMEOUT_S:-8}
+      AI_DAILY_SESSION_LIMIT: ${AI_DAILY_SESSION_LIMIT:-10}
       LOCAL_USER_POOL_CLIENT_ID: ${LOCAL_USER_POOL_CLIENT_ID:-haruLocalWebClient}
       LOCAL_JWT_ISSUER: ${LOCAL_JWT_ISSUER:-http://localhost:4566/ap-northeast-2_haruLocal}
       LOCAL_JWKS_URL: ${LOCAL_JWKS_URL:-http://aws:4566/ap-northeast-2_haruLocal/.well-known/jwks.json}
