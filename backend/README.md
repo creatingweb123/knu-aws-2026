@@ -451,7 +451,7 @@ cd backend
 |---|---|
 | 범위 | `AGENT_MODE=agent`일 때 같은 세 경로(`/ai/card-sessions`)에서 LangGraph 에이전트(`draft → check_draft → decide ⇄ 도구 → gate → (fallback) → final_check`), 턴 잠금(`lockToken`·`expectedTurn`), 모델 호출 조건부 예약(최대 6), `interrupt`/`Command(resume)` 질문(최대 2), 12초 규칙 `pause`, 24초 울타리, 체크포인트(`HaruAgentCheckpoints`), 강제 종료 복구, 모드 전환 결정적 폐쇄. 기본은 `pipeline`(6a와 같음) |
 | 6a와의 관계 | 6a 노드·`tools.py`·`repair.py`·`nodes.py`는 그대로다. 새 모듈은 `agent/agent_nodes.py`·`agent_tools.py`·`checkpoint.py`·`budget.py`·`hooks.py`·`fault.py`, `handlers/ai_agent.py`. 레벨 0 프롬프트 `day_card.md`는 BE-Q127(장소 4곳 이상이면 사연 순서로 최대 3곳) 한 줄만 바뀌었다 |
-| 단위 테스트 | `pytest tests/unit` **1038건 통과**(2026-11-26). 속성 P29–P48 전부, 장애 복구 F0–F17 전부. 6a 717건은 그대로 돈다(기대값을 바꾼 템플릿 검사는 11.3) |
+| 단위 테스트 | `pytest tests/unit` **1068건 통과**(2026-11-26 최종 회귀). 속성 P29–P48 전부, 장애 복구 F0–F17 전부. 6a 717건은 그대로 돈다(기대값을 바꾼 템플릿 검사는 11.3) |
 | 로컬(Docker) | 기본 `pipeline`에서 기존 23건 통과. `AGENT_MODE=agent FAKE_LLM_SCENARIO=ask_once`로 다시 띄워 새 9건 통과(`LOCAL_AGENT_MODE=agent LOCAL_COMPOSE_CONTROL=1`). `llmMode: fake`, 판정 근거 아님(BE-Q15) |
 | SAM | `cfn-lint` 0건, `sam validate --lint` 통과, `sam build --use-container` 성공(`--require-hashes`) |
 | AWS 통합 테스트 | T18–T22 작성·수집만(`-m integration` 26건, `-m "integration and fault"` 3건). 실행·판정은 AWS 담당 |
