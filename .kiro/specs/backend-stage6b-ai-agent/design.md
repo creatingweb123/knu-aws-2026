@@ -898,3 +898,10 @@ BE-Q6·BE-Q7·BE-Q9·BE-Q10·BE-Q11·BE-Q12(공급자 관련), BE-Q13·FE-Q7(메
 - 울타리는 늦은 쓰기를 막지 못한다(§6.7). 정합성은 계보·표지 선택이 지킨다.
 - 외부 LLM 호출은 정확히 한 번이 아니다(§8.5). 세션당 6회 상한만 보장한다.
 - moto·Floci는 실제 병렬성과 DynamoDB 지연을 재현하지 않는다. 잠금·예약의 동시성과 시간 예산은 AWS(T20·T21)에서 판정한다.
+
+## 25. 개발용 공급자 (BE-Q6 개발용 결정 반영, 2026-11-26)
+
+- 개발·검증·오프라인 평가의 실제 공급자는 NVIDIA NIM `nvidia/nemotron-3.5-lightning-30b-a3b`다(`LLM_PROVIDER=openai_compat`, `LLM_BASE_URL=https://integrate.api.nvidia.com/v1`, `LLM_PROVIDER_LABEL=NVIDIA NIM`). 6a의 `ChatOpenAI` 범용 경로를 그대로 쓰고 전용 클라이언트를 만들지 않는다. 운영 공급자는 미결이다(BE-Q6 운영분·BE-Q7·BE-Q10).
+- 실측(README 10.5): Thinking이 기본으로 켜져 있어 `LLM_EXTRA_BODY={"chat_template_kwargs":{"enable_thinking":false}}`가 필요하다. `tools`·`parallel_tool_calls=false`·ToolMessage 후속 응답·usage·`max_completion_tokens`가 동작하고, 지연은 6a 제한 안이다. 잘못된 키는 403이다(BE-Q128).
+- 6b 설계에 미치는 영향: 도구 호출 경로(§10.4)와 토큰 보정(§8.3, 추정이 실제보다 약 7% 작음)은 설계 그대로 쓴다. `ChatOpenAI.bind_tools(parallel_tool_calls=False)`는 이 공급자에서 수용된다. 모델이 같은 검사를 반복해 부르는 경향이 한 번 보였으므로(후속 요청에서 다시 `check_draft`) `check_draft` 4회 한도(§8.4)와 Tool_Error 안내가 실제로 쓰일 수 있다. 실제 공급자 스모크는 tasks.md 공급자 검증 그룹에서 한다.
+- 일반 회귀의 기본은 Fake 모델이다. 실제 공급자 호출은 `scripts/probe_provider.py`·`scripts/eval_agent.py`를 직접 실행할 때만 일어나고 합성 사연만 쓴다.
