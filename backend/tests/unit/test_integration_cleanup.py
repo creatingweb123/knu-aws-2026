@@ -191,3 +191,58 @@ def test_t12_baseline_rules(tmp_path, monkeypatch):
     p.write_text(json.dumps({"base_url": fn["LLM_BASE_URL"], "model": fn["LLM_MODEL"], "raw": {"thinking_off": {"status": 404}}}), encoding="utf-8")
     assert test_ai.t12_baseline(fn)[0] is False
     assert test_ai.AUTH_FAILURES == ("HTTP_401", "HTTP_403")
+
+
+def test_checkpoint_threads_are_deleted(ddb):
+    """6b: 등록한 AI 세션의 체크포인트 스레드만 지운다(다른 스레드는 남는다). 라이브러리 delete_thread를 쓴다."""
+    import asyncio
+
+    from langgraph_checkpoint_aws import DynamoDBSaver
+
+    from tests.unit.agent_util import caller, config
+    from tests.unit.test_agent_checkpoint import TABLE, create_table
+
+    from agent.agent_nodes import initial_agent_state
+    from agent.graph import build_agent_graph
+
+    create_table(ddb)
+    saver = DynamoDBSaver(table_name=TABLE, region_name="ap-northeast-2")
+    app = build_agent_graph(saver)
+    for tid in ("ais_1", "ais_other"):
+        asyncio.run(app.ainvoke(initial_agent_state("출근길 빵집에 들러 빵을 사고 싶었어요."), config(caller("ask_once"), tid=tid)))
+
+    def threads():
+        return {i["PK"]["S"] for i in ddb.scan(TableName=TABLE)["Items"]}
+
+    assert any("ais_1" in pk for pk in threads()) and any("ais_other" in pk for pk in threads())
+    s = stack(created_ai_session_ids=["ais_1"], checkpoint_table=TABLE)
+    it._cleanup(s, idp=FakeIdp(), ddb=ddb, saver=saver)
+    assert not any("ais_1" in pk for pk in threads()) and any("ais_other" in pk for pk in threads())
+
+
+def test_checkpoint_cleanup_skipped_without_table(ddb):
+    s = stack(created_ai_session_ids=["ais_1"])
+    it._cleanup(s, idp=FakeIdp(), ddb=ddb, saver=object())  # 6a 스택: 체크포인트 테이블 없음 → 호출하지 않는다
+
+
+def test_checkpoint_cleanup_failure_is_reported(ddb, tmp_path):
+    class Boom:
+        def delete_thread(self, tid):
+            raise ClientError({"Error": {"Code": "AccessDeniedException", "Message": "x"}}, "BatchWriteItem")
+
+    s = stack(created_ai_session_ids=["ais_1"], checkpoint_table="HaruAgentCheckpoints")
+    with pytest.raises(RuntimeError):
+        it._cleanup(s, idp=FakeIdp(), ddb=ddb, saver=Boom())
+    [f] = json.loads(next(tmp_path.glob("cleanup-failures-*.json")).read_text(encoding="utf-8"))["failures"]
+    assert f == {"kind": "checkpoint_thread", "target": "ais_1", "error": "AccessDeniedException"}
+
+
+def test_auto_answer_rule():
+    from tests.fixtures.stories import auto_answer
+
+    q = {"questionId": "q1", "path": "estimatedMinutes", "options": ["30분", "45분"], "allowFreeText": True}
+    assert auto_answer(q, {"estimatedMinutes": {"choice": "45분"}}) == {"questionId": "q1", "choice": "45분"}
+    assert auto_answer(q, {"estimatedMinutes": {"choice": "2시간"}}) == {"questionId": "q1", "skipped": True}
+    assert auto_answer(q, {"estimatedMinutes": {"text": "40분쯤"}}) == {"questionId": "q1", "text": "40분쯤"}
+    assert auto_answer(dict(q, allowFreeText=False), {"estimatedMinutes": {"text": "40분쯤"}})["skipped"] is True
+    assert auto_answer(q, {}) == {"questionId": "q1", "skipped": True}

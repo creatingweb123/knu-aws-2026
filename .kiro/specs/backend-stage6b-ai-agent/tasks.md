@@ -227,14 +227,15 @@ push 전 확인(각 Checkpoint와 push마다)
     - _Requirements: 20.5, 21.4_
     - 상태(2026-11-26, llmMode: fake, 판정 근거 아님): 기본 pipeline에서 기존 23건 통과. `AGENT_MODE=agent FAKE_LLM_SCENARIO=ask_once` + `LOCAL_AGENT_MODE=agent LOCAL_COMPOSE_CONTROL=1`에서 새 9건 통과(동시 5요청 200 1건·409 BUSY 4건, ai-slow 3요청 37.8초, 강제 종료 F2·F4·F6 복구, 모드 전환). `check_ai_build.py --local-ddb-network haru_default` 통과. 컨테이너를 다시 띄우면 dev 토큰 서명 키가 바뀌므로 토큰을 다시 받는다.
 
-- [ ] 17. AWS 통합 테스트 작성 (`tests/integration/test_ai.py`, 작성·수집만)
+- [x] 17. AWS 통합 테스트 작성 (`tests/integration/test_ai.py`, 작성·수집만)
   - 선행: 10, 13
-  - [ ] 17.1 T18·T19·T22(실제 공급자 필요, Fake면 사유 있는 skip), T20(Fake `dev` 가능, `llmMode` 기록), T21(`fault`, `AiFaultInject=ai-slow`). T22는 design §20.5 기준(픽스처 `legitPlaces`).
+  - [x] 17.1 T18·T19·T22(실제 공급자 필요, Fake면 사유 있는 skip), T20(Fake `dev` 가능, `llmMode` 기록), T21(`fault`, `AiFaultInject=ai-slow`). T22는 design §20.5 기준(픽스처 `legitPlaces`).
     - _Requirements: 22.1–22.3 · BE-Q111_
-  - [ ] 17.2 정리: 체크포인트 스레드 삭제를 `_cleanup`에 추가(테스트 주체 권한 문서화), `test_integration_cleanup.py` 사례.
+  - [x] 17.2 정리: 체크포인트 스레드 삭제를 `_cleanup`에 추가(테스트 주체 권한 문서화), `test_integration_cleanup.py` 사례.
     - _Requirements: 22.4_
-  - [ ] 17.3 `--collect-only`(`-m integration`, `-m "integration and fault"`) 오류 없음, `STACK_NAME` 없으면 skip.
+  - [x] 17.3 `--collect-only`(`-m integration`, `-m "integration and fault"`) 오류 없음, `STACK_NAME` 없으면 skip.
     - _Requirements: 22.5_
+    - 상태: `-m integration` 26건 수집, `-m "integration and fault"` 3건 수집, `STACK_NAME` 없이 전부 skip. T20은 비종료 세션이 필요해 Fake dev(happy 고정)에서는 skip된다(실제 공급자 스택의 빈칸 사연으로 판정).
 
 - [ ] 18. 오프라인 평가 도구 (`scripts/eval_agent.py`)
   - 선행: 8

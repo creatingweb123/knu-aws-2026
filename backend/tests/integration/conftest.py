@@ -43,6 +43,8 @@ class Stack:
     # AI 세션(`AISESSION#{id}`/META)과 하루 할당량(`AIQUOTA#{sub}#{KST yyyymmdd}`/META, 6a).
     created_ai_session_ids: list[str] = field(default_factory=list)
     created_ai_quota_pks: list[str] = field(default_factory=list)
+    # 6b: 체크포인트 테이블 물리 이름(없는 스택이면 None). AI 세션 ID마다 스레드(thread_id = sessionId)를 지운다.
+    checkpoint_table: str | None = None
 
 
 def _boto(service: str, config=None):
@@ -66,6 +68,11 @@ def stack() -> Stack:
     outputs = {o["OutputKey"]: o["OutputValue"] for o in cfn.describe_stacks(StackName=STACK_NAME)["Stacks"][0]["Outputs"]}
     table = cfn.describe_stack_resource(StackName=STACK_NAME, LogicalResourceId="HaruTable")["StackResourceDetail"]["PhysicalResourceId"]
     s = Stack(outputs["ApiUrl"].rstrip("/"), outputs["UserPoolId"], outputs["UserPoolClientId"], table)
+    try:
+        s.checkpoint_table = cfn.describe_stack_resource(StackName=STACK_NAME, LogicalResourceId="HaruAgentCheckpoints")[
+            "StackResourceDetail"]["PhysicalResourceId"]
+    except Exception:  # noqa: BLE001 - 6a 스택에는 없다
+        s.checkpoint_table = None
     yield s
     _cleanup(s)
 
@@ -107,7 +114,17 @@ def _delete_partition(ddb, table_name: str, pk: str) -> None:
             return
 
 
-def _cleanup(s: Stack, idp=None, ddb=None) -> None:
+def _delete_checkpoint_thread(table_name: str, thread_id: str, saver=None) -> None:
+    """체크포인트 스레드 삭제(라이브러리 delete_thread: Query + BatchWriteItem). 테스트 주체에 이 테이블의
+    dynamodb:Query·BatchWriteItem 권한이 필요하다(README 판정 실행표)."""
+    if saver is None:
+        from langgraph_checkpoint_aws import DynamoDBSaver
+
+        saver = DynamoDBSaver(table_name=table_name, region_name=REGION)
+    saver.delete_thread(thread_id)
+
+
+def _cleanup(s: Stack, idp=None, ddb=None, saver=None) -> None:
     """테스트가 등록한 대상만 지운다(테이블 스캔 없음).
 
     대상마다 따로 시도해 하나가 실패해도 나머지를 계속한다. 실패는 삼키지 않고 모아서
@@ -140,6 +157,9 @@ def _cleanup(s: Stack, idp=None, ddb=None) -> None:
                 lambda sid=sid: ddb.delete_item(TableName=s.table_name, Key={"PK": {"S": f"AISESSION#{sid}"}, "SK": {"S": "META"}}))
     for pk in dict.fromkeys(s.created_ai_quota_pks):
         attempt("ai_quota", pk, lambda pk=pk: ddb.delete_item(TableName=s.table_name, Key={"PK": {"S": pk}, "SK": {"S": "META"}}))
+    if s.checkpoint_table:  # 6b: 종료 커밋 뒤 이미 지워졌어도(BE-Q103) 남았을 수 있다(삭제 실패·중단 세션)
+        for sid in dict.fromkeys(s.created_ai_session_ids):
+            attempt("checkpoint_thread", sid, lambda sid=sid: _delete_checkpoint_thread(s.checkpoint_table, sid, saver))
 
     if failures:
         path = save_result("cleanup-failures", {"failures": failures})
@@ -284,6 +304,41 @@ def ai_create(stack: Stack, token: str, story: str) -> tuple[int, Any]:
     if status == 200 and isinstance(body, dict) and body.get("sessionId"):
         stack.created_ai_session_ids.append(body["sessionId"])
     return status, body
+
+
+def ai_turn(stack: Stack, token: str, sid: str, body: dict[str, Any]) -> tuple[int, Any]:
+    return call(stack, "POST", f"/ai/card-sessions/{sid}/turns", token=token, body=body)
+
+
+def ai_run(stack: Stack, token: str, story_text: str, answers: dict[str, Any] | None = None, max_requests: int = 8):
+    """docs/03 프론트 규칙으로 세션을 끝까지 진행한다(질문은 픽스처 자동 답, WORKING은 이어가기, 연속 2회 WORKING 뒤 finish).
+    반환: (마지막 HTTP 상태, 마지막 본문, 요청 기록[(HTTP, status 또는 code, 초)])."""
+    from tests.fixtures.stories import auto_answer
+
+    log: list[tuple[int, Any, float]] = []
+    t0 = time.monotonic()
+    status, view = ai_create(stack, token, story_text)
+    log.append((status, (view or {}).get("status") or ((view or {}).get("error") or {}).get("code"), round(time.monotonic() - t0, 2)))
+    working, finish = int(status == 200 and view.get("status") == "WORKING"), False
+    while status == 200 and view.get("status") in ("ASKING", "WORKING") and len(log) < max_requests:
+        body: dict[str, Any] = {"expectedTurn": view["turn"]}
+        if view["status"] == "ASKING":
+            body["answer"] = auto_answer(view["question"], answers)
+        if finish or working >= 2:
+            finish = True
+            body["finish"] = True
+        t0 = time.monotonic()
+        status, nxt = ai_turn(stack, token, view["sessionId"], body)
+        log.append((status, (nxt or {}).get("status") or ((nxt or {}).get("error") or {}).get("code"), round(time.monotonic() - t0, 2)))
+        if status == 409 and (nxt or {}).get("error", {}).get("code") in ("AI_SESSION_BUSY", "AI_SESSION_CLOSED"):
+            time.sleep(2)
+            status, nxt = call(stack, "GET", f"/ai/card-sessions/{view['sessionId']}", token=token)
+        if status == 200:
+            working = working + 1 if nxt.get("status") == "WORKING" else 0
+            view = nxt
+        else:
+            view = nxt
+    return status, view, log
 
 
 def find_ai_sessions(stack: Stack, sub: str) -> list[dict[str, Any]]:
