@@ -36,6 +36,7 @@ from handlers._http import dispatch, json_body, path_param
 _log = logging.getLogger("haru.ai")
 
 PIPELINE = "pipeline"
+AGENT = "agent"
 _ERROR_CODES = {502: AI_INVALID_OUTPUT, 503: AI_UNAVAILABLE}
 
 # ---------------------------------------------------------------------------
@@ -68,9 +69,9 @@ def init() -> None:
 
 
 def _agent_mode() -> str:
-    """미설정 → pipeline. 그 밖의 값은 할당량을 쓰기 전에 503(BE-Q87). 6b가 agent를 연다."""
+    """미설정 → pipeline, pipeline·agent만 허용. 그 밖의 값은 할당량을 쓰기 전에 503(BE-Q87)."""
     mode = os.environ.get("AGENT_MODE", "") or PIPELINE
-    if mode != PIPELINE:
+    if mode not in (PIPELINE, AGENT):
         _log.warning("ai_session reason=CONFIG_AGENT_MODE")
         raise ApiError(AI_UNAVAILABLE)
     return mode
@@ -148,10 +149,14 @@ def _create(event: dict[str, Any], context: Any) -> dict[str, Any]:
         body = AiSessionCreate.model_validate(json_body(event))
     except ValidationError as e:
         raise ApiError(VALIDATION_ERROR, details=to_details(e)) from None
-    _agent_mode()
+    mode = _agent_mode()
     created_at: datetime = utc_now()
     budget = TimeBudget(context, event)
     svc.consume_quota(user.id, created_at)  # 429는 모델·세션 없이 끝난다
+    if mode == AGENT:  # 6b(design §4.1). 레벨 0 경로는 아래 그대로다
+        from handlers import ai_agent
+
+        return ai_agent.create(user, body.story, created_at=created_at, context=context, event=event, settings=llm.load_settings())
 
     session_id = new_session_id()
     settings = llm.load_settings()
@@ -208,11 +213,15 @@ def _turns(event: dict[str, Any], context: Any) -> dict[str, Any]:
     except ValidationError as e:
         raise ApiError(VALIDATION_ERROR, details=to_details(e)) from None
     item = _owned_session(event, user.id)                       # ①
+    if svc.is_agent_session(item):                              # 6b 세션은 재개·모드 전환 규칙(design §5, §13)
+        from handlers import ai_agent
+
+        return ai_agent.turn(user, body, item, mode=_agent_mode(), context=context, event=event, settings=llm.load_settings())
     if svc.turn_of(item) != body.expectedTurn:                  # ② 같은 턴 재전송 멱등
         return ok(200, svc.serialize_session_view(item))
     if item.get("status") in svc.TERMINAL:                      # ③
         raise ApiError(AI_SESSION_CLOSED)
-    # 레벨 0은 비종료 세션을 만들지 않는다. 데이터 이상이나 6b 세션(BE-Q87 미결): 세션을 바꾸지 않는다.
+    # PIPELINE 세션은 비종료 상태를 만들지 않는다. 데이터 이상일 때만 여기 온다(6b design §13): 세션을 바꾸지 않는다.
     _log.warning("ai_session id=%s reason=NON_TERMINAL_SESSION", item.get("sessionId"))
     raise ApiError(INTERNAL_ERROR)
 

@@ -292,7 +292,9 @@ class LlmCaller:
                 self.fake.index = call_index
             self._reserve(messages, tools)
             self.calls_made += 1
-            return await self._call(self._bind(self.fake, tools), messages, deadline_s, delay)
+            msg = await self._call(self._bind(self.fake, tools), messages, deadline_s, delay)
+            self._after_response()
+            return msg
         key = api_key(s, self._env)  # 키 읽기 실패는 예약 전에(예약을 낭비하지 않는다)
         import httpx
         from langchain_openai import ChatOpenAI
@@ -309,7 +311,15 @@ class LlmCaller:
         async with httpx.AsyncClient(timeout=timeout) as http:
             model = ChatOpenAI(base_url=s.base_url, api_key=SecretStr(key), model=s.model, timeout=timeout, max_retries=0,
                                max_tokens=s.max_tokens, use_responses_api=False, http_async_client=http, **kwargs)
-            return await self._call(self._bind(model, tools), messages, deadline_s, delay)
+            msg = await self._call(self._bind(model, tools), messages, deadline_s, delay)
+        self._after_response()
+        return msg
+
+    def _after_response(self) -> None:
+        if self.budget is not None:  # 에이전트 실행에서만(F4: 응답을 받은 뒤 저장 전 장애 주입 지점)
+            from agent import hooks
+
+            hooks.fire("model_response")
 
     @staticmethod
     async def _call(model: Any, messages: list[Any], deadline_s: float, delay_s: float = 0.0) -> Any:

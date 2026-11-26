@@ -92,7 +92,7 @@ def test_unauthenticated_401(ai_env, model_calls):
     assert resp["statusCode"] == 401 and quota_count(ai_env) == 0 and model_calls == []
 
 
-@pytest.mark.parametrize("mode", ["agent", "foo", "PIPELINE"])
+@pytest.mark.parametrize("mode", ["foo", "PIPELINE", "Agent"])  # 6b: "agent"는 정상 값이 됐다(test_handlers_ai_agent)
 def test_agent_mode_other_503_before_quota(ai_env, model_calls, monkeypatch, mode, caplog):
     monkeypatch.setenv("AGENT_MODE", mode)
     resp = create()

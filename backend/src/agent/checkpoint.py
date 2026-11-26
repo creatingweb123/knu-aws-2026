@@ -54,6 +54,9 @@ class FencedSaver(DynamoDBSaver):
             raise CheckpointFenceError("FENCE_TIME")
         if self.remaining_ms is not None and self.remaining_ms() < COMMIT_RESERVE_MS:
             raise CheckpointFenceError("FENCE_RESERVE")
+        from agent import hooks
+
+        hooks.fire(f"ckpt_{kind}")
         if self.hook:
             self.hook(f"ckpt_{kind}")
         self.writes += 1

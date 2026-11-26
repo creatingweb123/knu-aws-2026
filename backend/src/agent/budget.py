@@ -112,6 +112,9 @@ class BudgetService:
     def reserve(self, est_tokens: int) -> Reservation:
         from domain.ai_session_service import get_session, session_key
 
+        from agent import hooks
+
+        hooks.fire("reserve")
         if self._hook:
             self._hook("reserve")
         if self.reserved >= self.max_calls:

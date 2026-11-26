@@ -62,9 +62,11 @@ def _imports(path):
 
 
 def test_non_ai_modules_do_not_import_agent():
-    ai_files = {SRC / "handlers" / "ai_card.py"}
+    ai_files = {SRC / "handlers" / "ai_card.py", SRC / "handlers" / "ai_agent.py"}  # AiCardFunction 전용(6b: ai_agent 추가)
     for path in [*(SRC / "handlers").glob("*.py"), *(SRC / "domain").glob("*.py"), *(SRC / "common").glob("*.py")]:
         if path in ai_files:
             continue
-        bad = {n for n in _imports(path) if n.split(".")[0] in ("agent", *BLOCKED)}
+        names = _imports(path)
+        bad = {n for n in names if n.split(".")[0] in ("agent", *BLOCKED)}
+        bad |= {n for n in names if n.startswith(("handlers.ai_card", "handlers.ai_agent"))}
         assert bad == set(), f"{path.name}: {bad}"
