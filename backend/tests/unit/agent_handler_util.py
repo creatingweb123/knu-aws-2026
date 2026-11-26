@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 from typing import Any
 
@@ -20,11 +21,18 @@ STORY = "이사 전에 5년 살던 동네를 마지막으로 걷고 싶었어요
 
 @pytest.fixture
 def agent_env(monkeypatch):
+    with agent_world(monkeypatch) as t:
+        yield t
+
+
+@contextlib.contextmanager
+def agent_world(monkeypatch, **env: str):
+    """agent_env와 같은 환경. hypothesis 예제마다 새 moto 세계가 필요할 때 pytest.MonkeyPatch.context()와 함께 쓴다."""
     set_env(monkeypatch)
     for k in ("AWS_LAMBDA_FUNCTION_NAME", "LLM_API_KEY_PARAM", "AI_DAILY_SESSION_LIMIT", "FAULT_INJECT", "AGENT_TEST_HOOKS"):
         monkeypatch.delenv(k, raising=False)
     for k, v in {"LLM_PROVIDER": "fake", "FAKE_LLM_ALLOWED": "true", "STAGE": "local", "FAKE_LLM_SCENARIO": "happy",
-                 "AGENT_MODE": "agent"}.items():
+                 "AGENT_MODE": "agent", **env}.items():
         monkeypatch.setenv(k, v)
     monkeypatch.setattr(ai_card, "_initialized", True)
     llm.reset_key_cache()
@@ -33,9 +41,11 @@ def agent_env(monkeypatch):
         create_table(c)
         ai_agent.use_store(ck.CheckpointStore(TABLE, region_name="ap-northeast-2"))
         hooks.HOOK = None
-        yield t
-    hooks.HOOK = None
-    ai_agent.use_store(None)
+        try:
+            yield t
+        finally:
+            hooks.HOOK = None
+            ai_agent.use_store(None)
 
 
 def body_of(resp):

@@ -85,13 +85,13 @@ push 전 확인(각 Checkpoint와 push마다)
   - 작업 1–3 테스트, P37·P46 통과. `pytest tests/unit` 전체(722건 + 새 테스트) 실패 0. 레벨 0 경로 불변. **push 전 확인 → commit → push.**
   - _Requirements: 20.4, 20.5_
 
-- [ ] 5. Fake 모델과 스텁의 도구 호출 (`agent/fake_llm.py`, `tests/unit/llm_stub.py`)
+- [x] 5. Fake 모델과 스텁의 도구 호출 (`agent/fake_llm.py`, `tests/unit/llm_stub.py`)
   - 선행: 2.2
   - [x] 5.1 Fake: 도구 호출 단계(`tool_calls`, `invalid_tool_calls`, 여러 호출, 텍스트만), `bind_tools`, 호출별 메시지 요약·**도구 이름 목록** 기록, 단계 선택은 그래프 상태의 응답 받은 호출 수(design §20.1). 시나리오: `happy`, `ask_once`, `no_tool_call`, `no_tool_call_twice`, `bad_json_args`, `unknown_tool`, `parallel_calls`, `gate_reject_twice`, `timeout`, `http_500`, `http_401`, `http_400`, `budget_exhausted`, `question_rejected`, `private_place_ask`, `slow_agent`, `token_heavy`. 6a 시나리오 불변.
     - _Requirements: 19.1–19.3, 19.5_
   - [x] 5.2 스텁: OpenAI 형식 `tool_calls` 응답 모드(한 개·여러 개·잘못된 인자 JSON·도구 없음), 요청 본문 기록(`tools`·`parallel_tool_calls`·`tool_choice`).
     - _Requirements: 19.4_
-  - [ ] 5.3 단위 테스트: 시나리오별 Fake 출력 형태, 스텁 왕복(실제 `ChatOpenAI`), 소켓은 127.0.0.1만.
+  - [x] 5.3 단위 테스트: 시나리오별 Fake 출력 형태, 스텁 왕복(실제 `ChatOpenAI`), 소켓은 127.0.0.1만.
     - _Requirements: 19, 20.6_
 
 - [x] 6. 에이전트 프롬프트 (`prompts/day_card_agent.md`, `agent/prompt.py`)
@@ -141,7 +141,7 @@ push 전 확인(각 Checkpoint와 push마다)
   - P37·P39–P41·P43·P46 통과, 6a P29–P36 통과, 단위 전체 실패 0, 레벨 0 불변. **push 전 확인 → commit → push.**
   - _Requirements: 20.3–20.5_
 
-- [ ] 10. 핸들러 (`handlers/ai_card.py`)
+- [x] 10. 핸들러 (`handlers/ai_card.py`)
   - 선행: 1, 3, 8
   - [x] 10.1 모드 분기: `agent`이면 에이전트, 미설정·`pipeline`이면 6a, 그 밖 503(할당량 전).
     - _Requirements: 1.1, 1.2 · BE-Q87_
@@ -159,9 +159,9 @@ push 전 확인(각 Checkpoint와 push마다)
     - _Requirements: 20.1, 20.5_
   - [x] 10.8 장애 복구 테스트 (`tests/unit/test_agent_recovery.py`, 필수): **F0–F17 각각**을 테스트 전용 주입점(잠금·예약·노드 사이·체크포인트 쓰기 n번째·커밋·삭제)으로 만든 뒤 다음 시도로 복구. 각 사례에서 답변 반영 횟수, 추가 모델 호출 수, 최종 `outcome`, `turn`, `turnAttempts`를 확인. 늦은 체크포인트 쓰기(F16: 이전 시도의 쓰기를 새 시도 tip 선택 뒤에 주입), 계보 분기(포크 두 개), 표지 오염(F17), 커밋 결과 불확실(F7: 반영됨/안 됨 두 갈래), 답변 중복 전송(같은 `questionId` 재요청·다른 값 재요청).
     - _Requirements: 7, 20.2 · BE-Q94–BE-Q97, BE-Q113, BE-Q118_
-  - [ ] 10.9 프론트 모형(`tests/unit/frontend_sim.py`): docs/03 규칙(WORKING 자동 이어가기, 연속 2회 WORKING 뒤 `finish`, BUSY 2초 뒤 GET, CLOSED 뒤 GET, 같은 `turn`의 WORKING 처리).
+  - [x] 10.9 프론트 모형(`tests/unit/frontend_sim.py`): docs/03 규칙(WORKING 자동 이어가기, 연속 2회 WORKING 뒤 `finish`, BUSY 2초 뒤 GET, CLOSED 뒤 GET, 같은 `turn`의 WORKING 처리).
     - _Requirements: 12.4 · BE-Q121_
-  - [ ] 10.10 Write property tests
+  - [x] 10.10 Write property tests
     - **Property 38: 임의의 동시·중복 턴 요청 순서에서 커밋은 `lockToken`당 최대 1회, `turn`은 커밋마다 정확히 1 오르고, 한 `resumeId`는 `answers`와 그래프 상태에 최대 한 번**
     - **Property 44: SessionView는 상태별 규칙을 지키고 `ASKING`일 때만 `question`이 있다(6a P31 확장)**
     - **Property 45: 한 턴 안의 임의 장애 지점(F1–F7·F14·F16)에서 복구 결과는 장애 없는 실행과 같은 `outcome`·카드이고, 추가 모델 호출 수 ≤ "모델 응답 뒤 결과 저장 전" 장애 수**

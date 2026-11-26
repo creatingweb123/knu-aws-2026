@@ -5,7 +5,9 @@
 
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
+from typing import Any
 
 import pytest
 from botocore.exceptions import ReadTimeoutError
@@ -313,3 +315,357 @@ def test_property_43_ready_card_has_no_block(scenario, max_calls, finish, answer
     assert not [p for p in rep["notInSource"] if tools.field_of(p) == "name"]
     flagged = {f["path"] for f in r["flags"] if f["type"] == "NOT_IN_SOURCE"}
     assert all(p in flagged for p in rep["notInSource"]) and r["blocked"] == []
+
+
+# ---------------------------------------------------------------- 핸들러 수준 속성 공통 (P38·P45·P47·P48)
+
+FLOW = settings(max_examples=25, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture, HealthCheck.too_slow])
+ANSWER_1 = {"expectedTurn": 1, "answer": {"questionId": "q1", "choice": "45분"}}
+
+
+class _Crash(BaseException):
+    pass
+
+
+def _world(**env):
+    import contextlib
+
+    from tests.unit.agent_handler_util import agent_world
+
+    @contextlib.contextmanager
+    def cm():
+        with pytest.MonkeyPatch.context() as mp, agent_world(mp, **env) as t:
+            yield t, mp
+
+    return cm()
+
+
+def _expire(table, sid):
+    table.update_item(Key=svc.session_key(sid), UpdateExpression="SET lockedUntil = :p", ExpressionAttributeValues={":p": 1})
+
+
+class _Injector:
+    """장애 하나를 훅으로 건다. 'post'는 모델 응답 뒤 체크포인트 put 전에 걸렸는지(P45 상한 계산)."""
+
+    def __init__(self, fault):
+        from agent import checkpoint as ck
+
+        self.kind, self.point, self.n = fault
+        self.seen, self.fired, self.post, self.pending = 0, False, False, False
+        self._fence_exc = ck.CheckpointFenceError
+
+    def __call__(self, p):
+        hit = False
+        if self.kind == "fence":
+            if p == "ckpt_writes":
+                self.seen += 1
+            hit = self.seen >= self.n and p in ("ckpt_writes", "ckpt_put")
+        elif not self.fired and p == self.point:
+            self.seen += 1
+            hit = self.seen == self.n
+        if hit:
+            if not self.fired:
+                self.post = self.pending or p == "model_response"
+            self.fired = True
+            raise self._fence_exc("FENCE_TIME") if self.kind == "fence" else _Crash()
+        if p == "model_response":
+            self.pending = True
+        elif p == "ckpt_put":
+            self.pending = False
+
+
+crash_point_st = st.one_of(
+    st.tuples(st.just("crash"), st.sampled_from(["lock_after", "model_response", "before_commit"]), st.just(1)),
+    st.tuples(st.just("crash"), st.sampled_from(["ckpt_writes", "ckpt_put"]), st.integers(1, 5)),
+    st.tuples(st.just("fence"), st.just("ckpt_writes"), st.integers(1, 5)),
+)
+
+
+# Feature: backend-stage6b-ai-agent, Property 38
+@FLOW
+@given(ops=st.lists(st.tuples(st.sampled_from(["current", "dup", "stale", "future", "other_choice"]),
+                              st.sampled_from([None, "lock_after", "model_response", "before_commit"])), min_size=1, max_size=5),
+       scenario=st.sampled_from(["ask_once", "ask_twice"]))
+@example(ops=[("current", "model_response"), ("dup", None)], scenario="ask_once")
+def test_property_38_commit_once_per_lock(ops, scenario):
+    """Property 38: 임의의 동시·중복 턴 요청 순서에서 커밋은 lockToken당 최대 1회, turn은 커밋마다 정확히 1 오르고,
+    한 resumeId는 answers에 최대 한 번. 동시 요청은 처리 중(훅 지점)에 같은 세션으로 끼어든 요청으로 만든다.
+    Validates: Requirements 4, 5 · BE-Q96, BE-Q118"""
+    from agent import hooks
+    from tests.unit.agent_handler_util import body_of, create, get, session, turns
+
+    with _world(FAKE_LLM_SCENARIO=scenario) as (t, mp):
+        commits = []
+        real = svc.commit_turn
+
+        def spy(sid, **k):
+            before = int(session(t, sid)["turn"])
+            res = real(sid, **k)
+            after = int(session(t, sid)["turn"])
+            commits.append((k["token"], k["expected_turn"], res, before, after))
+            return res
+
+        mp.setattr(svc, "commit_turn", spy)
+        sid = body_of(create())["sessionId"]
+        last = None
+        for kind, nested_at in ops:
+            v = body_of(get(sid))
+            if v["status"] in ("READY", "FAILED"):
+                break
+            q = v["question"]
+            if kind == "dup" and last is not None:
+                body = last
+            else:
+                body = {"expectedTurn": v["turn"] + {"stale": -1, "future": 1}.get(kind, 0)}
+                if q and q["options"]:
+                    choice = q["options"][-1] if kind == "other_choice" else q["options"][0]
+                    body["answer"] = {"questionId": q["questionId"], "choice": choice}
+                elif q:
+                    body["answer"] = {"questionId": q["questionId"], "text": "다른 답" if kind == "other_choice" else "하천 산책로"}
+            last = body
+            fired = {"done": False}
+
+            def nested(p, body=body, at=nested_at, fired=fired):
+                if p == at and not fired["done"]:
+                    fired["done"] = True
+                    r = turns(sid, body)  # 처리 중인 같은 세션에 끼어든 요청
+                    assert r["statusCode"] in (200, 409), r["body"]
+
+            hooks.HOOK = nested if nested_at else None
+            try:
+                r = turns(sid, body)
+            finally:
+                hooks.HOOK = None
+            assert r["statusCode"] in (200, 400, 409), r["body"]
+        ok = [c for c in commits if c[2] == svc.OK]
+        assert len({c[0] for c in ok}) == len(ok)                       # lockToken당 최대 1회
+        assert all(c[4] == c[3] + 1 == c[1] + 1 for c in ok)             # 커밋마다 turn +1, 기대 turn에서
+        item = session(t, sid)
+        assert int(item["turn"]) == len(ok)
+        rids = [a.get("resumeId") for a in item.get("answers") or []]
+        assert len(rids) == len(set(rids)) and len(rids) <= 2
+        qids = [a.get("questionId") for a in item.get("answers") or []]
+        assert len(qids) == len(set(qids))
+
+
+# Feature: backend-stage6b-ai-agent, Property 44
+@PROPS
+@given(status=st.sampled_from(["READY", "FAILED", "WORKING", "ASKING", "BOGUS"]),
+       question=st.none() | st.fixed_dictionaries({"questionId": st.text(max_size=4), "path": st.text(max_size=8), "text": st.text(max_size=20),
+                                                    "reason": st.text(max_size=20), "options": st.lists(st.text(max_size=5), max_size=4),
+                                                    "allowFreeText": st.booleans()}, optional={"secret": st.text(max_size=3)}),
+       missing_key=st.none() | st.sampled_from(["questionId", "path", "text", "reason", "options", "allowFreeText"]),
+       card=st.none() | st.fixed_dictionaries({"title": st.text(max_size=5)}),
+       extra=st.dictionaries(st.sampled_from(["lockToken", "pendingResume", "turnRuns", "checkpointId", "bestCard", "askedPaths",
+                                              "modelCallsReserved", "story", "answers"]), st.text(max_size=5)))
+def test_property_44_session_view_agent(status, question, missing_key, card, extra):
+    """Property 44: SessionView는 상태별 규칙을 지키고 ASKING일 때만 question이 있다(6a P31 확장). 내부 속성은 나가지 않는다.
+    Validates: Requirements 14"""
+    q = dict(question) if question else None
+    if q and missing_key:
+        q.pop(missing_key)
+    item = {"sessionId": "ais_x", "status": status, "turn": 2, "question": q, "card": card, "flags": [], "notes": [], "trace": [], **extra}
+    view = svc.serialize_session_view(item)
+    assert list(view) == list(svc.VIEW_KEYS)
+    if status == "ASKING" and q and not missing_key:
+        assert list(view["question"]) == list(svc.QUESTION_KEYS)
+        assert all(isinstance(o, str) for o in view["question"]["options"]) and isinstance(view["question"]["allowFreeText"], bool)
+    else:
+        assert view["question"] is None
+    if status != "READY":
+        assert view["card"] is None and view["flags"] == [] and view["notes"] == [] and view["degraded"] is False
+    flat = repr(view)
+    assert all(k not in flat for k in ("lockToken", "pendingResume", "turnRuns", "checkpointId", "bestCard", "secret"))
+
+
+_BASELINE: dict[str, Any] = {}
+
+
+def _baseline_card():
+    if "card" not in _BASELINE:
+        from tests.unit.agent_handler_util import body_of, create, turns
+
+        with _world(FAKE_LLM_SCENARIO="ask_once") as (t, _):
+            sid = body_of(create())["sessionId"]
+            v = body_of(turns(sid, ANSWER_1))
+            _BASELINE.update(card=v["card"], flags=v["flags"], degraded=v["degraded"])
+    return _BASELINE
+
+
+# Feature: backend-stage6b-ai-agent, Property 45
+@FLOW
+@given(faults=st.lists(crash_point_st, max_size=2))
+@example(faults=[("crash", "ckpt_put", 3), ("crash", "model_response", 1)])
+@example(faults=[("fence", "ckpt_writes", 3), ("crash", "before_commit", 1)])
+@example(faults=[("crash", "ckpt_writes", 5), ("fence", "ckpt_writes", 1)])
+def test_property_45_recovery_equals_clean_run(faults):
+    """Property 45: 한 턴 안의 임의 장애 지점(강제 종료·울타리, 최대 2개 + 깨끗한 시도 1회)에서 복구한 결과는 장애 없는 실행과
+    같은 outcome·카드이고, 추가 모델 호출 수 ≤ '모델 응답 뒤 결과 저장 전' 장애 수. Validates: Requirements 7 · design §7"""
+    from agent import hooks
+    from tests.unit.agent_handler_util import body_of, create, session, turns
+
+    base = _baseline_card()
+    with _world(FAKE_LLM_SCENARIO="ask_once") as (t, _):
+        sid = body_of(create())["sessionId"]
+        reserved0 = int(session(t, sid)["modelCallsReserved"])
+        post, view = 0, None
+        for f in faults + [None]:
+            inj = _Injector(f) if f else None
+            hooks.HOOK = inj
+            try:
+                r = turns(sid, ANSWER_1)
+            except _Crash:
+                r = None
+            finally:
+                hooks.HOOK = None
+            post += int(bool(inj and inj.fired and inj.post))
+            _expire(t, sid)
+            if r is not None and r["statusCode"] == 200 and body_of(r)["status"] == "READY":
+                view = body_of(r)
+                break
+        assert view is not None
+        item = session(t, sid)
+        assert view["card"] == base["card"] and view["degraded"] is base["degraded"] and view["flags"] == base["flags"]
+        assert item["turn"] == 2 and len(item["answers"]) == 1 and item["answers"][0]["choice"] == "45분"
+        extra = int(item["modelCallsReserved"]) - reserved0 - 1  # 장애 없는 답변 턴은 예약 1(submit)
+        assert 0 <= extra <= post and int(item["modelCallsReserved"]) <= 6
+
+
+# Feature: backend-stage6b-ai-agent, Property 47
+@settings(max_examples=12, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture, HealthCheck.too_slow])
+@given(kind=st.sampled_from(["asking", "working_no_candidate", "working_after_fence", "pipeline_working"]),
+       body_kind=st.sampled_from(["answer", "finish", "none"]))
+def test_property_47_mode_switch(kind, body_kind):
+    """Property 47: pipeline 모드에서 비종료 에이전트 세션은 한 번의 잠금 요청으로 종료 상태가 되고 모델 호출 0.
+    PIPELINE 비종료 세션은 500이고 바뀌지 않는다. Validates: Requirements 15 · BE-Q101"""
+    from agent import hooks
+    from tests.unit.agent_handler_util import body_of, create, session, turns
+    from tests.unit.agent_util import Ctx
+    from tests.unit.test_agent_recovery import Fence
+
+    scenario = {"asking": "ask_once", "working_no_candidate": "slow_agent", "working_after_fence": "ask_once"}.get(kind, "happy")
+    with _world(FAKE_LLM_SCENARIO=scenario) as (t, mp):
+        if kind == "pipeline_working":
+            item = svc.build_session_item(session_id="ais_01ABCDEFGHJKMNPQRSTVWXYZ00", owner_id="u-owner", story="s", status="WORKING",
+                                          created_at=datetime.now(timezone.utc))
+            svc.put_session(item)
+            sid = item["sessionId"]
+        elif kind == "working_no_candidate":
+            sid = body_of(create(ctx=Ctx(11_000)))["sessionId"]
+        else:
+            sid = body_of(create())["sessionId"]
+            if kind == "working_after_fence":
+                hooks.HOOK = Fence(3)
+                try:
+                    assert body_of(turns(sid, ANSWER_1))["status"] == "WORKING"
+                finally:
+                    hooks.HOOK = None
+        before = session(t, sid)
+        mp.setenv("AGENT_MODE", "pipeline")
+        reserves = []
+        hooks.HOOK = lambda p: reserves.append(p) if p == "reserve" else None
+        v = None
+        try:
+            if before["status"] == "ASKING":
+                body = {"answer": ANSWER_1["answer"]} if body_kind == "answer" else {"finish": True}
+            else:
+                body = {"finish": True} if body_kind == "finish" else {}
+            r = turns(sid, {"expectedTurn": int(before["turn"]), **body})
+        finally:
+            hooks.HOOK = None
+        after = session(t, sid)
+        if kind == "pipeline_working":
+            assert r["statusCode"] == 500 and after == before
+            return
+        assert reserves == [] and int(after["modelCallsReserved"]) == int(before["modelCallsReserved"])
+        assert after["status"] in ("READY", "FAILED") and int(after["turn"]) == int(before["turn"]) + 1
+        v = json.loads(r["body"])
+        if after["status"] == "READY":
+            assert r["statusCode"] == 200 and v["degraded"] is True
+        else:
+            assert r["statusCode"] == 503 and v["error"]["code"] == "AI_UNAVAILABLE"
+
+
+fault_st = st.one_of(st.just(("none", None, 0)), crash_point_st, st.just(("uncertain", "reserve", 1)), st.just(("busy", None, 0)))
+
+
+# Feature: backend-stage6b-ai-agent, Property 48
+@FLOW
+@given(scenario=st.sampled_from(["happy", "ask_once", "ask_twice", "private_place_ask", "gate_reject_twice"]),
+       faults=st.lists(fault_st, max_size=6))
+@example(scenario="ask_twice", faults=[("fence", "ckpt_writes", 1)] * 6)
+@example(scenario="ask_once", faults=[("busy", None, 0), ("uncertain", "reserve", 1), ("crash", "model_response", 1)])
+@example(scenario="ask_once", faults=[("crash", "lock_after", 1)] * 4)
+def test_property_48_frontend_terminates(scenario, faults):
+    """Property 48: docs/03 규칙대로 움직이는 프론트 모형과 임의 장애(울타리 닫힘·예약 불확실·강제 종료·동시 요청)에서 세션은
+    정해진 요청 수 안에 종료 상태가 되거나 오류로 끝나고, 같은 턴 시도는 4를 넘지 않는다.
+    '시도'는 잠금을 잡은 실행이다. 그래프를 돌리는 시도는 턴당 3번까지이고 4번째는 모델 없이 결정적으로 닫는다(BE-Q113).
+    닫는 시도 자체가 강제 종료되면 그 종료마다 잠금이 한 번 더 잡힌다(닫기만 다시 한다). 그래서 잠금 수 ≤ 4 + (닫기 중 종료 수).
+    Validates: Requirements 12.4 · BE-Q121"""
+    from collections import Counter
+
+    from agent import budget as bmod
+    from agent import hooks
+    from tests.unit.agent_handler_util import create, get, session, turns
+    from tests.unit.frontend_sim import FrontendSim, handler_transport
+
+    with _world(FAKE_LLM_SCENARIO=scenario) as (t, mp):
+        locks: Counter = Counter()
+        real_lock = svc.acquire_lock
+
+        def spy_lock(sid, **k):
+            res, item = real_lock(sid, **k)
+            if res == svc.OK:
+                locks[k["expected_turn"]] += 1
+            return res, item
+
+        mp.setattr(svc, "acquire_lock", spy_lock)
+        from handlers import ai_agent
+
+        runs: Counter = Counter()
+        closing_kills: Counter = Counter()
+        real_run = ai_agent._run_graph
+
+        def spy_run(session_, **k):
+            runs[k["expected_turn"]] += 1
+            return real_run(session_, **k)
+
+        mp.setattr(ai_agent, "_run_graph", spy_run)
+        queue = list(faults)
+        state = {"sid": None}
+
+        def faulty_turns(sid, body):
+            state["sid"] = sid
+            kind, point, n = queue.pop(0) if queue else ("none", None, 0)
+            if kind == "busy":
+                t.update_item(Key=svc.session_key(sid), UpdateExpression="SET lockToken = :o, lockedUntil = :u",
+                              ExpressionAttributeValues={":o": "other", ":u": svc.now_ms() + 20_000})
+            elif kind == "uncertain":
+                def unc(p):
+                    if p == "reserve":
+                        hooks.HOOK = None
+                        raise bmod.ReservationUncertain()
+                hooks.HOOK = unc
+            elif kind in ("crash", "fence"):
+                hooks.HOOK = _Injector((kind, point, n))
+            before = session(t, sid)
+            closing = int(before.get("turnAttempts") or 0) >= svc.MAX_TURN_ATTEMPTS  # 이번 잠금이 닫는 시도
+            try:
+                return turns(sid, body)
+            except _Crash:
+                if closing:
+                    closing_kills[int(before["turn"])] += 1
+                raise
+            finally:
+                hooks.HOOK = None
+
+        tr = handler_transport(create, faulty_turns, get, on_crash=lambda sid: _expire(t, sid), crash_types=(_Crash,))
+        res = FrontendSim(**tr, sleep=lambda s: _expire(t, state["sid"]), max_requests=30).run("이사 전에 출근길 빵집에 들러 빵을 사고 하천 벤치에 앉아 쉬려고 했어요.")
+        assert res.outcome in ("READY", "DIRECT_WRITE"), (res.outcome, res.requests)
+        assert res.request_count <= 30
+        assert all(v <= svc.MAX_TURN_ATTEMPTS for v in runs.values()), runs
+        assert all(v <= 4 + closing_kills[k] for k, v in locks.items()), (locks, closing_kills)
+        if state["sid"]:
+            item = session(t, state["sid"])
+            assert "lockToken" not in item or item.get("status") not in ("READY", "FAILED")
+            assert int(item["modelCallsReserved"]) <= 6
