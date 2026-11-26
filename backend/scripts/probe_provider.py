@@ -27,8 +27,21 @@ BACKEND = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BACKEND / "src"))
 
 STORIES = json.loads((BACKEND / "tests" / "fixtures" / "stories.json").read_text(encoding="utf-8"))["stories"]
-THINK_OFF = {"chat_template_kwargs": {"enable_thinking": False}}
 PAUSE_S = 1.6  # 호출 사이 쉼(trial 분당 한도 보호)
+# 공급자별 추가 본문은 .env의 LLM_EXTRA_BODY만 따른다(범용). 특정 공급자의 기본값을 넣지 않는다.
+# 예: NVIDIA NIM 추론 끄기 = {"chat_template_kwargs":{"enable_thinking":false}}, OpenAI 계열 = {"reasoning_effort":"none"}
+REASONING_NONE = {"reasoning_effort": "none"}
+
+
+def configured_extra(env: dict[str, str]) -> dict[str, Any]:
+    """운영 설정의 추가 본문(LLM_EXTRA_BODY). 없으면 빈 dict."""
+    raw = env.get("LLM_EXTRA_BODY", "").strip()
+    if not raw:
+        return {}
+    value = json.loads(raw)
+    if not isinstance(value, dict):
+        raise SystemExit("LLM_EXTRA_BODY는 JSON 객체여야 한다")
+    return value
 
 
 def read_env(path: str) -> dict[str, str]:
@@ -64,6 +77,8 @@ def summarize_response(status: int, data: Any, latency: float) -> dict[str, Any]
         "reasoning_len": len(reasoning),
         "tool_calls": len(msg.get("tool_calls") or []),
         "usage": {k: (data.get("usage") or {}).get(k) for k in ("prompt_tokens", "completion_tokens", "total_tokens")},
+        # 추론 토큰이 출력 토큰 안에 숨어 있는지(OpenAI 계열 completion_tokens_details). 없으면 null
+        "reasoning_tokens": ((data.get("usage") or {}).get("completion_tokens_details") or {}).get("reasoning_tokens"),
         "korean": any("\uac00" <= c <= "\ud7a3" for c in content),
     })
     return out
@@ -98,13 +113,15 @@ def probe_raw(env: dict[str, str]) -> dict[str, Any]:
     ko = [{"role": "user", "content": "다음 문장을 한국어 한 문장으로 요약해 줘: " + demo}]
     long_q = [{"role": "user", "content": "한국의 사계절을 각각 다섯 문장 이상으로 자세히 설명해 줘."}]
     res: dict[str, Any] = {}
+    cfg = configured_extra(env)  # 운영 설정 그대로(LLM_EXTRA_BODY)
     cases = {
         "basic_default": {"messages": ko, "max_tokens": 200},
-        "thinking_off": {"messages": ko, "max_tokens": 200, **THINK_OFF},
-        "temperature_0": {"messages": ko, "max_tokens": 200, "temperature": 0, **THINK_OFF},
-        "max_completion_tokens_16": {"messages": long_q, "max_completion_tokens": 16, "temperature": 0, **THINK_OFF},
-        "max_tokens_16": {"messages": long_q, "max_tokens": 16, "temperature": 0, **THINK_OFF},
-        "both_16": {"messages": long_q, "max_tokens": 16, "max_completion_tokens": 16, "temperature": 0, **THINK_OFF},
+        "configured": {"messages": ko, "max_tokens": 200, **cfg},
+        "reasoning_effort_none": {"messages": ko, "max_tokens": 200, **REASONING_NONE},
+        "temperature_0": {"messages": ko, "max_tokens": 200, "temperature": 0, **cfg},
+        "max_completion_tokens_16": {"messages": long_q, "max_completion_tokens": 16, "temperature": 0, **cfg},
+        "max_tokens_16": {"messages": long_q, "max_tokens": 16, "temperature": 0, **cfg},
+        "both_16": {"messages": long_q, "max_tokens": 16, "max_completion_tokens": 16, "temperature": 0, **cfg},
     }
     for name, body in cases.items():
         res[name], _ = raw_call(env, body)
@@ -113,7 +130,7 @@ def probe_raw(env: dict[str, str]) -> dict[str, Any]:
     sys_msg = {"role": "system", "content": "너는 하루 카드 정리 도우미다. 반드시 도구를 하나만 호출해 진행한다. 먼저 check_draft로 초안을 검사한다."}
     user = {"role": "user", "content": "<story>\n" + demo + "\n</story>\n카드 초안을 만들어 check_draft를 호출해."}
     for label, extra in (("tools_parallel_false", {"parallel_tool_calls": False}), ("tools_no_parallel_param", {})):
-        summ, data = raw_call(env, {"messages": [sys_msg, user], "tools": TOOLS, "max_tokens": 800, "temperature": 0, **THINK_OFF, **extra})
+        summ, data = raw_call(env, {"messages": [sys_msg, user], "tools": TOOLS, "max_tokens": 800, "temperature": 0, **cfg, **extra})
         res[label] = summ
         time.sleep(PAUSE_S)
         if label == "tools_parallel_false" and data and summ.get("tool_calls"):
@@ -126,10 +143,13 @@ def probe_raw(env: dict[str, str]) -> dict[str, Any]:
             summ["first_tool"] = call["function"].get("name")
             follow = [sys_msg, user, {"role": "assistant", "content": None, "tool_calls": [call]},
                       {"role": "tool", "tool_call_id": call["id"], "content": json.dumps({"schemaErrors": [], "notInSource": [], "privacy": [], "missing": ["estimatedMinutes"]})}]
-            res["tool_followup"], d2 = raw_call(env, {"messages": follow, "tools": TOOLS, "max_tokens": 800, "temperature": 0, "parallel_tool_calls": False, **THINK_OFF})
+            res["tool_followup"], d2 = raw_call(env, {"messages": follow, "tools": TOOLS, "max_tokens": 800, "temperature": 0, "parallel_tool_calls": False, **cfg})
             if d2 and res["tool_followup"].get("tool_calls"):
                 res["tool_followup"]["next_tool"] = d2["choices"][0]["message"]["tool_calls"][0]["function"].get("name")
             time.sleep(PAUSE_S)
+    # reasoning_effort=none 을 도구 호출에서도 받는지(운영 설정과 별개로 한 번 더)
+    summ, _ = raw_call(env, {"messages": [sys_msg, user], "tools": TOOLS, "max_tokens": 800, "temperature": 0, "parallel_tool_calls": False, **REASONING_NONE})
+    res["tools_reasoning_none"] = summ
     return res
 
 
@@ -146,8 +166,7 @@ class Ctx:
 
 def pipeline_env(env: dict[str, str]) -> dict[str, str]:
     e = dict(env)
-    e.setdefault("LLM_EXTRA_BODY", json.dumps(THINK_OFF))
-    e["LLM_MAX_RETRIES"] = "0"
+    e["LLM_MAX_RETRIES"] = "0"  # 공급자 기본값을 넣지 않는다(LLM_EXTRA_BODY는 .env가 정한다)
     return e
 
 
@@ -197,7 +216,7 @@ def probe_pipeline(env: dict[str, str], n: int, ids: list[str] | None = None, re
         time.sleep(PAUSE_S)
     lat = [r["latency_s"] for r in rows]
     return {
-        "extra_body": json.loads(e["LLM_EXTRA_BODY"]),
+        "extra_body": configured_extra(e),
         "rows": rows,
         "summary": {
             "n": len(rows), "ready": sum(r["status"] == "READY" for r in rows), "degraded": sum(bool(r["degraded"]) for r in rows),
@@ -231,8 +250,9 @@ def probe_tools_langchain(env: dict[str, str]) -> dict[str, Any]:
         timeout = httpx.Timeout(8.0, connect=2.0)
         async with httpx.AsyncClient(timeout=timeout) as http:
             model = ChatOpenAI(base_url=env["LLM_BASE_URL"], api_key=SecretStr(env["LLM_API_KEY"]), model=env["LLM_MODEL"], timeout=timeout,
-                               max_retries=0, max_tokens=800, temperature=0, use_responses_api=False, http_async_client=http, extra_body=THINK_OFF)
-            bound = model.bind_tools([check_draft, submit_card], parallel_tool_calls=False)
+                               max_retries=0, max_tokens=800, temperature=0, use_responses_api=False, http_async_client=http,
+                               extra_body=configured_extra(env) or None)
+            bound = model.bind_tools([check_draft, submit_card], parallel_tool_calls=False)  # tool_choice는 보내지 않는다
             msgs = [SystemMessage(content="반드시 도구를 하나만 호출한다. 먼저 check_draft로 초안을 검사한다."),
                     HumanMessage(content="<story>\n" + STORIES[0]["story"] + "\n</story>\n카드 초안을 만들어 check_draft를 호출해.")]
             t = time.monotonic()
@@ -305,6 +325,7 @@ def main() -> int:
     args = ap.parse_args()
     env = read_env(args.env_file)
     report: dict[str, Any] = {"provider": env.get("LLM_PROVIDER_LABEL"), "base_url": env.get("LLM_BASE_URL"), "model": env.get("LLM_MODEL"),
+                              "extra_body": configured_extra(env),
                               "date": time.strftime("%Y-%m-%dT%H:%M:%S%z"), "limits": {"connect_s": 2, "read_s": 8, "retries": 0, "lambda_ms": 27000}}
     only = set(args.only.split(","))
     if "raw" in only:

@@ -64,7 +64,7 @@ AUTH_FAILURES = ("HTTP_401", "HTTP_403")  # BE-Q128: NVIDIA NIM은 무효 키에
 def t12_baseline(ai_env: dict[str, str]) -> tuple[bool, str]:
     """정상 키 기준 기록을 확인한다. T12_BASELINE = scripts/probe_provider.py --only raw 결과 JSON 경로(정상 키로 실행).
 
-    같은 LLM_BASE_URL·LLM_MODEL이고 Thinking OFF 기본 요청이 200이어야 한다. 키 값은 기록에 없다.
+    같은 LLM_BASE_URL·LLM_MODEL이고 운영 설정(LLM_EXTRA_BODY)을 적용한 요청(`raw.configured`)이 200이어야 한다. 키 값은 기록에 없다.
     """
     import json
     import os
@@ -75,7 +75,7 @@ def t12_baseline(ai_env: dict[str, str]) -> tuple[bool, str]:
     data = json.loads(open(path, encoding="utf-8").read())
     if (data.get("base_url"), data.get("model")) != (ai_env.get("LLM_BASE_URL"), ai_env.get("LLM_MODEL")):
         return False, "기준 기록의 엔드포인트·모델이 함수 설정과 다르다"
-    if ((data.get("raw") or {}).get("thinking_off") or {}).get("status") != 200:
+    if ((data.get("raw") or {}).get("configured") or {}).get("status") != 200:
         return False, "기준 기록에서 정상 키 요청이 200이 아니다"
     return True, ""
 

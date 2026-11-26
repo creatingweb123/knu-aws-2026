@@ -4,6 +4,8 @@ import importlib.util
 import json
 import pathlib
 
+import pytest
+
 BACKEND = pathlib.Path(__file__).resolve().parents[2]
 KEY = "nvapi-test-not-a-real-key-0000"
 
@@ -33,11 +35,19 @@ def test_summary_has_no_content_or_error_body():
     assert KEY not in json.dumps(err) and err["error_keys"] == ["detail", "status"]
 
 
-def test_pipeline_env_defaults_thinking_off():
-    env = load_probe().pipeline_env({"LLM_API_KEY": KEY})
-    assert json.loads(env["LLM_EXTRA_BODY"]) == {"chat_template_kwargs": {"enable_thinking": False}} and env["LLM_MAX_RETRIES"] == "0"
-    kept = load_probe().pipeline_env({"LLM_API_KEY": KEY, "LLM_EXTRA_BODY": '{"x": 1}'})
-    assert kept["LLM_EXTRA_BODY"] == '{"x": 1}'
+def test_pipeline_env_has_no_provider_default_body():
+    """범용: 공급자 기본 추가 본문을 넣지 않는다. LLM_EXTRA_BODY가 없으면 없는 그대로 둔다."""
+    mod = load_probe()
+    env = mod.pipeline_env({"LLM_API_KEY": KEY})
+    assert "LLM_EXTRA_BODY" not in env and env["LLM_MAX_RETRIES"] == "0"
+    kept = mod.pipeline_env({"LLM_API_KEY": KEY, "LLM_EXTRA_BODY": '{"reasoning_effort": "none"}'})
+    assert kept["LLM_EXTRA_BODY"] == '{"reasoning_effort": "none"}'
+    assert mod.configured_extra(kept) == {"reasoning_effort": "none"} and mod.configured_extra({}) == {}
+
+
+def test_configured_extra_rejects_non_object():
+    with pytest.raises(SystemExit):
+        load_probe().configured_extra({"LLM_EXTRA_BODY": "[1, 2]"})
 
 
 def test_stories_fixture_is_synthetic_and_complete():

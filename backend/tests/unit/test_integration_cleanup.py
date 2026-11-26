@@ -184,11 +184,11 @@ def test_t12_baseline_rules(tmp_path, monkeypatch):
     monkeypatch.delenv("T12_BASELINE", raising=False)
     assert test_ai.t12_baseline(fn)[0] is False
     p = tmp_path / "probe.json"
-    p.write_text(json.dumps({"base_url": fn["LLM_BASE_URL"], "model": fn["LLM_MODEL"], "raw": {"thinking_off": {"status": 200}}}), encoding="utf-8")
+    p.write_text(json.dumps({"base_url": fn["LLM_BASE_URL"], "model": fn["LLM_MODEL"], "raw": {"configured": {"status": 200}}}), encoding="utf-8")
     monkeypatch.setenv("T12_BASELINE", str(p))
     assert test_ai.t12_baseline(fn) == (True, "")
     assert test_ai.t12_baseline(dict(fn, LLM_MODEL="other"))[0] is False
-    p.write_text(json.dumps({"base_url": fn["LLM_BASE_URL"], "model": fn["LLM_MODEL"], "raw": {"thinking_off": {"status": 404}}}), encoding="utf-8")
+    p.write_text(json.dumps({"base_url": fn["LLM_BASE_URL"], "model": fn["LLM_MODEL"], "raw": {"configured": {"status": 404}}}), encoding="utf-8")
     assert test_ai.t12_baseline(fn)[0] is False
     assert test_ai.AUTH_FAILURES == ("HTTP_401", "HTTP_403")
 
