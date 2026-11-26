@@ -273,6 +273,24 @@ push 전 확인(각 Checkpoint와 push마다)
     - _Requirements: 13.4, 22 · BE-Q83, BE-Q91_
   - 각 하위 작업 뒤 **push 전 확인(실제 키 0회 포함) → commit → push.** `test-results/`는 커밋하지 않는다.
 
+## 보완 (BE-Q129, 2026-11-27): 에이전트 초안 재시도와 프롬프트 일반 규칙
+
+결정: 후보 A(초안 재시도 2회, JSON·스키마 공유 예산) + 프롬프트 일반 규칙(사용자 승인). 실측은 스모크에서 실패해 중단했다(README 11.11절).
+
+- [x] B1. 구현: `agent_nodes.draft`가 노드 한 번에 호출 한 번. 위반이면 `guard_draft`(12초 규칙)를 거쳐 재시도. 시도 수는 `budget.drafts`, 재시도 메시지는 `draft_feedback`. 커밋 `1389adb`.
+  - 요구사항 4·2, 설계 §3.3·§8.4·§10.1·§10.2 반영(커밋 `d452692`).
+- [x] B2. 재시도 메시지: `agent_retry_text`(위반 경로와 스키마 제한만, 실패 응답 원문 없음), `schema_limit`. 커밋 `1389adb`.
+- [x] B3. 프롬프트 `day_card_agent.md`에 일반 규칙 한 줄, `promptVersion` `ca6ada9ac3ef` → `3db437c63971`. 레벨 0 `day_card.md` 변경 없음. 커밋 `1389adb`.
+- [x] B4. 테스트: `test_agent_draft_retry.py` 38건(두 응답의 모든 조합 9, 재시도 메시지 원문 미포함, 정보 없는 카드 재시도 안 함, 시간 부족 pause와 재개, 강제 종료 뒤 시도 수 유지, 예약 상한, 이름 있는 시나리오). F18·F19(moto 체크포인터). 커밋 `1389adb`.
+- [x] B5. 평가 행 확장: `draft_attempts`, `first_schema_errors`, `first_not_in_source`, `tool_errors`, `question_rejects`. 커밋 `7615156`.
+- [x] B6. 중복 상태 제거: 마지막 파싱 카드를 `card` 키에만 둔다. 체크포인트 최대 크기 10,950 → 10,442바이트. `ai-slow` 로컬 사례가 보완 직후 1/3 통과였다가 3/3 통과로 돌아왔다. 커밋 `4494713`.
+- [x] B7. 회귀: 단위 전체, 로컬 pipeline 23건, 로컬 agent 페이크 28건(실제 공급자 사례 10건은 건너뜀). README 11.11절.
+- [x] B8. contact_1 진단 3회(같은 조건): 에이전트 3/3 FAILED(`BUDGET_CALLS`), 레벨 0 3/3 READY. 초안 재시도는 3회 모두 실행됐고, 두 번째 초안도 스키마 위반(제목 47자)이었다.
+- [x] B9. 스모크 5건(최종 이미지): READY 3건(1건 degraded), FAILED 2건(`private_place_1`, `contact_1`). **기준 불충족, 중단.** 직전 이미지 실행은 READY 4건, FAILED 1건(`contact_1`).
+- [ ] B10. 동시 5요청 검증: 미실행(B9 실패로 중단).
+- [ ] B11. 합성 사연 15건 × 3회 오프라인 평가: 미실행(B9 실패로 중단).
+- [ ] B12. 추가 결정: 제목 길이 위반이 예산 안에서 해결되지 않는 문제. 후보는 README 11.11절 "필요한 결정". 결정 전에는 프롬프트를 더 고치지 않는다.
+
 ### 별도 승인 그룹
 
 - [ ] 21. 프론트 리뷰 **[대기: 프론트엔드 담당]**
