@@ -21,9 +21,9 @@ from langgraph.types import interrupt
 from agent import agent_tools as at
 from agent import repair, tools
 from agent.budget import BudgetExhausted, ReservationUncertain
-from agent.card import NOT_JSON, SCHEMA, content_text, extract_json_object
+from agent.card import NOT_JSON, SCHEMA, content_text, extract_json_object, validate_card
 from agent.llm import LlmError
-from agent.prompt import agent_draft_messages, agent_system_prompt, user_message
+from agent.prompt import agent_draft_messages, agent_retry_text, agent_system_prompt, user_message
 from agent.timebudget import MIN_CALL_START_MS
 from common.validation import normalize_card_payload
 
@@ -31,7 +31,8 @@ ASKING, WORKING, READY, FAILED = "ASKING", "WORKING", "READY", "FAILED"
 LLM_ERROR_CODE, FALLBACK_INVARIANT = "LLM_ERROR", "FALLBACK_INVARIANT"
 NUDGE = "도구를 호출해 진행하라. 정리가 끝났으면 submit_card를 호출하라."
 BUDGET_KEYS = ("modelCalls", "checkDrafts", "questions", "gateRejects", "tokenReported", "tokenEstimated", "tokenOut",
-               "tokenCorrection", "nudged", "checkLimitHit")
+               "tokenCorrection", "nudged", "checkLimitHit", "drafts")
+MAX_DRAFTS = 2  # 최초 호출을 포함한 초안 생성 한도(BE-Q129). JSON 오류와 스키마 오류가 한 예산을 나눠 쓴다
 
 
 def initial_agent_state(story: str) -> dict[str, Any]:
@@ -39,7 +40,8 @@ def initial_agent_state(story: str) -> dict[str, Any]:
             "questions": [], "consumed_resume_ids": [], "budget": {k: 0 for k in BUDGET_KEYS}, "candidate": None, "card": None,
             "report": None, "first_proposal": None, "first_report": None, "degraded": False, "outcome": None,
             "outcome_turn": None, "route": None, "resume_to": None, "pending_tool": None, "question_view": None,
-            "llm_error": None, "invalid_kinds": [], "masked": [], "allowed_nis_activities": [], "final_card": None,
+            "llm_error": None, "invalid_kinds": [], "draft_feedback": None, "draft_card": None,
+            "masked": [], "allowed_nis_activities": [], "final_card": None,
             "flags": [], "blocked": [], "failure_code": None}
 
 
@@ -125,41 +127,51 @@ def guard_decide(state: dict[str, Any], config: RunnableConfig) -> dict[str, Any
 
 
 async def draft(state: dict[str, Any], config: RunnableConfig) -> dict[str, Any]:
-    """docs/03 §3.2: content의 JSON 객체를 카드로 파싱. JSON이 아니면 12초 이상 남았을 때만 1회 재시도, 그래도 아니면 빈 카드.
-    스키마 위반은 재시도하지 않고 check_draft로 보낸다(에이전트 모드에는 502가 없다)."""
+    """도구 없이 초안을 한 번 부른다(docs/03 §3.2, BE-Q129). 노드 실행 한 번 = 모델 호출 한 번.
+
+    형식 위반(JSON 객체가 아님, 스키마 위반)이면 guard_draft를 거쳐 한 번 더 부른다. 초안 시도 수는 state["budget"]["drafts"]에
+    두어 체크포인트에 남는다. 재시도 메시지는 위반 경로와 제한만 담고, 실패한 응답 원문은 다시 보내지 않는다.
+    정보 없는 카드(스키마는 맞음)는 위반이 아니므로 재시도하지 않는다(BE-Q122). 두 번째 시도도 위반이면 마지막으로 파싱된 카드를
+    check_auto로 넘긴다(스키마 위반이면 check_draft가 schemaErrors로 보고한다). 파싱된 카드가 없으면 빈 카드다.
+    """
     conf = _conf(config)
     caller, deadline = conf["llm"], conf["deadline"]
     b = _budget(state)
-    messages = agent_draft_messages(state["story"])
-    trace = list(state.get("trace") or [])
-    card, candidate, invalid = None, None, list(state.get("invalid_kinds") or [])
-    for attempt in (1, 2):
-        if attempt == 2 and deadline.remaining_ms() < MIN_CALL_START_MS:
-            break
-        trace.append({"tool": "draft", "summary": "초안 작성" if attempt == 1 else "초안 형식 오류, 다시 작성"})
-        try:
-            msg = await caller.ainvoke(messages, deadline.call_deadline_s(caller.settings.call_max_s), call_index=b["modelCalls"])
-        except ReservationUncertain:
-            return {**_pause(state, config, "draft", "RESERVATION_UNCERTAIN"), "budget": b, "trace": trace}
-        except BudgetExhausted as e:
-            return {"route": "fail", "llm_error": f"BUDGET_{e.kind}", "budget": b, "trace": trace}
-        except LlmError as e:
-            b["modelCalls"] += int(e.called)
-            return {"route": "fail", "llm_error": e.code, "budget": b, "trace": trace}
-        _account(b, caller, messages, msg)
-        obj = extract_json_object(content_text(msg.content))
-        if obj is None:
-            invalid.append(NOT_JSON)
-            continue
-        card = normalize_card_payload(obj)
-        candidate = at.valid_candidate(obj)
-        if candidate is None and card is not None:
-            invalid.append(SCHEMA)
-        break
-    if card is None:
-        card = dict(at.EMPTY_CARD)
-    return {"route": "check_auto", "card": card, "candidate": candidate, "budget": b, "trace": trace, "invalid_kinds": invalid,
-            "llm_error": None}
+    first = b["drafts"] == 0
+    messages = agent_draft_messages(state["story"], feedback=None if first else state.get("draft_feedback"))
+    trace = _step(state, "draft", "초안 작성" if first else "초안 형식 오류, 다시 작성")
+    try:
+        msg = await caller.ainvoke(messages, deadline.call_deadline_s(caller.settings.call_max_s), call_index=b["modelCalls"])
+    except ReservationUncertain:
+        return {**_pause(state, config, "draft", "RESERVATION_UNCERTAIN"), "budget": b, "trace": trace}
+    except BudgetExhausted as e:
+        return {"route": "fail", "llm_error": f"BUDGET_{e.kind}", "budget": b, "trace": trace}
+    except LlmError as e:
+        b["modelCalls"] += int(e.called)
+        return {"route": "fail", "llm_error": e.code, "budget": b, "trace": trace}
+    _account(b, caller, messages, msg)
+    b["drafts"] += 1
+    out: dict[str, Any] = {"budget": b, "trace": trace, "llm_error": None}
+    obj = extract_json_object(content_text(msg.content))
+    if obj is None:
+        kind, paths = NOT_JSON, ()
+        parsed = state.get("draft_card")
+    else:
+        checked = validate_card(obj)
+        kind, paths = (None, ()) if checked.ok else (SCHEMA, checked.paths)
+        parsed = normalize_card_payload(obj)
+        out["draft_card"] = parsed
+        out["candidate"] = at.valid_candidate(obj)
+    if kind:
+        out["invalid_kinds"] = [*(state.get("invalid_kinds") or []), kind]
+    if kind and b["drafts"] < MAX_DRAFTS:
+        out["draft_feedback"] = agent_retry_text(kind, paths)
+        out["route"] = "guard_draft"
+        return out
+    out["draft_feedback"] = None
+    out["card"] = parsed if parsed is not None else dict(at.EMPTY_CARD)
+    out["route"] = "check_auto"
+    return out
 
 
 def check_auto(state: dict[str, Any], config: RunnableConfig) -> dict[str, Any]:

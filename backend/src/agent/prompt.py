@@ -84,8 +84,32 @@ def agent_prompt_version() -> str:
     return hashlib.sha256(agent_prompt_text().encode("utf-8")).hexdigest()[:12]
 
 
-def agent_draft_messages(story: str) -> list[BaseMessage]:
-    return [SystemMessage(agent_system_prompt() + "\n" + agent_draft_instruction()), HumanMessage(user_message(story))]
+# 스키마 제한(common/validation.py AiCardDraft·AiPlaceDraft와 같은 값). 재시도 메시지에는 이 제한만 넣는다(BE-Q129).
+SCHEMA_LIMITS: dict[str, str] = {
+    "title": "1–40자", "summary": "1–120자", "reason": "1–300자", "question": "1–80자",
+    "estimatedMinutes": "10–240 사이의 정수", "places": "최대 3곳", "name": "1–30자", "activity": "1–60자", "whyChosen": "0–120자",
+}
+
+
+def schema_limit(path: str) -> str:
+    """경로의 마지막 필드 이름으로 제한 문구를 찾는다(places[0].name → name, places[2] → places)."""
+    last = re.sub(r"\[\d+\]", "", path.rsplit(".", 1)[-1])
+    return SCHEMA_LIMITS.get(last, "형식 규칙")
+
+
+def agent_retry_text(kind: str, paths: tuple[str, ...] | list[str]) -> str:
+    """에이전트 초안 재시도 메시지. 위반한 경로와 스키마 제한만 담는다. 실패한 응답 원문은 넣지 않는다(BE-Q129)."""
+    if kind == "NOT_JSON":
+        return "앞 응답이 JSON 객체가 아니었다. 설명 없이 JSON 객체 하나만 다시 출력하라."
+    where = ", ".join(f"{p}({schema_limit(p)})" for p in paths) or "카드 전체"
+    return f"앞 초안의 형식 규칙 위반: {where}. 위반한 필드만 규칙에 맞게 고쳐서 JSON 객체 하나만 다시 출력하라. 앞 응답을 그대로 반복하지 마라."
+
+
+def agent_draft_messages(story: str, feedback: str | None = None) -> list[BaseMessage]:
+    msgs: list[BaseMessage] = [SystemMessage(agent_system_prompt() + "\n" + agent_draft_instruction()), HumanMessage(user_message(story))]
+    if feedback:
+        msgs.append(HumanMessage(feedback))
+    return msgs
 
 
 def answer_block(text: str) -> str:

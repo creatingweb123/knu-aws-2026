@@ -144,6 +144,13 @@ AGENT_SCENARIOS: dict[str, list[dict[str, Any]]] = {
     "http_400": [_raise("http_400")],
     "slow_agent": [_content(_card(estimatedMinutes=45)), _tool("check_draft", card=GOOD), _tool("submit_card", card=GOOD)],
     "token_heavy": [_content(_card())] + [_tool("check_draft", card=_cardd(reason="가" * 300))] * 6,
+    # BE-Q129: 초안 재시도(스키마·JSON 조합). 두 번째 응답 뒤에는 submit_card로 끝낸다.
+    "schema_then_ok": [_content(_card(title="가" * 41)), _content(_card(estimatedMinutes=45)), _tool("submit_card", card=GOOD, notes=SUBMIT_NOTE)],
+    "json_then_schema": [_content("JSON 객체가 아니에요."), _content(_card(title="가" * 41)), _tool("submit_card", card=GOOD, notes=SUBMIT_NOTE)],
+    "schema_then_json": [_content(_card(title="가" * 41)), _content("여전히 JSON 객체가 아니에요."), _tool("submit_card", card=GOOD, notes=SUBMIT_NOTE)],
+    "schema_twice": [_content(_card(title="가" * 41)), _content(_card(estimatedMinutes=300)), _tool("submit_card", card=GOOD, notes=SUBMIT_NOTE)],
+    "empty_info_card": [_content(json.dumps({"title": None, "summary": None, "reason": None, "estimatedMinutes": None, "places": [],
+                                              "question": None}, ensure_ascii=False)), _tool("submit_card", card=GOOD, notes=SUBMIT_NOTE)],
 }
 
 

@@ -15,6 +15,7 @@
 - 한 번에 도구를 하나만 호출한다.
 - check_draft(card): 카드를 검사한다. 결과의 notInSource(원문에 없음), privacy(개인정보), missing(빈칸), schemaErrors(형식 오류) 경로를 보고 카드를 고친다.
 - ask_planner(path, question, reason, options, allowFreeText): 꼭 필요한 빈칸만 계획자에게 묻는다. 질문은 60자 이하, 선택지는 0–4개(각 15자 이하). 묻는 순서: 비공개이거나 애매한 장소 > 장소가 정해지지 않음 > estimatedMinutes > 그 밖. 거절되면 그 값은 null(MISSING)로 두고 submit_card로 넘어간다.
+- 스키마 위반은 계획자에게 질문할 문제가 아니다. 필드 길이, 자료형, 배열 개수 위반은 직접 수정한다. ask_planner는 허용된 경로의 실제 정보 부족을 해결하는 데만 사용한다.
 - submit_card(card, notes): 정리가 끝나면 제출한다. 서버가 다시 검사해서 원문에 없는 장소나 개인정보가 남아 있으면 거절한다. 거절되면 지적된 경로만 고쳐 다시 제출한다.
 - notes에는 바꾼 것만 적는다: {"path", "action": "REWRITTEN" 또는 "ASKED", "reason"}.
 - 정리가 끝났으면 반드시 submit_card를 호출한다. 도구 없이 글로만 답하지 마라.

@@ -70,7 +70,7 @@ AGENT_NODES = ("guard_draft", "draft", "check_auto", "guard_decide", "decide", "
                "fallback", "final_check", "fail")
 _ROUTES = {
     "guard_draft": ["pause", "draft"],
-    "draft": ["check_auto", "pause", "fail"],
+    "draft": ["check_auto", "guard_draft", "pause", "fail"],  # 형식 위반이면 guard_draft로 돌아가 한 번 더(BE-Q129)
     "check_auto": ["guard_decide"],
     "guard_decide": ["decide", "pause", "fallback"],
     "decide": ["guard_decide", "check_tool", "ask", "gate", "fallback", "fail", "pause"],

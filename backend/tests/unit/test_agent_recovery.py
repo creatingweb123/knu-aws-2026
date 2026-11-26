@@ -389,3 +389,71 @@ def test_logs_have_no_story_or_answer(agent_env, asking, caplog):
     text = caplog.text
     assert "출근길" not in text and "45분" not in text and "하천" not in text
     assert json.dumps(session(agent_env, asking)["trace"], ensure_ascii=False, default=str).count("45분") == 0
+
+
+# ---------------------------------------------------------------- BE-Q129: 초안 재시도 (보완, moto 체크포인터)
+
+
+class Clock:
+    """남은 시간을 테스트가 정한다(핸들러 context 흉내)."""
+
+    def __init__(self, ms: int) -> None:
+        self.ms = ms
+
+    def get_remaining_time_in_millis(self) -> int:
+        return self.ms
+
+
+def test_F18_crash_on_second_draft_after_checkpointed_first_attempt(agent_env, monkeypatch):
+    """첫 초안이 체크포인트에 남은 뒤(시간 부족으로 WORKING) 재개 턴의 두 번째 초안 응답 뒤 종료.
+    복구는 첫 시도를 다시 하지 않고(추적의 초안 항목은 2개), 예약은 6 이하다. 생성 턴 자체의 종료는 설계 §4.1대로 복구하지 않는다."""
+    from agent import hooks
+    from tests.unit.agent_handler_util import create, session, turns, body_of, only_session
+
+    monkeypatch.setenv("FAKE_LLM_SCENARIO", "schema_then_ok")
+    clock = Clock(25_000)
+    hooks.HOOK = lambda p: setattr(clock, "ms", 5_000) if p == "model_response" else None
+    try:
+        v1 = body_of(create(ctx=clock))
+    finally:
+        hooks.HOOK = None
+    assert v1["status"] == "WORKING"
+    sid = v1["sessionId"]
+    clock.ms = 25_000
+    hooks.HOOK = At("model_response", 1)  # 재개 턴의 두 번째 초안 응답 뒤
+    try:
+        with pytest.raises(Crash):
+            turns(sid, {"expectedTurn": v1["turn"]}, ctx=clock)
+    finally:
+        hooks.HOOK = None
+    expire_lock(agent_env, sid)
+    v2 = body_of(turns(sid, {"expectedTurn": v1["turn"]}, ctx=clock))
+    assert v2["status"] == "READY", v2
+    assert [t["tool"] for t in v2["trace"]].count("draft") == 2  # 첫 시도는 체크포인트에서 이어졌다(다시 기록되지 않는다)
+    item = session(agent_env, sid)
+    assert int(item["modelCallsReserved"]) <= 6 and int(item["modelCallsReserved"]) >= 3  # 첫 시도 + 잃은 응답 + 다시 한 응답 + 제출
+    assert ckpt_items(sid) == []
+
+
+def test_F19_time_short_before_retry_pauses_and_next_request_finishes(agent_env, monkeypatch):
+    """첫 초안 뒤 남은 시간이 12초 미만이면 재시도 전에 WORKING으로 멈춘다. 다음 요청은 초안 2회째부터 이어 간다."""
+    from agent import hooks
+    from tests.unit.agent_handler_util import create, session, turns, body_of
+
+    monkeypatch.setenv("FAKE_LLM_SCENARIO", "schema_then_ok")
+    clock = Clock(25_000)
+    hooks.HOOK = lambda p: setattr(clock, "ms", 5_000) if p == "model_response" else None
+    try:
+        v1 = body_of(create(ctx=clock))
+    finally:
+        hooks.HOOK = None
+    assert v1["status"] == "WORKING", v1
+    sid = v1["sessionId"]
+    before = session(agent_env, sid)
+    assert int(before["modelCallsReserved"]) == 1  # 첫 초안만 예약됐다
+    clock.ms = 25_000
+    r = turns(sid, {"expectedTurn": v1["turn"]}, ctx=clock)
+    v2 = body_of(r)
+    assert r["statusCode"] == 200 and v2["status"] == "READY", v2
+    assert [t["tool"] for t in v2["trace"]].count("draft") == 2
+    assert int(session(agent_env, sid)["modelCallsReserved"]) <= 6
