@@ -15,6 +15,7 @@ AWS 계정 없이 개발한 백엔드를 AWS 담당이 배포·판정할 수 있
 | AWS 판정 | T1·T13·T3·T4·T5·T6·T7·T14·T16 **15건 모두 통과**(2026-11-25, `haru-dev`, AWS 담당). 첫 실행에서 T1 액세스 토큰 1건이 실패해 `common/auth.py`를 고친 뒤 다시 통과했다(3.1절) |
 | 다음 단계 조건 | T3–T7이 AWS에서 통과해야 4단계를 시작한다(docs/07 §7.2). **2026-11-25 충족** |
 | PR | 아직 열지 않았다(8절) |
+| **6a단계(AI 레벨 0)** | 브랜치 `feat/be-6a-ai-pipeline`(기준 `fix/be-3-local-verify`), spec `.kiro/specs/backend-stage6a-ai-pipeline/`. 개발 PC에서 구현·검증까지 마쳤고 **AWS 배포·판정은 아직 없다**(10절) |
 
 AWS에서만 확인되는 것은 4절, 로컬 환경 구동 기록과 절차는 5절, 테스트 데이터 정리 보완은 3.2절에 있다.
 
@@ -232,6 +233,7 @@ Docker 없이 확인한 대체 수단: moto 테스트(`tests/unit/test_plan_serv
 | `MeFunction` | `HaruTable`과 `index/*`에 `dynamodb:GetItem`, `Query` | `GET /me/claims`(GSI2 조회 + Plan·Record 읽기). `GET /me`는 4단계 전까지 DB를 읽지 않는다(BE-Q30) |
 | `PlansFunction` | `HaruTable`과 `index/*`에 `dynamodb:GetItem`, `PutItem`, `UpdateItem`, `Query` | 생성(Plan + 멱등 키 트랜잭션), 상세(ConsistentRead), 목록(GSI1), 내 Claim 조회, 이어받기(Plan Update + Claim·ClaimLookup Put + 이전 Claim Update) |
 | `ClaimsFunction` | `HaruTable`에 `dynamodb:GetItem`, `PutItem`, `UpdateItem`, `ConditionCheckItem` | 포기·기록·완료 트랜잭션(Update, InboxItem Put, 기록 저장의 ConditionCheck)과 ConsistentRead |
+| `AiCardFunction`(6a) | `HaruTable`에 `dynamodb:GetItem`, `PutItem`, `UpdateItem`, 조건 `dynamodb:LeadingKeys` = `AISESSION#*`·`AIQUOTA#*`. `LlmApiKeyParam`이 있으면 그 파라미터 ARN 하나에 `ssm:GetParameter` | 세션 저장·조회, 하루 할당량 조건부 갱신. `Query`·`Scan`·트랜잭션·`index/*`·`kms:*` 없음(`aws/ssm` 관리형 키는 KMS 권한이 따로 필요 없다). Plan·User·Claim·Idem 키에는 쓰지 못한다(G6) |
 | `PreSignUpFunction` | 없음 | 이벤트만 바꾼다. Cognito 호출 권한은 `PreSignUpInvokePermission`(SourceArn은 순환 참조를 피하려고 `userpool/*`) |
 
 권한 오류(`AccessDeniedException`)가 나면 CloudWatch Logs의 예외 유형과 이 표를 대조한다. 로그에는 예외 유형만 남긴다(응답에는 500 `INTERNAL_ERROR`).
@@ -293,3 +295,99 @@ PR은 아직 열지 않았다. 리뷰할 때 아래 순서로 연다.
 - 경로 목록은 `src/handlers/routes.py` 한 곳에 있다. `template.yaml`·로컬 어댑터와 일치하는지 `tests/unit/test_template.py`가 확인한다.
 - 시간은 `common.responses.iso_utc`(밀리초 고정 UTC). 저장한 시각을 문자열로 비교하므로 다른 형식을 섞지 않는다.
 - Lambda 의존성은 `src/requirements.txt`(sam build가 CodeUri `src/`에서 읽는다). 개발 의존성은 `requirements-dev.txt`.
+
+## 10. 6a단계 (AI 하루 카드 레벨 0) 인계
+
+### 10.1 현황 (2026-11-26, 개발 담당)
+
+| 항목 | 상태 |
+|---|---|
+| 범위 | `POST /ai/card-sessions`, `GET /ai/card-sessions/{sessionId}`, `POST /ai/card-sessions/{sessionId}/turns`(레벨 0: 모델을 부르지 않는 409·200), `POST /plans` AI 세션 지표, `AiCardFunction`(SAM Makefile 빌드). 그래프는 `draft → check_draft → rules → gate → (fallback) → final_check`, 체크포인터 없음 |
+| 구현하지 않은 것 | 6b의 `decide`·`ask_planner`·턴 잠금·interrupt/resume·운영 체크포인터, `HaruAgentCheckpoints` SAM 리소스(BE-Q84), 실제 공급자 연결(작업 19–23 대기) |
+| 단위 테스트 | `pytest tests/unit` **716건 통과**. 속성 기반 P29–P36 8개 통과. 1–3단계 기준 296건을 그대로 현재 코드에 돌리면 291건 통과·5건 실패이고, 5건은 범위가 넓어져 의도적으로 고친 검사다(AI 오류 코드, 경로 목록, `AiCardFunction` 부재 검사, 조건부 정책 구조) |
+| 외부 연결 | 단위 테스트는 `tests/unit/conftest.py`가 루프백 밖 소켓 연결을 막는다. 실제 LLM 공급자 호출 0회(Fake와 127.0.0.1 HTTP 스텁만) |
+| 로컬(Docker) | `pytest -m local tests/local` **기존 16건 + 새 7건 통과**, 시나리오별 사례 4종(`http_401`·`http_429`·`bad_json`·`privacy_high`)은 어댑터를 그 시나리오로 다시 띄워 각 2건 통과. 결과는 `llmMode: fake`이고 판정 근거가 아니다(BE-Q15) |
+| SAM | `cfn-lint` 0건, `sam validate --lint` 통과, `sam build --use-container` 성공(AI 잠금 파일 `--require-hashes` 설치 확인) |
+| AWS 통합 테스트 | `tests/integration/test_ai.py` 작성·수집만 했다(`-m integration` 18건, `-m "integration and fault"` 2건 수집). 실행·판정은 AWS 담당 |
+
+### 10.2 배포 전 주의 (AWS 담당)
+
+1. **SecureString을 먼저 만든다**(템플릿이 만들지 않는다, BE-Q81). CloudFormation은 SecureString을 만들 수 없다. 표준 계층, AWS 관리형 키 `aws/ssm`, 이름 `/haru/<stage>/llm/api-key`. 값이 셸 기록에 남지 않게 한다.
+   ```bash
+   read -rs LLM_KEY && printf '%s' "$LLM_KEY" > /dev/shm/k && \
+   aws ssm put-parameter --name /haru/dev/llm/api-key --type SecureString --value file:///dev/shm/k && rm -f /dev/shm/k; unset LLM_KEY
+   ```
+2. 빌드는 **`sam build --use-container`**(AiCardFunction은 `Metadata.BuildMethod: makefile`, `src/Makefile`).
+3. `AgentMode`는 `pipeline`만 허용한다(그 밖의 값은 배포가 거부되고, 함수 환경 값이 다르면 할당량 전에 503).
+4. 공급자 값(`LlmBaseUrl`·`LlmModel`·`LlmApiKeyParam`·`LlmProviderLabel`)은 BE-Q6 전까지 비어 있다. 비어 있으면 `openai_compat`은 `CONFIG`로 503이 되고 사연은 나가지 않는다.
+5. Fake 모델은 `Stage=dev` **그리고** 실제 스택 이름 `haru-dev`일 때만 함수에 들어간다(Rules·Condition·런타임 함수 이름 검사, BE-Q86). `demo`에서 `LlmProvider=fake`는 배포가 거부된다. Fake 결과는 S4 연동·AWS 경로 확인용이고 공급자 검증·T12 근거가 아니다. `dev`의 Plan 지표는 품질 분석에 쓰지 않는다.
+6. `samconfig.toml`은 `Stage=dev`/`Stage=demo`를 명시한다(기본값은 `demo`).
+
+### 10.3 판정 실행표 (6a)
+
+| 사례 | 파일·마커 | 전제 | 판정 |
+|---|---|---|---|
+| T12 | `test_ai.py::test_T12_invalid_key`(`fault`) | 함수 `LLM_PROVIDER=openai_compat`, `LLM_API_KEY_PARAM` 있음, 그 SecureString에 일부러 무효 키 | 503 `AI_UNAVAILABLE`, AiSession `FAILED`·`llmError=HTTP_401`, Plan 0건. **T12는 이 테스트만 센다(BE-Q83). 지금은 미검증** |
+| T12 보조 | `test_ai.py::test_T12_aux_ssm_missing`(`fault`) | 키 파라미터 이름이 없는 파라미터를 가리킴 | 503·`KEY_READ_FAILED`. 결과 파일 `scenario: T12-aux-ssm-missing`, **T12 통과로 세지 않는다** |
+| AI 경로(Fake) | `test_ai.py::test_ai_routes_fake` | `haru-dev`, `LlmProvider=fake` | 생성 200·GET·turns 409/200·남의 세션 404·11번째 429. 결과 파일 `llmMode: fake` |
+| T1 | `test_authz.py` | — | `ROUTES`를 돌므로 AI 경로 3개가 자동으로 들어간다(`{sessionId}` 치환 추가) |
+| 경로 스로틀 | 수동 | — | 초과 시 429 `{"message":"Too Many Requests"}`(계약 에러 형식이 아님, BE-Q92) |
+
+실행: `pytest -m "integration and not fault" tests/integration`, 장애 판정은 `pytest -m "integration and fault" tests/integration`. 정리(`_cleanup`)는 테스트가 등록한 `AISESSION#`·`AIQUOTA#` 항목도 지운다. 502·503 응답에는 `sessionId`가 없어 AI 테스트만 그 사용자의 세션을 필터 스캔으로 찾아 등록한다(`find_ai_sessions`).
+
+AWS에서만 확인되는 것(미검증): `LeadingKeys`가 `PLAN#` 쓰기를 실제로 막는지, 경로 스로틀 동작, `requestContext.timeEpoch` 기준 남은 시간과 시계 차이(BE-Q90), SSM 읽기·`aws/ssm` 복호화가 KMS 권한 없이 되는지, Init Duration·최대 메모리(BE-Q18), AI 전용 SDK 설정(connect 1초·read 2초·2회)에서의 지연, 실제 공급자 401(T12).
+
+### 10.4 측정값
+
+빌드 산출물(`scripts/check_ai_build.py`, 2026-11-26, `public.ecr.aws/lambda/python:3.12` 컨테이너, 산출물 읽기 전용, 네트워크 없음):
+
+| 항목 | 값 | 설계 단계 값 |
+|---|---|---|
+| AiCardFunction 압축 해제 | 96.2MB (한도 250MB) | 125.4MB |
+| zip | 37.0MB | 49.8MB |
+| 상위 패키지 | zstandard 23.9, botocore 21.3, openai 9.5, pydantic_core 5.3, langsmith 4.3, tiktoken 3.8MB | — |
+| `handlers.ai_card` import(새 프로세스 5회) | 1.16–1.21초, 중앙값 1.18초 | 0.74–0.91초 |
+| Fake 그래프 1회 / 최대 RSS | 0.011초 / 95.5MB | — |
+| 다른 함수 산출물 | 각 8.0MB, AI 패키지 0개 | — |
+| 함수별 독립 실행 | Me·Plans·Claims·AiCard: 인증 없는 이벤트 → 401, PreSignUp 표본 통과, AiCard 외 `sys.modules`에 AI 모듈 없음, Plans에서 `ai_metrics` 계산 | — |
+
+- 설계 단계보다 크기는 작고 import는 느리다. 산출물에서 `__pycache__`를 지우고(Makefile) 읽기 전용으로 붙여 매번 바이트코드를 새로 컴파일한 값이다. 실제 Init Duration은 AWS 담당이 첫 배포 뒤 CloudWatch로 잰다(BE-Q18). 바이트코드를 산출물에 넣을지는 그 값을 보고 정한다.
+- 배포 형식은 SAM ZIP(S3 업로드) 그대로다.
+
+LLM 호출 취소(`tests/unit/test_ai_cancel.py -s`, 로컬 스텁, deadline 0.5초, 20회): `drip` 최대 0.512·중앙값 0.506초, `hang` 최대 0.513·0.507초, `close` 최대 0.015초. 기준(deadline + 0.5초) 안이다. 반환이 deadline보다 조금 늦는 만큼은 `SAVE_RESERVE_MS`(4초)에 들어 있다. 같은 프로세스 Warm 30회에서 `Event loop is closed`·리소스 경고·열린 fd 증가가 없었다.
+
+Floci `DynamoDBSaver`(`tests/local/test_local_checkpointer.py`, BE-Q21): `floci/floci:2.5.0-compat` 기본 엔진에서 동기·비동기 모두 interrupt → `get_state`의 대기 interrupt → `Command(resume)` → 결과가 동작했다. 짧은 스레드 하나가 항목 18개를 썼고 모두 `ttl`이 있었다. `delete_thread` 뒤 그 스레드 항목 0건. 제품 경로에는 연결하지 않았다.
+
+### 10.5 공급자 실측 양식 (LLM 담당, BE-Q6 후보가 정해진 뒤, 합성 사연만)
+
+| 항목 | 값 |
+|---|---|
+| 공급자·모델·`LLM_BASE_URL` | |
+| `max_completion_tokens` 수용 / `max_tokens`(`LLM_EXTRA_BODY`) 필요 여부 | |
+| `temperature=0` 수용(`LLM_TEMPERATURE`) | |
+| 비스트리밍 usage 반환(`tokenEstimated`) | |
+| 호출 지연 p50·p95(합성 사연 15건, BE-Q12) | |
+| 오류 응답 형태(401·429·400) | |
+| `LLM_EXTRA_BODY` 최종 값(BE-Q9) | |
+
+### 10.6 429 세 종류 (BE-Q92)
+
+| 출처 | 응답 | 서버 | 프론트 |
+|---|---|---|---|
+| API Gateway 경로 스로틀(임시값 BE-Q82: 생성 2/5, turns 5/10, GET 10/20) | 429 `{"message":"Too Many Requests"}` | Lambda 실행 안 됨 | 계약 예외(프론트 리뷰 대상) |
+| `AI_QUOTA_EXCEEDED` | 429 계약 에러 형식 | 모델·세션 없음 | 사연 유지, 직접 작성 |
+| 외부 공급자 429 | 503 `AI_UNAVAILABLE` | AiSession `llmError=HTTP_429`, `AiFailure` 지표 | 사연 유지, 직접 작성 |
+
+### 10.7 알려진 한계
+
+- `fidelity.py`·`privacy.py`는 명사·정규식 휴리스틱이다. "원문 대조 통과"는 0건 보장이 아니다.
+- 사연을 외부로 보내기 전에 마스킹하지 않는다(BE-Q10 결정 전).
+- 세션은 그래프가 끝난 뒤 한 번 저장한다. Lambda가 강제 종료되거나 저장을 확정하지 못하면(확인 조회 실패·시간 부족) 500이고 세션이 없을 수 있으며 할당량은 1 소모된다(BE-Q74·BE-Q89). 나중에 저장된 세션은 TTL 30일 뒤 지워진다.
+- 취소가 끝날 때까지 기다리므로 호출 반환이 deadline보다 수 ms 늦다(위 측정). 이벤트 루프가 막히면 더 늦을 수 있다.
+- `POST /plans`에서 AiSession 읽기가 실패하면 AI 지표 없이 Plan을 만든다(BE-Q79). 지표가 빠질 수 있다.
+- DEBUG 로그에서 boto3·botocore가 PutItem 본문(사연·카드)을 그대로 찍는 것을 구현 중 확인했다. AI 함수는 `openai`·`httpx`·`langchain*` 등과 함께 `boto3`·`botocore`·`urllib3` 로거도 WARNING으로 고정한다. 다른 함수의 로그 수준은 바꾸지 않았다(기본 WARNING).
+- `dev`의 Plan 지표(Fake 세션 포함)는 품질 분석에 쓰지 않는다.
+
+### 10.8 4·5단계 병합 뒤 통합 회귀 계획 (작업 22, 보류)
+
+이 브랜치는 `fix/be-3-local-verify` 기준이라 4·5단계(PR #4–#7) 변경이 없다. 병합 때 겹치는 곳: `common/ddb.py`의 `use_table`(5단계와 같은 함수), `common/metrics.py`의 `emit(..., unit=)`(5단계와 같은 시그니처), `template.yaml`의 `Stage` 파라미터·`IsDev` 조건(5단계와 같은 정의), `handlers/routes.py`, `common/errors.py`, `docs/08`의 질문 번호(4단계 BE-Q42–48, 5단계 BE-Q49–72, 6a BE-Q73–92). 병합 뒤 전체 단위·로컬 테스트와 `check_ai_build.py`를 다시 돌린다.

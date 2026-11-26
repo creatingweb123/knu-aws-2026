@@ -260,18 +260,18 @@
   - [x] 16.5 수집 확인: `pytest -m integration tests/integration --collect-only`, `pytest -m "integration and fault" tests/integration --collect-only` 오류 없음(실행 안 함). `STACK_NAME` 없이 실행하면 모두 skip.
     - _Requirements: 19.10–19.12_
 
-- [ ] 17. Checkpoint D - 전체 회귀와 변경 범위
+- [x] 17. Checkpoint D - 전체 회귀와 변경 범위
   - `pytest tests/unit` 실패 0건(1–3단계 296건 포함), Property 29–36 **8개 모두** 통과, `pytest -m local tests/local` 기존 16건 + 새 사례 통과, 통합 테스트 수집 성공, cfn-lint·`sam validate --lint`·`sam build --use-container`·`check_ai_build.py` 통과.
   - 변경 범위(`git diff fix/be-3-local-verify`): `claim_service.py` 0줄, `ddb.py`는 `use_table`만, `fidelity.py`·`privacy.py` 0줄, `docs/03` 0줄, `frontend/` 0줄, 다른 함수의 템플릿 속성 불변. 결과를 PR 본문 초안에 적는다.
   - _Requirements: 19.13, 20.1, 20.2_
 
-- [ ] 18. 인계 문서와 커밋
+- [x] 18. 인계 문서와 커밋
   - 선행: 17
-  - [ ] 18.1 `backend/README.md`: 6a 현황, 배포 전 주의(SecureString 먼저 생성 절차, `sam build --use-container`, `AGENT_MODE=pipeline`, 공급자 값 미정, Fake dev 허용 조건), 함수별 IAM 표(AiCardFunction), 판정 실행표(T12 미검증·보조 사례·Fake 경로 확인 구분), 빌드 측정값(13.3), 취소 반환 시간(7.7), Floci `DynamoDBSaver` 결과(15.3), 공급자 실측 양식(Requirement 8.5), 429 세 종류, 알려진 한계(휴리스틱 한계 11.11, 마스킹 안 함 BE-Q10, 강제 종료·저장 불확실 시 세션 없음·할당량 소모 BE-Q74·BE-Q89, 취소 지연, `dev` Plan 지표는 품질 분석에 쓰지 않음), 4·5단계 병합 뒤 통합 회귀 계획(작업 22).
+  - [x] 18.1 `backend/README.md`: 6a 현황, 배포 전 주의(SecureString 먼저 생성 절차, `sam build --use-container`, `AGENT_MODE=pipeline`, 공급자 값 미정, Fake dev 허용 조건), 함수별 IAM 표(AiCardFunction), 판정 실행표(T12 미검증·보조 사례·Fake 경로 확인 구분), 빌드 측정값(13.3), 취소 반환 시간(7.7), Floci `DynamoDBSaver` 결과(15.3), 공급자 실측 양식(Requirement 8.5), 429 세 종류, 알려진 한계(휴리스틱 한계 11.11, 마스킹 안 함 BE-Q10, 강제 종료·저장 불확실 시 세션 없음·할당량 소모 BE-Q74·BE-Q89, 취소 지연, `dev` Plan 지표는 품질 분석에 쓰지 않음), 4·5단계 병합 뒤 통합 회귀 계획(작업 22).
     - _Requirements: 20.4, 20.5, 5.5, 12.6, 11.11_
-  - [ ] 18.2 `docs/08-open-questions.md`: BE-Q18·BE-Q21의 6a 결과(확인한 것·남은 것), BE-Q6·BE-Q9·BE-Q12의 현황(미결 유지), BE-Q73–BE-Q92 추가(결정·권장안·임시·미결 구분, 결정되지 않은 것을 결정처럼 쓰지 않음), §8.3에 6a 행.
+  - [x] 18.2 `docs/08-open-questions.md`: BE-Q18·BE-Q21의 6a 결과(확인한 것·남은 것), BE-Q6·BE-Q9·BE-Q12의 현황(미결 유지), BE-Q73–BE-Q92 추가(결정·권장안·임시·미결 구분, 결정되지 않은 것을 결정처럼 쓰지 않음), §8.3에 6a 행.
     - _Requirements: 20.6_
-  - [ ] 18.3 커밋(push 안 함): spec, 공통·잠금, 서비스, 검사·프롬프트, LLM·그래프, 핸들러, Plan 지표, 템플릿·빌드, 로컬, AWS 테스트, 문서 순서의 의미 단위.
+  - [x] 18.3 커밋(push 안 함): spec, 공통·잠금, 서비스, 검사·프롬프트, LLM·그래프, 핸들러, Plan 지표, 템플릿·빌드, 로컬, AWS 테스트, 문서 순서의 의미 단위.
     - _Requirements: 20.7_
 
 ### 공급자 승인 의존 (BE-Q6·BE-Q7·BE-Q10 확정 뒤)
