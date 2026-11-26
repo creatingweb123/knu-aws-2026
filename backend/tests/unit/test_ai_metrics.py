@@ -224,3 +224,34 @@ def test_manual_item_same_as_before_6a(table):
     assert plan["metrics"] == plan_service.compute_metrics(b)
     assert set(plan) == {"PK", "SK", "planId", "areaId", "ownerId", "title", "summary", "reason", "estimatedMinutes", "places",
                          "question", "status", "createdAt", "version", "metrics", "GSI1PK", "GSI1SK", "GSI2PK", "GSI2SK", "ownerNickname"}
+
+
+# ---------------------------------------------------------------- PlansFunction의 AiSession 읽기와 SDK DEBUG 로그
+
+
+SECRET_ANSWER = "답변 비밀 문장 010-2222-3333"
+
+
+def test_session_read_does_not_leak_into_sdk_debug_logs(table, caplog):
+    """PlansFunction 로그 수준이 DEBUG여도 AiSession 조회의 botocore 응답 본문(사연·카드·답변)이 로그에 남지 않는다.
+    다른 함수의 SDK 로그 수준은 바꾸지 않는다(읽는 동안만 올렸다가 되돌린다)."""
+    sid = put_session(created_at=NOW - timedelta(minutes=2))
+    table.update_item(Key=ai_session_service.session_key(sid), UpdateExpression="SET answers = :a",
+                      ExpressionAttributeValues={":a": [{"questionId": "q1", "text": SECRET_ANSWER}]})
+    before = {n: logging.getLogger(n).level for n in ("boto3", "botocore", "urllib3")}
+    caplog.set_level(logging.DEBUG)
+    for n in before:
+        logging.getLogger(n).setLevel(logging.NOTSET)  # 루트(DEBUG)를 따르게 해 최악의 설정을 만든다
+    try:
+        plan, _ = plan_service.create_plan(OWNER, "k-debug", plan_body(sid=sid), NOW)
+        assert "agentMode" in plan["metrics"]
+        text = caplog.text
+        for secret in (STORY, "하천 벤치에 앉아", CARD["title"], CARD["places"][1]["whyChosen"], SECRET_ANSWER, "010-2222-3333"):
+            if secret == CARD["title"]:
+                continue  # 공개되는 Plan 본문(같은 제목)은 PutItem 로그에 나올 수 있다. 세션 응답만 본다
+            assert secret not in text, secret
+        assert "botocore" in text or "boto3" in text  # 대조: SDK DEBUG 로그 자체는 켜져 있었다
+        assert all(logging.getLogger(n).level == logging.NOTSET for n in before)  # 읽기 뒤 원래 수준으로 되돌림
+    finally:
+        for n, lv in before.items():
+            logging.getLogger(n).setLevel(lv)

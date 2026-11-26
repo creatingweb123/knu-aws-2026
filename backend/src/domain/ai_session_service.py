@@ -10,8 +10,10 @@ AI 세션 지표를 계산하기 때문이다(design §2).
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
+from collections.abc import Iterator
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any
@@ -206,8 +208,30 @@ def is_live(item: dict[str, Any] | None, now_utc: datetime) -> bool:
     return ttl > int(now_utc.timestamp())
 
 
+SDK_LOGGERS = ("boto3", "botocore", "urllib3")
+
+
+@contextlib.contextmanager
+def quiet_sdk_logs() -> Iterator[None]:
+    """이 블록 안에서만 SDK 로거를 WARNING 이상으로 올린다.
+
+    DEBUG에서 botocore가 GetItem 응답 본문(사연·카드·답변)을 그대로 찍기 때문이다. PlansFunction처럼
+    AI 로거 설정(agent.llm.quiet_library_loggers)을 쓰지 않는 함수의 다른 로그 수준은 바꾸지 않으려고 끝나면 되돌린다.
+    """
+    saved = {n: logging.getLogger(n).level for n in SDK_LOGGERS}
+    for n, level in saved.items():
+        if level == logging.NOTSET or level < logging.WARNING:
+            logging.getLogger(n).setLevel(logging.WARNING)
+    try:
+        yield
+    finally:
+        for n, level in saved.items():
+            logging.getLogger(n).setLevel(level)
+
+
 def get_session(session_id: str, *, table: Any = None) -> dict[str, Any] | None:
-    return (table or ddb.table()).get_item(Key=session_key(session_id), ConsistentRead=True).get("Item")
+    with quiet_sdk_logs():
+        return (table or ddb.table()).get_item(Key=session_key(session_id), ConsistentRead=True).get("Item")
 
 
 def get_live_session(session_id: str, now_utc: datetime, *, table: Any = None) -> dict[str, Any] | None:

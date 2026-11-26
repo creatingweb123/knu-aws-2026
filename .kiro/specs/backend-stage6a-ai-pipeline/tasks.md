@@ -2,7 +2,7 @@
 
 ## Overview
 
-백엔드 6a단계(AI 하루 카드 레벨 0, card-sessions 계약, AiQuota)를 `feat/be-6a-ai-pipeline`(base `fix/be-3-local-verify` `8fcf239`, worktree `/home/hwkim/haru-be-ai`) 위에 `backend/` 아래 Python 3.12로 구현한다. 근거는 같은 폴더의 `requirements.md`, `design.md`(승인됨)다.
+백엔드 6a단계(AI 하루 카드 레벨 0, card-sessions 계약, AiQuota)를 `feat/be-6a-ai-pipeline`(base `fix/be-3-local-verify` `8fcf239`, 별도 worktree) 위에 `backend/` 아래 Python 3.12로 구현한다. 근거는 같은 폴더의 `requirements.md`, `design.md`(승인됨)다.
 
 작업은 다섯 묶음으로 나눈다.
 - **묶음 L (작업 1–18)**: 공급자·프론트·팀 승인과 AWS 없이 구현·검증할 수 있는 전부. Fake 채팅 모델과 로컬 HTTP 스텁으로 검증하고, 권장안(BE-Q73 Asia/Seoul, BE-Q86 dev Fake 허용)과 임시안(BE-Q76 trace 문구, BE-Q82 스로틀 값)대로 구현한다.
@@ -16,7 +16,7 @@
 - 6b 기능(`decide`, `ask_planner`, `pause`, 턴 잠금, `AI_SESSION_BUSY` 사용, interrupt/resume, 운영 체크포인터, `HaruAgentCheckpoints` SAM 리소스)은 만들지 않는다. 체크포인터는 로컬 연결 확인 테스트(작업 15.3)만 둔다.
 - 실제 LLM 공급자를 부르지 않는다. 실제 사용자 사연을 외부로 보내지 않는다. 테스트 사연은 데모 사연과 합성 사연뿐이다(Requirement 8.6, 8.7).
 - AWS 리소스 생성·`sam deploy`·AWS 통합 테스트 실행은 하지 않는다. AWS 대상 테스트는 코드만 쓰고 수집(`--collect-only`)까지 확인한다. T12는 실제 공급자의 401로만 판정하므로 그 전까지 **미검증**이다(BE-Q83).
-- 기존 PR #1–#7과 그 브랜치, 다른 worktree, 프론트엔드 작업 트리(`/home/hwkim/knu-aws-2026`), docs/03은 바꾸지 않는다.
+- 기존 PR #1–#7과 그 브랜치, 다른 worktree, 메인 작업 트리(프론트엔드 포함), docs/03은 바꾸지 않는다.
 - 속성 기반 테스트(Property 29–36)는 **모두 필수**다. Hypothesis 최소 100회, 태그 `Feature: backend-stage6a-ai-pipeline, Property {n}`. 실패 사례는 `@example`로 고정한다.
 - 작업 그룹마다 해당 테스트를 돌리고 실패를 고친 뒤 넘어간다. **1–3단계 회귀(단위 296건, 로컬 16건)는 모든 Checkpoint에서 필수**다.
 - `agent/`·`handlers/ai_card.py`는 예외 메시지·`repr`·`logger.exception`을 쓰지 않는다(작업 9.6의 정적 검사).

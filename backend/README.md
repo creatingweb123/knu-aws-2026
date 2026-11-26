@@ -304,7 +304,7 @@ PR은 아직 열지 않았다. 리뷰할 때 아래 순서로 연다.
 |---|---|
 | 범위 | `POST /ai/card-sessions`, `GET /ai/card-sessions/{sessionId}`, `POST /ai/card-sessions/{sessionId}/turns`(레벨 0: 모델을 부르지 않는 409·200), `POST /plans` AI 세션 지표, `AiCardFunction`(SAM Makefile 빌드). 그래프는 `draft → check_draft → rules → gate → (fallback) → final_check`, 체크포인터 없음 |
 | 구현하지 않은 것 | 6b의 `decide`·`ask_planner`·턴 잠금·interrupt/resume·운영 체크포인터, `HaruAgentCheckpoints` SAM 리소스(BE-Q84), 실제 공급자 연결(작업 19–23 대기) |
-| 단위 테스트 | `pytest tests/unit` **716건 통과**. 속성 기반 P29–P36 8개 통과. 1–3단계 기준 296건을 그대로 현재 코드에 돌리면 291건 통과·5건 실패이고, 5건은 범위가 넓어져 의도적으로 고친 검사다(AI 오류 코드, 경로 목록, `AiCardFunction` 부재 검사, 조건부 정책 구조) |
+| 단위 테스트 | `pytest tests/unit` **717건 통과**(2026-11-26 최종 확인). 속성 기반 P29–P36 8개 통과. 1–3단계 기준 296건을 그대로 현재 코드에 돌리면 291건 통과·5건 실패이고, 5건은 범위가 넓어져 의도적으로 고친 검사다(AI 오류 코드, 경로 목록, `AiCardFunction` 부재 검사, 조건부 정책 구조) |
 | 외부 연결 | 단위 테스트는 `tests/unit/conftest.py`가 루프백 밖 소켓 연결을 막는다. 실제 LLM 공급자 호출 0회(Fake와 127.0.0.1 HTTP 스텁만) |
 | 로컬(Docker) | `pytest -m local tests/local` **기존 16건 + 새 7건 통과**, 시나리오별 사례 4종(`http_401`·`http_429`·`bad_json`·`privacy_high`)은 어댑터를 그 시나리오로 다시 띄워 각 2건 통과. 결과는 `llmMode: fake`이고 판정 근거가 아니다(BE-Q15) |
 | SAM | `cfn-lint` 0건, `sam validate --lint` 통과, `sam build --use-container` 성공(AI 잠금 파일 `--require-hashes` 설치 확인) |
@@ -350,6 +350,7 @@ AWS에서만 확인되는 것(미검증): `LeadingKeys`가 `PLAN#` 쓰기를 실
 | Fake 그래프 1회 / 최대 RSS | 0.011초 / 95.5MB | — |
 | 다른 함수 산출물 | 각 8.0MB, AI 패키지 0개 | — |
 | 함수별 독립 실행 | Me·Plans·Claims·AiCard: 인증 없는 이벤트 → 401, PreSignUp 표본 통과, AiCard 외 `sys.modules`에 AI 모듈 없음, Plans에서 `ai_metrics` 계산 | — |
+| PlansFunction 인증 경로(`--local-ddb-network haru_default`) | AI 패키지 import를 막은 산출물을 로컬 Floci에 붙여 실행: MANUAL `POST /plans` 201(기존 지표 4개), AI_EDITED 201(`agentMode=PIPELINE`, `modelCalls=1`), 남의 세션 ID는 201·AI 지표 없음, 루트 DEBUG 로그에 세션 본문(사연·카드·답변) 0건, AI 모듈 0개 | — |
 
 - 설계 단계보다 크기는 작고 import는 느리다. 산출물에서 `__pycache__`를 지우고(Makefile) 읽기 전용으로 붙여 매번 바이트코드를 새로 컴파일한 값이다. 실제 Init Duration은 AWS 담당이 첫 배포 뒤 CloudWatch로 잰다(BE-Q18). 바이트코드를 산출물에 넣을지는 그 값을 보고 정한다.
 - 배포 형식은 SAM ZIP(S3 업로드) 그대로다.
@@ -385,7 +386,7 @@ Floci `DynamoDBSaver`(`tests/local/test_local_checkpointer.py`, BE-Q21): `floci/
 - 세션은 그래프가 끝난 뒤 한 번 저장한다. Lambda가 강제 종료되거나 저장을 확정하지 못하면(확인 조회 실패·시간 부족) 500이고 세션이 없을 수 있으며 할당량은 1 소모된다(BE-Q74·BE-Q89). 나중에 저장된 세션은 TTL 30일 뒤 지워진다.
 - 취소가 끝날 때까지 기다리므로 호출 반환이 deadline보다 수 ms 늦다(위 측정). 이벤트 루프가 막히면 더 늦을 수 있다.
 - `POST /plans`에서 AiSession 읽기가 실패하면 AI 지표 없이 Plan을 만든다(BE-Q79). 지표가 빠질 수 있다.
-- DEBUG 로그에서 boto3·botocore가 PutItem 본문(사연·카드)을 그대로 찍는 것을 구현 중 확인했다. AI 함수는 `openai`·`httpx`·`langchain*` 등과 함께 `boto3`·`botocore`·`urllib3` 로거도 WARNING으로 고정한다. 다른 함수의 로그 수준은 바꾸지 않았다(기본 WARNING).
+- DEBUG 로그에서 boto3·botocore가 요청·응답 본문(사연·카드)을 그대로 찍는다. AI 함수는 `openai`·`httpx`·`langchain*` 등과 함께 `boto3`·`botocore`·`urllib3` 로거도 WARNING으로 고정한다. PlansFunction은 AiSession을 읽는 동안에만 SDK 로거를 WARNING으로 올렸다가 되돌린다(`ai_session_service.quiet_sdk_logs`). 다른 로그 수준은 바꾸지 않았다.
 - `dev`의 Plan 지표(Fake 세션 포함)는 품질 분석에 쓰지 않는다.
 
 ### 10.8 4·5단계 병합 뒤 통합 회귀 계획 (작업 22, 보류)

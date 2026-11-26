@@ -9,7 +9,9 @@
    Fake 모델로 그래프 1회(DB 없음), zoneinfo Asia/Seoul, 최대 RSS.
 4. 함수마다 그 산출물 디렉터리 하나만 /var/task로 붙여 독립 import·실행: 인증 없는 API 이벤트 → 401,
    sys.modules에 AI 패키지 없음(AiCardFunction 제외), PlansFunction은 ai_metrics 계산, PreSignUp은 표본 이벤트.
-외부 네트워크·AWS 자격 증명을 쓰지 않는다(컨테이너는 --network none).
+5. (--local-ddb-network 지정 시) PlansFunction 산출물을 AI 패키지 import를 막은 채 로컬 Floci DynamoDB에 붙여
+   인증된 MANUAL·AI_EDITED POST /plans와 AiSession 지표 계산을 실행하고, 루트 DEBUG 로그에 세션 본문이 없는지 본다.
+외부 네트워크·AWS 자격 증명을 쓰지 않는다(컨테이너는 --network none, 5번만 로컬 compose 네트워크).
 """
 
 from __future__ import annotations
@@ -69,10 +71,10 @@ def forbidden_in(path: pathlib.Path) -> list[str]:
                   or p.name.lower().startswith(FORBIDDEN))
 
 
-def run_in_runtime(fn_dir: pathlib.Path, code: str, timeout: int = 120) -> dict:
-    cmd = ["docker", "run", "--rm", "--network", "none", "--entrypoint", "/var/lang/bin/python3",
+def run_in_runtime(fn_dir: pathlib.Path, code: str, timeout: int = 120, network: str = "none", extra_env: dict | None = None) -> dict:
+    cmd = ["docker", "run", "--rm", "--network", network, "--entrypoint", "/var/lang/bin/python3",
            "-v", f"{fn_dir}:/var/task:ro", "-w", "/var/task"]
-    for k, v in ENV.items():
+    for k, v in {**ENV, **(extra_env or {})}.items():
         cmd += ["-e", f"{k}={v}"]
     cmd += [IMAGE, "-c", code]
     out = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
@@ -136,9 +138,88 @@ print(json.dumps(result, ensure_ascii=False))
 """
 
 
+PLANS_DB_CODE = r"""
+import importlib.abc, io, json, logging, sys, uuid
+BLOCKED = %r
+
+class Block(importlib.abc.MetaPathFinder):
+    def find_spec(self, name, path=None, target=None):
+        if name.split(".")[0] in BLOCKED:
+            raise ImportError("blocked: " + name)
+        return None
+
+sys.meta_path.insert(0, Block())
+buf = io.StringIO()
+logging.basicConfig(level=logging.DEBUG, stream=buf, force=True)  # 최악의 설정: 루트 DEBUG, SDK 로거 NOTSET
+from datetime import datetime, timedelta, timezone
+import handlers.plans as plans
+from common import ddb
+from domain import ai_session_service as svc
+
+STORY = "검사용 합성 사연: 출근길 빵집에 들러 빵을 사고 하천 벤치에 앉아 쉬고 싶었어요. 연락 010-7777-8888"
+CARD_SECRET = "검사용 카드 이유 문장"
+ANSWER = "검사용 답변 문장"
+sub = "chk-" + uuid.uuid4().hex[:10]
+claims = {"token_use": "id", "sub": sub, "nickname": "지연"}
+card = {"title": "이사 전 산책", "summary": "빵집과 벤치", "reason": CARD_SECRET, "estimatedMinutes": 45, "question": "무엇이 보였나요?",
+        "places": [{"name": "출근길 빵집", "activity": "빵 사기", "whyChosen": None}]}
+created = []
+
+def post(body):
+    key = str(uuid.uuid4())
+    created.append(f"IDEM#{claims['sub']}#{key}")
+    ev = {"version": "2.0", "routeKey": "POST /plans", "headers": {"idempotency-key": key}, "body": json.dumps(body, ensure_ascii=False),
+          "isBase64Encoded": False, "requestContext": {"authorizer": {"jwt": {"claims": claims}}}}
+    r = plans.handler(ev, None)
+    out = json.loads(r["body"])
+    if r["statusCode"] == 201:
+        created.append("PLAN#" + out["plan"]["planId"])
+    return r["statusCode"], out
+
+def body(mode, sid=None):
+    b = {k: card[k] for k in ("title", "summary", "reason", "estimatedMinutes", "question")}
+    b["reason"] = "공개용 이유"
+    b["places"] = [{"name": "출근길 빵집", "activity": "빵 사기", "whyChosen": ""}]
+    b["authoring"] = {"mode": mode, "durationMs": 1000, "story": STORY, **({"aiSessionId": sid} if sid else {})}
+    return b
+
+result = {}
+try:
+    s1, m = post(body("MANUAL"))
+    result["manual"] = [s1, sorted(m["plan"]["metrics"])]
+    now = datetime.now(timezone.utc)
+    from common.ids import new_session_id
+    sid = new_session_id()
+    item = svc.build_session_item(session_id=sid, owner_id=sub, story=STORY, status="READY", created_at=now - timedelta(seconds=30),
+                                  ready_at=now - timedelta(seconds=25), card=card, model_calls=1, privacy_detected=1,
+                                  first_report={"notInSource": [], "missing": [], "privacy": []}, first_proposal=card)
+    item["answers"] = [{"questionId": "q1", "text": ANSWER}]
+    svc.put_session(item)
+    created.append("AISESSION#" + sid)
+    buf.truncate(0); buf.seek(0)  # 세션을 넣는 로그는 검사 대상이 아니다
+    s2, a = post(body("AI_EDITED", sid))
+    metrics = a["plan"]["metrics"]
+    result["ai_edited"] = [s2, metrics.get("agentMode"), metrics.get("modelCalls"), metrics.get("fieldsEditedAfterHandoff")]
+    claims["sub"] = sub + "-x"  # 다른 사용자가 남의 세션 ID를 보냄 → AI 지표 없음
+    s3, o = post(body("AI_EDITED", sid))
+    claims["sub"] = sub
+    result["other_owner"] = [s3, "agentMode" in o["plan"]["metrics"]]
+    log = buf.getvalue()
+    result["log_leaks"] = [x for x in (STORY, "010-7777-8888", CARD_SECRET, ANSWER) if x in log]
+    result["sdk_debug_seen"] = "botocore" in log
+    result["ai_modules"] = sorted({n.split(".")[0] for n in sys.modules if n.split(".")[0] in BLOCKED})
+finally:
+    t = ddb.table()
+    for pk in created:
+        t.delete_item(Key={"PK": pk, "SK": "META"})
+print(json.dumps(result, ensure_ascii=False))
+"""
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--runs", type=int, default=5)
+    ap.add_argument("--local-ddb-network", default="", help="로컬 compose 네트워크 이름(예: haru_default). 주면 5번 검사를 한다")
     args = ap.parse_args()
     if not BUILD.is_dir():
         print(json.dumps({"ok": False, "error": "먼저 sam build --use-container를 실행하세요"}))
@@ -197,6 +278,23 @@ def main() -> int:
         if name == AI_FUNCTION and "langgraph" not in r.get("ai_modules", []):
             report["failures"].append("AiCardFunction: langgraph가 로드되지 않음(검사 자체 확인)")
     report["independent"] = independent
+
+    if args.local_ddb_network and fn_dirs.get("PlansFunction"):
+        r = run_in_runtime(fn_dirs["PlansFunction"], PLANS_DB_CODE % (MODULE_PREFIXES,), network=args.local_ddb_network,
+                           extra_env={"AWS_ENDPOINT_URL": "http://aws:4566", "AWS_ACCESS_KEY_ID": "test", "AWS_SECRET_ACCESS_KEY": "test"})
+        report["plans_authenticated"] = r
+        expected_manual = [201, ["addedNotInSource", "authoringMode", "durationMs", "privacyInPublished"]]
+        if not r["ok"]:
+            report["failures"].append(f"PlansFunction 인증 경로 실패: {r['error']}")
+        else:
+            if r["manual"] != expected_manual:
+                report["failures"].append(f"PlansFunction MANUAL: {r['manual']}")
+            if r["ai_edited"][:3] != [201, "PIPELINE", 1]:
+                report["failures"].append(f"PlansFunction AI_EDITED: {r['ai_edited']}")
+            if r["other_owner"] != [201, False]:
+                report["failures"].append(f"PlansFunction 남의 세션: {r['other_owner']}")
+            if r["log_leaks"] or not r["sdk_debug_seen"] or r["ai_modules"]:
+                report["failures"].append(f"PlansFunction 로그·모듈: {r}")
     report["ok"] = not report["failures"]
     print(json.dumps(report, ensure_ascii=False, indent=2))
     return 0 if report["ok"] else 1
