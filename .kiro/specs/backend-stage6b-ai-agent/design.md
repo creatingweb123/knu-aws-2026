@@ -149,12 +149,11 @@ HTTP 요청 ─▶ AiCard_Handler
 |---|---|
 | `messages` | LangChain 메시지 이력(시스템·사연·도구 호출·ToolMessage). 체크포인트에만 있다 |
 | `mode` | `agent` |
-| `card`, `report`, `candidate` | 6a와 같음. `candidate`는 **마지막 유효 후보**(BE-Q99) |
+| `card`, `report`, `candidate` | 6a와 같음. `card`는 마지막으로 파싱된 초안(재시도 뒤 JSON이 깨져도 남는다, BE-Q129). `candidate`는 **마지막 유효 후보**(BE-Q99). 같은 카드를 두 키에 중복 저장하지 않는다(체크포인트 크기, 시간 여유) |
 | `questions[]`, `answers[]` | 수락된 질문(`questionId`, `path`, `text`, `reason`, `options`, `allowFreeText`), 소비한 답변 |
 | `consumedResumeIds[]` | 그래프가 소비한 `resumeId`(BE-Q94 표지) |
 | `budget` | `{modelCalls, checkDrafts, questions, gateRejects, tokenCharged, tokenReported, tokenEstimated, nudged, drafts}` |
 | `draft_feedback` | 다음 초안 호출에 붙일 재시도 메시지(위반 경로와 스키마 제한만, 응답 원문 없음). BE-Q129 |
-| `draft_card` | 마지막으로 파싱된 초안 카드. 재시도 뒤 JSON이 깨지면 이것을 `check_auto`로 넘긴다. BE-Q129 |
 | `pendingTool` | `decide`가 고른 도구 호출 하나(이름·인자·`tool_call_id`) |
 | `route` | `decide` 다음 행선지 또는 `pause`가 돌아갈 노드 |
 | `pauseReason` | `TIME`(12초 규칙) · `RESERVATION_UNCERTAIN` |
@@ -558,7 +557,7 @@ guard_draft: 12초 미만 → pause(route=draft)(첫 시도와 재시도 모두)
 6a `draft`를 모드 인자로 넓힌다. 에이전트 모드(BE-Q129 보완, 2026-11-27): 프롬프트 `day_card_agent.md`의 "초안" 지시 + `<story>` 블록, 도구 없이 호출, content의 JSON 객체 파싱. 노드 실행 한 번이 모델 호출 한 번이고, 시도 수는 `budget.drafts`에 있어 체크포인트에 남는다.
 - 위반: JSON 객체가 아님(`NOT_JSON`) 또는 `validate_card`가 실패(`SCHEMA`, 경로 목록). 정보 없는 카드(스키마는 맞음)는 위반이 아니다(BE-Q122).
 - 위반이고 `drafts < 2`이면 `guard_draft`로 돌아간다. `guard_draft`는 12초 규칙을 적용한다(미만이면 `pause(route=draft)`). 재시도 메시지(`agent_retry_text`)는 위반 경로와 스키마 제한만 담고, 실패한 응답은 메시지 이력에 붙이지 않는다.
-- 두 번째 시도도 위반이거나, 위반 뒤 응답이 JSON이 아니면 `draft_card`(마지막으로 파싱된 카드)를 `check_auto`로 넘긴다. 파싱된 카드가 없으면 빈 카드(모든 필드 `null`, `places: []`).
+- 두 번째 시도도 위반이거나, 위반 뒤 응답이 JSON이 아니면 `card`에 남은 마지막 파싱 카드를 `check_auto`로 넘긴다. 파싱된 카드가 한 번도 없었으면 빈 카드(모든 필드 `null`, `places: []`).
 - 스키마를 통과한 카드면 `candidate`로 둔다. 재시도가 없는 첫 시도도 같은 규칙이다.
 - 강제 종료: 재시도 상태(`drafts`, `draft_feedback`)는 노드 밖 상태라 체크포인트에서 이어진다. 체크포인트 전에 끊긴 응답은 상태에 없으므로 그 시도를 다시 한다. 그 호출은 예약에 남는다(환불 없음, 6회 상한 안).
 - 첫 검사(`first_report`·`first_proposal`)는 `check_auto`가 처음 보는 초안이다. 재시도로 스키마를 통과한 초안이면 `schemaErrors`가 비어 있다. 두 번 다 위반이면 `schemaErrors`에 위반이 남는다. 보완 전에는 첫 위반 초안을 그대로 기록했다. 이 기준 변화는 `POST /plans` 지표(`firstProposalNotInSource`·`missingFirst`, 둘 다 `firstReport`를 읽는다)와 평가 행의 `first_schema_errors`·`first_not_in_source`에 나타난다.

@@ -40,7 +40,7 @@ def initial_agent_state(story: str) -> dict[str, Any]:
             "questions": [], "consumed_resume_ids": [], "budget": {k: 0 for k in BUDGET_KEYS}, "candidate": None, "card": None,
             "report": None, "first_proposal": None, "first_report": None, "degraded": False, "outcome": None,
             "outcome_turn": None, "route": None, "resume_to": None, "pending_tool": None, "question_view": None,
-            "llm_error": None, "invalid_kinds": [], "draft_feedback": None, "draft_card": None,
+            "llm_error": None, "invalid_kinds": [], "draft_feedback": None,
             "masked": [], "allowed_nis_activities": [], "final_card": None,
             "flags": [], "blocked": [], "failure_code": None}
 
@@ -154,13 +154,11 @@ async def draft(state: dict[str, Any], config: RunnableConfig) -> dict[str, Any]
     out: dict[str, Any] = {"budget": b, "trace": trace, "llm_error": None}
     obj = extract_json_object(content_text(msg.content))
     if obj is None:
-        kind, paths = NOT_JSON, ()
-        parsed = state.get("draft_card")
+        kind, paths = NOT_JSON, ()  # card 키에는 마지막으로 파싱된 카드가 그대로 남는다
     else:
         checked = validate_card(obj)
         kind, paths = (None, ()) if checked.ok else (SCHEMA, checked.paths)
-        parsed = normalize_card_payload(obj)
-        out["draft_card"] = parsed
+        out["card"] = normalize_card_payload(obj)  # 스키마 위반이어도 마지막 파싱 카드로 둔다(체크포인트에 한 번만 저장)
         out["candidate"] = at.valid_candidate(obj)
     if kind:
         out["invalid_kinds"] = [*(state.get("invalid_kinds") or []), kind]
@@ -169,7 +167,8 @@ async def draft(state: dict[str, Any], config: RunnableConfig) -> dict[str, Any]
         out["route"] = "guard_draft"
         return out
     out["draft_feedback"] = None
-    out["card"] = parsed if parsed is not None else dict(at.EMPTY_CARD)
+    if state.get("card") is None and "card" not in out:
+        out["card"] = dict(at.EMPTY_CARD)  # 파싱된 카드가 한 번도 없었다
     out["route"] = "check_auto"
     return out
 

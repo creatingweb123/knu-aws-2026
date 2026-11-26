@@ -15,7 +15,7 @@ class AgentState(TypedDict, total=False):
     llm_error: str | None               # 분류 코드
     invalid_kinds: list[str]            # NOT_JSON | SCHEMA (원문 없음)
     draft_feedback: str | None          # 재시도 메시지(위반 경로·제한만, 응답 원문 없음). BE-Q129
-    draft_card: dict[str, Any] | None   # 마지막으로 파싱된 초안 카드(재시도 뒤 JSON이 깨지면 이것을 쓴다)
+
     candidate: dict[str, Any] | None    # 첫 Candidate_Card
     first_proposal: dict[str, Any] | None  # 한 번만 쓴다
     first_report: dict[str, Any] | None    # 한 번만 쓴다
