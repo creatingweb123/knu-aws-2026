@@ -151,7 +151,17 @@ def pipeline_env(env: dict[str, str]) -> dict[str, str]:
     return e
 
 
-def probe_pipeline(env: dict[str, str], n: int) -> dict[str, Any]:
+def _legit_index(st: dict[str, Any], name: str | None) -> int | None:
+    """장소 이름이 legitPlaces 목록의 몇 번째인지. 목록에 없으면 None(목록 밖 장소)."""
+    if not name:
+        return None
+    for i, leg in enumerate(st.get("legitPlaces") or []):
+        if leg in name or name in leg:
+            return i
+    return None
+
+
+def probe_pipeline(env: dict[str, str], n: int, ids: list[str] | None = None, reps: int = 1) -> dict[str, Any]:
     from agent import graph as g
     from agent import llm
     from agent.timebudget import TimeBudget
@@ -162,7 +172,11 @@ def probe_pipeline(env: dict[str, str], n: int) -> dict[str, Any]:
     if settings.error:
         return {"config_error": settings.error}
     rows = []
-    for st in STORIES[:n]:
+    chosen = [st for st in STORIES if st["id"] in ids] if ids else STORIES[:n]
+    if ids and {st["id"] for st in chosen} != set(ids):
+        return {"config_error": f"알 수 없는 사연 id: {sorted(set(ids) - {st['id'] for st in STORIES})}"}
+    plan = [st for st in chosen for _ in range(reps)]
+    for st in plan:
         caller = llm.LlmCaller(settings, env=e)
         t = time.monotonic()
         state = asyncio.run(g.pipeline_graph().ainvoke(g.initial_state(st["story"]),
@@ -177,6 +191,8 @@ def probe_pipeline(env: dict[str, str], n: int) -> dict[str, Any]:
             "flags": {k: sum(1 for f in flags if f["type"] == k) for k in ("NOT_IN_SOURCE", "MISSING", "PRIVACY")},
             "first_not_in_source": len(((state.get("first_report") or {}).get("notInSource")) or []),
             "places": len(((state.get("final_card") or {}).get("places")) or []),
+            # BE-Q127: 장소는 사연 순서로 앞 3곳. 각 장소가 legitPlaces의 몇 번째인지(없으면 null). 이름은 남기지 않는다.
+            "legit_order": [_legit_index(st, p.get("name")) for p in ((state.get("final_card") or {}).get("places") or [])],
         })
         time.sleep(PAUSE_S)
     lat = [r["latency_s"] for r in rows]
@@ -284,6 +300,8 @@ def main() -> int:
     ap.add_argument("--env-file", default=str(BACKEND / ".env"))
     ap.add_argument("--stories", type=int, default=len(STORIES))
     ap.add_argument("--only", default="raw,pipeline,tools,handler")
+    ap.add_argument("--ids", default="", help="쉼표로 구분한 사연 id(pipeline만). 예: many_places")
+    ap.add_argument("--reps", type=int, default=1, help="ids 각각을 반복할 횟수(pipeline만)")
     args = ap.parse_args()
     env = read_env(args.env_file)
     report: dict[str, Any] = {"provider": env.get("LLM_PROVIDER_LABEL"), "base_url": env.get("LLM_BASE_URL"), "model": env.get("LLM_MODEL"),
@@ -292,7 +310,8 @@ def main() -> int:
     if "raw" in only:
         report["raw"] = probe_raw(env)
     if "pipeline" in only:
-        report["pipeline"] = probe_pipeline(env, args.stories)
+        ids = [x for x in args.ids.split(",") if x] or None
+        report["pipeline"] = probe_pipeline(env, args.stories, ids=ids, reps=args.reps)
     if "tools" in only:
         report["tools_langchain"] = probe_tools_langchain(env)
     if "handler" in only:

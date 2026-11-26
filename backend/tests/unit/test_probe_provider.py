@@ -51,3 +51,27 @@ def test_stories_fixture_is_synthetic_and_complete():
 
 def test_test_results_dir_is_gitignored():
     assert "test-results/" in (BACKEND / ".gitignore").read_text(encoding="utf-8").splitlines()
+
+
+def test_legit_index_matches_story_order():
+    """BE-Q127 확인용: 장소 이름이 legitPlaces의 몇 번째인지(목록 밖은 None). 이름 자체는 결과에 남지 않는다."""
+    mod = load_probe()
+    st = {"legitPlaces": ["빵집", "국숫집", "서점", "공원", "하천 다리"]}
+    assert [mod._legit_index(st, n) for n in ("출근길 빵집", "국숫집", "하천 다리", "카페", None, "")] == [0, 1, 4, None, None, None]
+
+
+def test_pipeline_ids_and_reps_with_fake(monkeypatch):
+    """Fake 시나리오로 --ids/--reps 경로를 돌린다(공급자 호출 0). 요약과 행에 이름이 없어야 한다."""
+    mod = load_probe()
+    monkeypatch.setattr(mod, "PAUSE_S", 0)
+    env = {"LLM_PROVIDER": "fake", "FAKE_LLM_ALLOWED": "true", "STAGE": "local", "FAKE_LLM_SCENARIO": "happy"}
+    out = mod.probe_pipeline(env, 0, ids=["demo"], reps=2)
+    assert len(out["rows"]) == 2 and {r["id"] for r in out["rows"]} == {"demo"}
+    assert all(r["status"] == "READY" and r["legit_order"] == [0, 1] for r in out["rows"])  # happy 장소 2곳은 legitPlaces[0], [1]
+    text = json.dumps(out, ensure_ascii=False)
+    assert "출근길 빵집" not in text and "빵집에" not in text
+    # 원문에 없는 장소(many_places 사연의 happy 카드)는 게이트가 빼서 degraded이고 legit_order가 비어야 한다
+    gate = mod.probe_pipeline(env, 0, ids=["many_places"], reps=1)["rows"][0]
+    assert gate["degraded"] is True and gate["legit_order"] == [] and gate["first_not_in_source"] >= 1
+    bad = mod.probe_pipeline(env, 0, ids=["nope"], reps=1)
+    assert "config_error" in bad and "nope" in bad["config_error"]
