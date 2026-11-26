@@ -32,56 +32,56 @@ push 전 확인(각 Checkpoint와 push마다)
 
 ### 묶음 A: 승인·AWS 없이 하는 작업
 
-- [ ] 1. AiSession 잠금·커밋 서비스 (`domain/ai_session_service.py`, `common/validation.py`)
+- [x] 1. AiSession 잠금·커밋 서비스 (`domain/ai_session_service.py`, `common/validation.py`)
   - 선행: 없음
-  - [ ] 1.1 새 속성(design §3.1: `lockToken`, `lockedUntil`, `lockedAt`, `turnAttempts`, `turnRuns`, `pendingResume`, `question`, `questionAskedAt`, `askedPaths`, `checkpointId`, `modelCallsReserved`, `tokenCharged`, `tokenInEstimated`, `checkDraftCount`, `gateRejects`, `questionsAsked`, `bestCard`, `recoveries`, `checkpointBytesMax`)과 에이전트 생성 항목(`turn 0`, `WORKING`, 잠금) 빌더. 6a `build_session_item`·`serialize_session_view` 동작 불변(레벨 0 항목 바이트 비교).
+  - [x] 1.1 새 속성(design §3.1: `lockToken`, `lockedUntil`, `lockedAt`, `turnAttempts`, `turnRuns`, `pendingResume`, `question`, `questionAskedAt`, `askedPaths`, `checkpointId`, `modelCallsReserved`, `tokenCharged`, `tokenInEstimated`, `checkDraftCount`, `gateRejects`, `questionsAsked`, `bestCard`, `recoveries`, `checkpointBytesMax`)과 에이전트 생성 항목(`turn 0`, `WORKING`, 잠금) 빌더. 6a `build_session_item`·`serialize_session_view` 동작 불변(레벨 0 항목 바이트 비교).
     - _Requirements: 2.4, 2.5 · BE-Q100_
-  - [ ] 1.2 `acquire_lock(…)`: design §5.2 조건식·갱신식(소유자·TTL·turn·상태·잠금 만료, 답변/finish 조건, `pendingResume if_not_exists`, `finishRequested`, `turnRuns list_append`, `ADD turnAttempts`, `ALL_NEW`). 결과: 성공 / 조건 실패 / 불확실.
+  - [x] 1.2 `acquire_lock(…)`: design §5.2 조건식·갱신식(소유자·TTL·turn·상태·잠금 만료, 답변/finish 조건, `pendingResume if_not_exists`, `finishRequested`, `turnRuns list_append`, `ADD turnAttempts`, `ALL_NEW`). 결과: 성공 / 조건 실패 / 불확실.
     - _Requirements: 4.1–4.4, 4.6 · BE-Q93, BE-Q96, BE-Q110, BE-Q118_
-  - [ ] 1.3 잠금 실패 분기(design §5.1 ⑥): 다시 읽어 404 → 200 → 409 CLOSED → 409 BUSY → 400/500.
+  - [x] 1.3 잠금 실패 분기(design §5.1 ⑥): 다시 읽어 404 → 200 → 409 CLOSED → 409 BUSY → 400/500.
     - _Requirements: 3.2, 4.5_
-  - [ ] 1.4 `commit_turn(…)`: design §5.3(조건 `lockToken`·`turn`, `turn + 1`, 상태별 필드, `answers` 추가, `tokenCharged` 보정 ADD, 잠금·`pendingResume`·`turnRuns` 제거). `verify_commit`(강한 일관성 확인 조회), 조건 실패 재조회 분기.
+  - [x] 1.4 `commit_turn(…)`: design §5.3(조건 `lockToken`·`turn`, `turn + 1`, 상태별 필드, `answers` 추가, `tokenCharged` 보정 ADD, 잠금·`pendingResume`·`turnRuns` 제거). `verify_commit`(강한 일관성 확인 조회), 조건 실패 재조회 분기.
     - _Requirements: 5.1–5.5 · BE-Q89 방식_
-  - [ ] 1.5 `release_lock(…)`(design §9.3 중단 해제)과 `close_deterministically` 저장 함수(design §7.1, 잠금 조건).
+  - [x] 1.5 `release_lock(…)`(design §9.3 중단 해제)과 `close_deterministically` 저장 함수(design §7.1, 잠금 조건).
     - _Requirements: 7.4, 7.6, 12.3 · BE-Q113, BE-Q121_
-  - [ ] 1.6 상태 기반 검증(design §5.4 표): `questionId`·`choice ∈ options`·`allowFreeText`·`ASKING` 무입력·`WORKING` 답변(멱등/400).
+  - [x] 1.6 상태 기반 검증(design §5.4 표): `questionId`·`choice ∈ options`·`allowFreeText`·`ASKING` 무입력·`WORKING` 답변(멱등/400).
     - _Requirements: 3.3–3.6 · BE-Q109_
-  - [ ] 1.7 단위 테스트 (`tests/unit/test_agent_lock.py`, moto): 조건식 각 항목을 하나씩 깨뜨린 사례, 만료 경계(`lockedUntil = now`), `pendingResume` 첫 답 우선, `turnRuns` 순서, 커밋 조건 실패·불확실(Stubber/주입), 중단 해제, 6a 레벨 0 항목 불변.
+  - [x] 1.7 단위 테스트 (`tests/unit/test_agent_lock.py`, moto): 조건식 각 항목을 하나씩 깨뜨린 사례, 만료 경계(`lockedUntil = now`), `pendingResume` 첫 답 우선, `turnRuns` 순서, 커밋 조건 실패·불확실(Stubber/주입), 중단 해제, 6a 레벨 0 항목 불변.
     - _Requirements: 4, 5, 20.2_
 
-- [ ] 2. 모델 호출 예약 (`agent/budget.py`, `agent/llm.py`)
+- [x] 2. 모델 호출 예약 (`agent/budget.py`, `agent/llm.py`)
   - 선행: 1.1
-  - [ ] 2.1 `BudgetService.reserve(est)`: design §8.1 조건식(`lockToken`, `modelCallsReserved < 6`, `tokenCharged + est ≤ 30000`), 결과 `Reservation` / `FenceLost` / `BudgetExhausted(kind)` / `ReservationUncertain`. 환불 없음. `NoopBudget`(레벨 0·평가).
+  - [x] 2.1 `BudgetService.reserve(est)`: design §8.1 조건식(`lockToken`, `modelCallsReserved < 6`, `tokenCharged + est ≤ 30000`), 결과 `Reservation` / `FenceLost` / `BudgetExhausted(kind)` / `ReservationUncertain`. 환불 없음. `NoopBudget`(레벨 0·평가).
     - _Requirements: 11.1, 11.4, 11.8 · BE-Q97_
-  - [ ] 2.2 `LlmCaller(…, budget=)`: 호출 직전 예약, 불확실이면 호출하지 않음, `bind_tools` 지원(`parallel_tool_calls`는 설정 시만, `tool_choice`는 값이 있을 때만), 예약 뒤 `ai-slow` 훅 자리(작업 13.4). 6a 호출·분류·deadline·AsyncClient 종료 불변.
+  - [x] 2.2 `LlmCaller(…, budget=)`: 호출 직전 예약, 불확실이면 호출하지 않음, `bind_tools` 지원(`parallel_tool_calls`는 설정 시만, `tool_choice`는 값이 있을 때만), 예약 뒤 `ai-slow` 훅 자리(작업 13.4). 6a 호출·분류·deadline·AsyncClient 종료 불변.
     - _Requirements: 8.1, 12.1 · BE-AI-02, BE-Q78_
-  - [ ] 2.3 토큰: `est`(글자 수 / `AI_TOKEN_EST_DIVISOR`=2, 도구 스키마 포함), 보고·추정·차감 구분(design §8.3).
+  - [x] 2.3 토큰: `est`(글자 수 / `AI_TOKEN_EST_DIVISOR`=2, 도구 스키마 포함), 보고·추정·차감 구분(design §8.3).
     - _Requirements: 11.5, 11.6 · BE-Q120_
-  - [ ] 2.4 단위 테스트 (`tests/unit/test_agent_budget.py`): 6회·토큰·`lockToken` 조건, 불확실 시 Fake 호출 0, 예약 뒤 실패해도 환불 없음, 복구 재호출이 같은 6회 안(보완 4), 늦은 예약 반영(주입), 토큰 보정, 6a `LlmCaller` 테스트 전부 회귀.
+  - [x] 2.4 단위 테스트 (`tests/unit/test_agent_budget.py`): 6회·토큰·`lockToken` 조건, 불확실 시 Fake 호출 0, 예약 뒤 실패해도 환불 없음, 복구 재호출이 같은 6회 안(보완 4), 늦은 예약 반영(주입), 토큰 보정, 6a `LlmCaller` 테스트 전부 회귀.
     - _Requirements: 11, 20.2_
-  - [ ] 2.5 Write property test (`tests/unit/test_agent_properties.py`)
+  - [x] 2.5 Write property test (`tests/unit/test_agent_properties.py`)
     - **Property 37: 임의의 응답·턴·장애 열에서 `modelCallsReserved` ≤ 6, 실제 호출 ≤ 예약, `tokenCharged` ≤ 30,000 + 마지막 보정분, 카운터는 줄지 않는다**
     - **Validates: Requirements 11.1, 11.4, 11.8 · BE-Q97**
 
-- [ ] 3. 체크포인트 저장소 (`agent/checkpoint.py`)
+- [x] 3. 체크포인트 저장소 (`agent/checkpoint.py`)
   - 선행: 1.1
-  - [ ] 3.1 `CheckpointStore`: 공유 `DynamoDBSaver`(콜드 스타트 1회, 체크포인트 전용 SDK 설정 connect 1·read 1·시도 1), 실행별 얕은 복사(울타리 `FENCE_MS` 24초, `COMMIT_RESERVE_MS`, 실행별 `ttl_seconds = 세션 ttl − now − 60`), 동기 `aput`·`aput_writes`·`aget_tuple`·`alist`·`adelete_thread`, 페이로드 크기 측정, `CHECKPOINT_DDB_ENDPOINT`.
+  - [x] 3.1 `CheckpointStore`: 공유 `DynamoDBSaver`(콜드 스타트 1회, 체크포인트 전용 SDK 설정 connect 1·read 1·시도 1), 실행별 얕은 복사(울타리 `FENCE_MS` 24초, `COMMIT_RESERVE_MS`, 실행별 `ttl_seconds = 세션 ttl − now − 60`), 동기 `aput`·`aput_writes`·`aget_tuple`·`alist`·`adelete_thread`, 페이로드 크기 측정, `CHECKPOINT_DDB_ENDPOINT`.
     - _Requirements: 6.1–6.3, 6.6 · BE-Q104, BE-Q105, BE-Q119, BE-Q125_
-  - [ ] 3.2 `select_tip(session, hist)`: design §6.2(자손·`runTurn`·`runId ∈ turnRuns`·`runAttempt`·`consumedResumeIds` 검사, 가장 큰 시도의 최신, 없으면 base, base 없음 → F11), 사유 코드 로그.
+  - [x] 3.2 `select_tip(session, hist)`: design §6.2(자손·`runTurn`·`runId ∈ turnRuns`·`runAttempt`·`consumedResumeIds` 검사, 가장 큰 시도의 최신, 없으면 base, base 없음 → F11), 사유 코드 로그.
     - _Requirements: 7.1 · BE-Q94, BE-Q126_
-  - [ ] 3.3 `classify_resume(state, session)`: design §6.3 표(질문 재개 / pause 재개 / 다른 질문 대기 / 턴 종료 / 중간 정지 / 이상).
+  - [x] 3.3 `classify_resume(state, session)`: design §6.3 표(질문 재개 / pause 재개 / 다른 질문 대기 / 턴 종료 / 중간 정지 / 이상).
     - _Requirements: 6.4, 7.1–7.3 · BE-Q19, BE-Q95_
-  - [ ] 3.4 삭제: 종료 커밋 확인 뒤 남은 시간 ≥ 1.5초일 때 1회, 실패·생략 사유 코드.
+  - [x] 3.4 삭제: 종료 커밋 확인 뒤 남은 시간 ≥ 1.5초일 때 1회, 실패·생략 사유 코드.
     - _Requirements: 6.7 · BE-Q103_
-  - [ ] 3.5 단위 테스트 (`tests/unit/test_agent_checkpoint.py`, moto): 울타리(시작 거부·커밋 여유), 스레드 미사용, tip 선택(포크·늦은 쓰기·다른 턴·모르는 실행·모르는 `resumeId`·더 큰 시도 우선), TTL ≤ 세션 TTL, 크기 측정, 삭제 정책.
+  - [x] 3.5 단위 테스트 (`tests/unit/test_agent_checkpoint.py`, moto): 울타리(시작 거부·커밋 여유), 스레드 미사용, tip 선택(포크·늦은 쓰기·다른 턴·모르는 실행·모르는 `resumeId`·더 큰 시도 우선), TTL ≤ 세션 TTL, 크기 측정, 삭제 정책.
     - _Requirements: 6, 7, 20.2_
-  - [ ] 3.6 호환성 테스트 (`tests/unit/test_agent_checkpoint_compat.py`): design §24.1의 1–6(버전 일치, 내부 속성, 복사 독립, 스레드 수, DynamoDB 연산 5개, metadata 표지).
+  - [x] 3.6 호환성 테스트 (`tests/unit/test_agent_checkpoint_compat.py`): design §24.1의 1–6(버전 일치, 내부 속성, 복사 독립, 스레드 수, DynamoDB 연산 5개, metadata 표지).
     - _Requirements: 24.2, 24.4 · BE-Q119_
-  - [ ] 3.7 Write property test
+  - [x] 3.7 Write property test
     - **Property 46: 체크포인트 `ttl` ≤ AiSession `ttl`. 임의의 늦은 쓰기·포크·표지 오염에서 tip은 커밋 기준의 자손이고 조상은 이번 턴·`turnRuns` 실행·알려진 `resumeId`만 담으며, 더 큰 시도 가지가 있으면 그 가지에서 고른다**
     - **Validates: Requirements 6.3, 7.1 · BE-Q94, BE-Q104**
 
-- [ ] 4. Checkpoint A - 저장 계층
+- [x] 4. Checkpoint A - 저장 계층
   - 작업 1–3 테스트, P37·P46 통과. `pytest tests/unit` 전체(722건 + 새 테스트) 실패 0. 레벨 0 경로 불변. **push 전 확인 → commit → push.**
   - _Requirements: 20.4, 20.5_
 
