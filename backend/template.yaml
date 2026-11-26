@@ -1,8 +1,8 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Transform: AWS::Serverless-2016-10-31
 Description: >-
-  이어온 하루 백엔드 1–3단계와 6a단계 (HttpApi + JWT authorizer, Cognito, HaruTable, /me, /plans, /claims,
-  AI 하루 카드 레벨 0 /ai/card-sessions). CloudFront·웹 버킷·사진·6b 체크포인트 테이블은 이후 단계에서 추가한다.
+  이어온 하루 백엔드 1–3단계와 6a·6b단계 (HttpApi + JWT authorizer, Cognito, HaruTable, /me, /plans, /claims,
+  AI 하루 카드 /ai/card-sessions, 레벨 0과 6b 에이전트·체크포인트 테이블). CloudFront·웹 버킷·사진은 이후 단계에서 추가한다.
 
 Parameters:
   AllowedOrigins:
@@ -64,9 +64,14 @@ Parameters:
     Description: 6b bind_tools용. 레벨 0은 쓰지 않는다.
   AgentMode:
     Type: String
-    AllowedValues: [pipeline]
+    AllowedValues: [pipeline, agent]
     Default: pipeline
-    Description: 6a는 레벨 0만 배포한다. agent는 6b에서 연다(BE-Q87).
+    Description: pipeline = 레벨 0(6a), agent = 6b 에이전트. 바꾸면 진행 중 에이전트 세션은 다음 요청에서 결정적으로 닫힌다(design §13).
+  AiFaultInject:
+    Type: String
+    AllowedValues: ["", ai-slow]
+    Default: ""
+    Description: dev 전용 장애 주입(T21, BE-Q107). 5단계 FaultInject와 이름을 나눈다.
   AiDailySessionLimit:
     Type: String
     Default: "10"
@@ -82,6 +87,10 @@ Rules:
     Assertions:
       - Assert: !Or [!Equals [!Ref Stage, dev], !Equals [!Ref LlmProvider, openai_compat]]
         AssertDescription: LlmProvider=fake는 Stage=dev에서만 쓸 수 있다(BE-Q86).
+  AiFaultInjectOnlyInDev:
+    Assertions:
+      - Assert: !Or [!Equals [!Ref Stage, dev], !Equals [!Ref AiFaultInject, ""]]
+        AssertDescription: AiFaultInject는 Stage=dev에서만 쓸 수 있다(BE-Q107).
 
 Globals:
   Function:
@@ -127,6 +136,23 @@ Resources:
       TimeToLiveSpecification:
         AttributeName: ttl
         Enabled: true
+
+  # 6b 에이전트 그래프 체크포인트(design §18.1). 항목 ttl ≤ AiSession ttl(BE-Q104). AiCardFunction만 쓴다.
+  HaruAgentCheckpoints:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: PK, AttributeType: S }
+        - { AttributeName: SK, AttributeType: S }
+      KeySchema:
+        - { AttributeName: PK, KeyType: HASH }
+        - { AttributeName: SK, KeyType: RANGE }
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
 
   UserPool:
     Type: AWS::Cognito::UserPool
@@ -272,6 +298,10 @@ Resources:
           LLM_TOOL_CHOICE: !Ref LlmToolChoice
           LLM_PARALLEL_TOOL_CALLS: !Ref LlmParallelToolCalls
           AGENT_MODE: !Ref AgentMode
+          CHECKPOINT_TABLE: !Ref HaruAgentCheckpoints
+          # 장애 주입 세 겹 차단: Rules, 이 조건(dev ∧ haru-dev), 런타임(FAULT_INJECT_ALLOWED ∧ 함수 이름 haru-dev-)
+          FAULT_INJECT: !If [FakeAllowed, !Ref AiFaultInject, ""]
+          FAULT_INJECT_ALLOWED: !If [FakeAllowed, "true", "false"]
           AI_DAILY_SESSION_LIMIT: !Ref AiDailySessionLimit
           # AI 함수 전용 SDK 설정(BE-Q85). 다른 함수는 기본값 그대로다(BE-Q48).
           AI_SDK_CONNECT_TIMEOUT_S: "1"
@@ -288,6 +318,12 @@ Resources:
               Condition:
                 ForAllValues:StringLike:
                   dynamodb:LeadingKeys: ["AISESSION#*", "AIQUOTA#*"]
+        - Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              # 체크포인트 라이브러리가 쓰는 연산 5개뿐(V9). delete_thread는 BatchWriteItem DeleteRequest
+              Action: [dynamodb:GetItem, dynamodb:PutItem, dynamodb:Query, dynamodb:BatchGetItem, dynamodb:BatchWriteItem]
+              Resource: !GetAtt HaruAgentCheckpoints.Arn
         - !If
           - HasLlmKeyParam
           - Version: "2012-10-17"
@@ -307,6 +343,20 @@ Resources:
         AiCardSessionTurn:
           Type: HttpApi
           Properties: { ApiId: !Ref HttpApi, Path: "/ai/card-sessions/{sessionId}/turns", Method: POST }
+
+  # 에이전트 토큰 사용량(design §17, BE-Q114 임시). 세션 상한 3만 × 10. 알림 대상은 두지 않는다(BE-Q62와 같은 방식).
+  AgentTokensAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: AI 에이전트 토큰 5분 합계가 300,000을 넘었다(임시 임계값, BE-Q114).
+      Namespace: Haru
+      MetricName: AgentTokens
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 300000
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
 
   PreSignUpFunction:
     Type: AWS::Serverless::Function

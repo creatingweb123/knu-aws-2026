@@ -186,31 +186,32 @@ push 전 확인(각 Checkpoint와 push마다)
   - 상태: 단위 1016건 통과(P29–P48, F0–F17 포함). 강제 종료 흉내는 한 번 죽으면 이후 모든 지점에서 던지게 했다(LangGraph가 일부 put 예외를 늦게 드러내므로).
   - _Requirements: 20_
 
-- [ ] 13. 인프라 (`template.yaml`, `agent/fault.py`, `docker-compose.yml`, `.env.example`)
+- [x] 13. 인프라 (`template.yaml`, `agent/fault.py`, `docker-compose.yml`, `.env.example`)
   - 선행: 10
-  - [ ] 13.1 `HaruAgentCheckpoints`(PK/SK, TTL, on-demand, PITR), AiCardFunction 세 번째 정책(5개 연산, 이 테이블만), `CHECKPOINT_TABLE`, `AgentMode: [pipeline, agent]`(기본 `pipeline`).
+  - [x] 13.1 `HaruAgentCheckpoints`(PK/SK, TTL, on-demand, PITR), AiCardFunction 세 번째 정책(5개 연산, 이 테이블만), `CHECKPOINT_TABLE`, `AgentMode: [pipeline, agent]`(기본 `pipeline`).
     - _Requirements: 24.1–24.3, 15.1 · BE-INFRA-06, BE-INFRA-07_
-  - [ ] 13.2 `AgentTokens` 알람(5분 합계 300,000, 알림 대상 없음).
+  - [x] 13.2 `AgentTokens` 알람(5분 합계 300,000, 알림 대상 없음).
     - _Requirements: 18.4 · BE-Q114_
-  - [ ] 13.3 `AiFaultInject`(`""`, `ai-slow`), Rules, 환경 값 `!If [FakeAllowed, …]`, 런타임 확인(`FAULT_INJECT_ALLOWED`, 함수 이름 `haru-dev-` 또는 로컬).
+  - [x] 13.3 `AiFaultInject`(`""`, `ai-slow`), Rules, 환경 값 `!If [FakeAllowed, …]`, 런타임 확인(`FAULT_INJECT_ALLOWED`, 함수 이름 `haru-dev-` 또는 로컬).
     - _Requirements: 22.3 · BE-Q107_
-  - [ ] 13.4 `agent/fault.py`: 예약 뒤 호출 직전 9초 지연(deadline 안, 취소 가능, Fake·실제 공통).
+  - [x] 13.4 `agent/fault.py`: 예약 뒤 호출 직전 9초 지연(deadline 안, 취소 가능, Fake·실제 공통).
     - _Requirements: 22.3 · BE-Q108_
-  - [ ] 13.5 compose `AGENT_MODE: ${AGENT_MODE:-pipeline}`, `CHECKPOINT_DDB_ENDPOINT`, `AGENT_TEST_HOOKS`(로컬 전용). `.env.example` 주석.
+  - [x] 13.5 compose `AGENT_MODE: ${AGENT_MODE:-pipeline}`, `CHECKPOINT_DDB_ENDPOINT`, `AGENT_TEST_HOOKS`(로컬 전용). `.env.example` 주석.
     - _Requirements: 21.2_
-  - [ ] 13.6 템플릿 단위 테스트: 새 리소스·권한·다른 함수 권한 없음·`AgentMode` 값·`AiFaultInject` 세 겹 차단 평가(Stage·스택 이름 조합)·알람·경로 일치·`LLM_API_KEY` 미정의. 기대값이 바뀐 6a 템플릿 테스트 목록과 근거.
+  - [x] 13.6 템플릿 단위 테스트: 새 리소스·권한·다른 함수 권한 없음·`AgentMode` 값·`AiFaultInject` 세 겹 차단 평가(Stage·스택 이름 조합)·알람·경로 일치·`LLM_API_KEY` 미정의. 기대값이 바뀐 6a 템플릿 테스트 목록과 근거.
     - _Requirements: 24, 20.5_
 
-- [ ] 14. 빌드와 의존성 격리 재검증
+- [x] 14. 빌드와 의존성 격리 재검증
   - 선행: 13
-  - [ ] 14.1 `cfn-lint` 0건, `sam validate --lint`, `sam build --use-container`(AI 잠금 `--require-hashes`).
+  - [x] 14.1 `cfn-lint` 0건, `sam validate --lint`, `sam build --use-container`(AI 잠금 `--require-hashes`).
     - _Requirements: 24.6_
-  - [ ] 14.2 `scripts/check_ai_build.py` 확장: 에이전트 그래프 컴파일 + Fake `ask_once`(메모리 체크포인터) + `agent.checkpoint` import, 크기·import 시간(5회), 다른 함수 산출물 AI 패키지 0·체크포인트 테이블 권한 0, PlansFunction 인증 경로(6a 검사) 유지.
+  - [x] 14.2 `scripts/check_ai_build.py` 확장: 에이전트 그래프 컴파일 + Fake `ask_once`(메모리 체크포인터) + `agent.checkpoint` import, 크기·import 시간(5회), 다른 함수 산출물 AI 패키지 0·체크포인트 테이블 권한 0, PlansFunction 인증 경로(6a 검사) 유지.
     - _Requirements: 24.5 · BE-Q18_
-  - [ ] 14.3 측정값 기록(6a 96.2MB·37.0MB·1.16–1.36초와 비교).
+  - [x] 14.3 측정값 기록(6a 96.2MB·37.0MB·1.16–1.36초와 비교).
     - _Requirements: 24.5_
+    - 상태(로컬 측정): AiCardFunction 압축 해제 96.3MB·zip 37.0MB(6a 96.2·37.0), handlers.ai_card import 중앙값 1.24초(1.21–1.26), 에이전트 모듈 포함 import 1.34초(1.31–1.43), 에이전트 Fake ask_once ASKING→READY 0.03초·최대 RSS 98.8MB, 다른 함수 8.1MB·AI 패키지 0. cfn-lint 0건, `sam validate --lint` 통과, `sam build --use-container`(`--require-hashes`) 성공.
 
-- [ ] 15. Checkpoint D - SAM·빌드
+- [x] 15. Checkpoint D - SAM·빌드
   - 14 전부 통과, 단위 전체 실패 0. **push 전 확인 → commit → push.**
   - _Requirements: 24.6_
 

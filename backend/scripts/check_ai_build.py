@@ -7,6 +7,8 @@
 2. AiCardFunction 압축 해제·zip 크기, 상위 10개 패키지, 250MB 한도.
 3. Lambda 런타임 컨테이너(public.ecr.aws/lambda/python:3.12)에서 handlers.ai_card import 시간(N회, 매번 새 프로세스),
    Fake 모델로 그래프 1회(DB 없음), zoneinfo Asia/Seoul, 최대 RSS.
+   6b: handlers.ai_agent·agent.checkpoint import 시간(N회), 에이전트 그래프 컴파일 + Fake ask_once
+   (메모리 체크포인터, 생성 → 질문 → 답 → READY), 최대 RSS.
 4. 함수마다 그 산출물 디렉터리 하나만 /var/task로 붙여 독립 import·실행: 인증 없는 API 이벤트 → 401,
    sys.modules에 AI 패키지 없음(AiCardFunction 제외), PlansFunction은 ai_metrics 계산, PreSignUp은 표본 이벤트.
 5. (--local-ddb-network 지정 시) PlansFunction 산출물을 AI 패키지 import를 막은 채 로컬 Floci DynamoDB에 붙여
@@ -107,6 +109,46 @@ state = asyncio.run(g.build_pipeline_graph().ainvoke(g.initial_state("출근길 
                     config={"configurable": {"llm": caller, "deadline": TimeBudget(Ctx(), None)}}))
 print(json.dumps({"import_s": round(import_s, 3), "graph_s": round(time.perf_counter() - t, 3), "outcome": list(g.decide_outcome(state)),
                   "zoneinfo": str(ZoneInfo("Asia/Seoul")), "max_rss_mb": round(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024, 1)}))
+"""
+
+AGENT_IMPORT_CODE = r"""
+import json, time
+t = time.perf_counter()
+import handlers.ai_card, handlers.ai_agent, agent.checkpoint
+import langgraph_checkpoint_aws
+print(json.dumps({"import_s": round(time.perf_counter() - t, 3)}))
+"""
+
+AGENT_CODE = r"""
+import asyncio, json, os, resource, time
+os.environ["FAKE_LLM_SCENARIO"] = "ask_once"
+t = time.perf_counter()
+from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.types import Command
+from agent import llm
+from agent.agent_nodes import initial_agent_state
+from agent.budget import NoopBudget
+from agent.graph import build_agent_graph
+from agent.timebudget import AgentDeadline, TimeBudget
+import agent.checkpoint
+import_s = time.perf_counter() - t
+class Ctx:
+    def get_remaining_time_in_millis(self):
+        return 25000
+caller = llm.LlmCaller(llm.load_settings(), budget=NoopBudget(), agent=True)
+def cfg(turn):
+    return {"configurable": {"thread_id": "chk", "llm": caller, "deadline": AgentDeadline(TimeBudget(Ctx(), None), None),
+                             "run_turn": turn, "finish_requested": False}}
+t = time.perf_counter()
+app = build_agent_graph(InMemorySaver())
+compile_s = time.perf_counter() - t
+t = time.perf_counter()
+r1 = asyncio.run(app.ainvoke(initial_agent_state("출근길 빵집에 들러 빵을 사고 하천 벤치에 앉아 쉬고 싶었어요."), cfg(1)))
+it = r1["__interrupt__"][0]
+r2 = asyncio.run(app.ainvoke(Command(resume={it.id: {"questionId": it.value["questionId"], "resumeId": "r1-q1", "choice": "45분"}}), cfg(2)))
+print(json.dumps({"import_s": round(import_s, 3), "compile_s": round(compile_s, 3), "run_s": round(time.perf_counter() - t, 3),
+                  "outcomes": [r1.get("outcome"), r2.get("outcome")], "calls": caller.calls_made,
+                  "max_rss_mb": round(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024, 1)}))
 """
 
 INDEPENDENT_CODE = r"""
@@ -253,6 +295,19 @@ def main() -> int:
             times.append(r["import_s"])
         if times:
             ai["import_s"] = {"runs": times, "median": statistics.median(times), "max": max(times)}
+        agent_times = []
+        for _ in range(args.runs):
+            r = run_in_runtime(ai_dir, AGENT_IMPORT_CODE)
+            if not r["ok"]:
+                report["failures"].append(f"에이전트 모듈 import 실패: {r['error']}")
+                break
+            agent_times.append(r["import_s"])
+        if agent_times:
+            ai["agent_import_s"] = {"runs": agent_times, "median": statistics.median(agent_times), "max": max(agent_times)}
+        a = run_in_runtime(ai_dir, AGENT_CODE)
+        ai["agent_run"] = a
+        if not a["ok"] or a.get("outcomes") != ["ASKING", "READY"]:
+            report["failures"].append(f"에이전트 그래프 확인 실패: {a}")
         g = run_in_runtime(ai_dir, GRAPH_CODE)
         ai["graph_run"] = g
         if not g["ok"] or g.get("outcome", [None])[0] != "READY" or g.get("zoneinfo") != "Asia/Seoul":

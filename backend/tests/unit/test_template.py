@@ -154,8 +154,8 @@ def test_outputs_and_scope(template):
     assert set(template["Outputs"]) == {"ApiUrl", "UserPoolId", "UserPoolClientId"}
     types = {r["Type"] for r in template["Resources"].values()}
     assert "AWS::CloudFront::Distribution" not in types and "AWS::S3::Bucket" not in types
-    assert "HaruAgentCheckpoints" not in template["Resources"]  # 6b 작업(BE-Q84)
-    assert "AWS::DynamoDB::Table" in types and [k for k, r in template["Resources"].items() if r["Type"] == "AWS::DynamoDB::Table"] == ["HaruTable"]
+    # 6b: 체크포인트 테이블이 생겼다(6a의 "없음" 기대값을 바꿈, design §18.1)
+    assert [k for k, r in template["Resources"].items() if r["Type"] == "AWS::DynamoDB::Table"] == ["HaruTable", "HaruAgentCheckpoints"]
 
 
 def test_no_stage3_dependencies():
@@ -197,6 +197,10 @@ def test_ai_function_env(template):
     assert env["FAKE_LLM_ALLOWED"] == {"!If": ["FakeAllowed", "true", "false"]}
     assert env["LLM_API_KEY_PARAM"] == {"!If": ["HasLlmKeyParam", {"!Ref": "LlmApiKeyParam"}, {"!Ref": "AWS::NoValue"}]}
     assert env["LLM_MAX_RETRIES"] == "0" and env["AGENT_MODE"] == {"!Ref": "AgentMode"}
+    assert env["CHECKPOINT_TABLE"] == {"!Ref": "HaruAgentCheckpoints"} and "CHECKPOINT_DDB_ENDPOINT" not in env
+    assert env["FAULT_INJECT"] == {"!If": ["FakeAllowed", {"!Ref": "AiFaultInject"}, ""]}
+    assert env["FAULT_INJECT_ALLOWED"] == {"!If": ["FakeAllowed", "true", "false"]}
+    assert not any(k.startswith("AGENT_TEST") or k == "AGENT_CRASH_AT" for k in env)  # 로컬 전용 훅은 AWS에 없다
     for k in ("LLM_BASE_URL", "LLM_MODEL", "LLM_TOOL_CHOICE", "LLM_PARALLEL_TOOL_CALLS", "LLM_TEMPERATURE", "LLM_MAX_TOKENS",
               "LLM_CONNECT_TIMEOUT_S", "LLM_READ_TIMEOUT_S", "LLM_EXTRA_BODY", "LLM_PROVIDER_LABEL", "AI_DAILY_SESSION_LIMIT"):
         assert k in env, k
@@ -212,7 +216,8 @@ def test_ai_parameters(template):
     p = template["Parameters"]
     assert p["Stage"] == {"Type": "String", "AllowedValues": ["dev", "demo"], "Default": "demo", "Description": p["Stage"]["Description"]}
     assert p["LlmProvider"]["AllowedValues"] == ["openai_compat", "fake"] and p["LlmProvider"]["Default"] == "openai_compat"
-    assert p["AgentMode"]["AllowedValues"] == ["pipeline"] and p["AgentMode"]["Default"] == "pipeline"
+    assert p["AgentMode"]["AllowedValues"] == ["pipeline", "agent"] and p["AgentMode"]["Default"] == "pipeline"  # 6b에서 agent를 연다
+    assert p["AiFaultInject"]["AllowedValues"] == ["", "ai-slow"] and p["AiFaultInject"]["Default"] == ""
     for k in ("LlmBaseUrl", "LlmModel", "LlmApiKeyParam", "LlmProviderLabel", "LlmExtraBody"):
         assert p[k]["Default"] == "", k
     assert p["AiDailySessionLimit"]["Default"] == "10" and p["LlmMaxTokens"]["Default"] == "800"
@@ -229,20 +234,27 @@ def test_key_param_pattern(template, value, ok):
 
 def test_ai_iam(template):
     policies = template["Resources"]["AiCardFunction"]["Properties"]["Policies"]
-    assert len(policies) == 2
+    assert len(policies) == 3  # 6b: 체크포인트 테이블 문장 추가(6a 기대값 2 → 3)
     (ddb_stmt,) = policies[0]["Statement"]
     assert ddb_stmt["Effect"] == "Allow" and set(ddb_stmt["Action"]) == {"dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:UpdateItem"}
     assert ddb_stmt["Resource"] == {"!GetAtt": "HaruTable.Arn"}  # index/* 없음
     assert ddb_stmt["Condition"] == {"ForAllValues:StringLike": {"dynamodb:LeadingKeys": ["AISESSION#*", "AIQUOTA#*"]}}
-    cond, doc, none = policies[1]["!If"]
+    (ck_stmt,) = policies[1]["Statement"]
+    assert ck_stmt["Effect"] == "Allow" and "Condition" not in ck_stmt
+    assert set(ck_stmt["Action"]) == {"dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:Query", "dynamodb:BatchGetItem",
+                                      "dynamodb:BatchWriteItem"}
+    assert ck_stmt["Resource"] == {"!GetAtt": "HaruAgentCheckpoints.Arn"}  # 이 테이블만, index 없음
+    cond, doc, none = policies[2]["!If"]
     assert cond == "HasLlmKeyParam" and none == {"!Ref": "AWS::NoValue"}
     (ssm_stmt,) = doc["Statement"]
     assert ssm_stmt["Action"] == "ssm:GetParameter"
     assert ssm_stmt["Resource"] == {"!Sub": "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter${LlmApiKeyParam}"}
     text = (BACKEND / "template.yaml").read_text(encoding="utf-8")
-    for forbidden in ("dynamodb:Query", "dynamodb:Scan", "TransactWriteItems", "GetParameters", "kms:"):
-        ai_block = text[text.index("  AiCardFunction:"): text.index("  PreSignUpFunction:")]
+    ai_block = text[text.index("  AiCardFunction:"): text.index("  AgentTokensAlarm:")]
+    for forbidden in ("dynamodb:Scan", "dynamodb:DeleteItem", "TransactWriteItems", "GetParameters", "kms:"):
         assert forbidden not in ai_block, forbidden
+    haru_stmts = [st for pol in policies[:2] for st in pol["Statement"] if st["Resource"] == {"!GetAtt": "HaruTable.Arn"}]
+    assert all("dynamodb:Query" not in st["Action"] for st in haru_stmts)  # HaruTable에는 여전히 Query 없음
 
 
 def test_other_functions_have_no_ai_settings(template):
@@ -256,6 +268,68 @@ def test_other_functions_have_no_ai_settings(template):
             assert "!If" not in policy
             for stmt in policy["Statement"]:
                 assert not any(str(a).startswith(("ssm:", "kms:")) for a in stmt["Action"]), name
+
+
+def test_checkpoint_table(template):
+    t = template["Resources"]["HaruAgentCheckpoints"]["Properties"]
+    assert t["BillingMode"] == "PAY_PER_REQUEST" and "GlobalSecondaryIndexes" not in t
+    assert t["KeySchema"] == [{"AttributeName": "PK", "KeyType": "HASH"}, {"AttributeName": "SK", "KeyType": "RANGE"}]
+    assert t["TimeToLiveSpecification"] == {"AttributeName": "ttl", "Enabled": True}
+    assert t["PointInTimeRecoverySpecification"] == {"PointInTimeRecoveryEnabled": True}
+
+
+def test_no_other_function_touches_checkpoints(template):
+    text = (BACKEND / "template.yaml").read_text(encoding="utf-8")
+    for name, props in functions(template).items():
+        if name == "AiCardFunction":
+            continue
+        for stmt in (st for pol in props.get("Policies", []) for st in _statements(pol)):
+            assert "HaruAgentCheckpoints" not in str(stmt["Resource"]), name
+        assert "CHECKPOINT_TABLE" not in str(props.get("Environment")), name
+    assert "CHECKPOINT_TABLE" not in str(template["Globals"])
+    assert text.count("HaruAgentCheckpoints.Arn") == 1
+
+
+def test_agent_tokens_alarm(template):
+    a = template["Resources"]["AgentTokensAlarm"]
+    assert a["Type"] == "AWS::CloudWatch::Alarm"
+    p = a["Properties"]
+    assert (p["Namespace"], p["MetricName"], p["Statistic"], p["Period"], p["EvaluationPeriods"]) == ("Haru", "AgentTokens", "Sum", 300, 1)
+    assert p["Threshold"] == 300000 and p["ComparisonOperator"] == "GreaterThanThreshold" and p["TreatMissingData"] == "notBreaching"
+    assert "AlarmActions" not in p and "Dimensions" not in p  # 알림 대상 없음, EMF 차원 없음(common/metrics)
+
+
+@pytest.mark.parametrize(("stage", "fault", "stack", "accepted", "env_value"), [
+    ("dev", "ai-slow", "haru-dev", True, "ai-slow"),
+    ("dev", "ai-slow", "haru-dev-copy", True, ""),     # 스택 이름이 다르면 함수에는 빈 값
+    ("dev", "", "haru-dev", True, ""),
+    ("demo", "ai-slow", "haru-demo", False, None),     # Rules가 배포를 거부
+    ("demo", "ai-slow", "haru-dev", False, None),
+    ("demo", "", "haru-demo", True, ""),
+])
+def test_ai_fault_inject_guard(template, stage, fault, stack, accepted, env_value):
+    params = {"Stage": stage, "LlmProvider": "openai_compat", "AiFaultInject": fault, "AWS::StackName": stack, "LlmApiKeyParam": ""}
+    conds = template["Conditions"]
+    rules_ok = all(_eval(a["Assert"], params, conds) for r in template["Rules"].values() for a in r["Assertions"])
+    assert rules_ok is accepted
+    if accepted:
+        env = template["Resources"]["AiCardFunction"]["Properties"]["Environment"]["Variables"]
+        cond, then, other = env["FAULT_INJECT"]["!If"]
+        assert (params[then["!Ref"]] if _eval({"!Condition": cond}, params, conds) else other) == env_value
+
+
+@pytest.mark.parametrize(("env", "on"), [
+    ({"FAULT_INJECT": "ai-slow", "FAULT_INJECT_ALLOWED": "true", "AWS_LAMBDA_FUNCTION_NAME": "haru-dev-AiCardFunction-x"}, True),
+    ({"FAULT_INJECT": "ai-slow", "FAULT_INJECT_ALLOWED": "true", "AWS_LAMBDA_FUNCTION_NAME": "haru-demo-AiCardFunction-x"}, False),
+    ({"FAULT_INJECT": "ai-slow", "FAULT_INJECT_ALLOWED": "false", "AWS_LAMBDA_FUNCTION_NAME": "haru-dev-AiCardFunction-x"}, False),
+    ({"FAULT_INJECT": "ai-slow", "FAULT_INJECT_ALLOWED": "true", "STAGE": "local"}, True),
+    ({"FAULT_INJECT": "ai-slow", "FAULT_INJECT_ALLOWED": "true", "STAGE": "dev"}, False),
+    ({"FAULT_INJECT": "", "FAULT_INJECT_ALLOWED": "true", "STAGE": "local"}, False),
+])
+def test_ai_fault_inject_runtime(env, on):
+    from agent.fault import SLOW_S, slow_delay_s
+
+    assert slow_delay_s(env) == (SLOW_S if on else 0.0)
 
 
 def test_route_settings(template):
@@ -298,7 +372,7 @@ def _eval(expr, params, conditions):
     ("demo", "openai_compat", "haru-dev", True, False, False),
 ])
 def test_fake_guard(template, stage, provider, stack, accepted, allowed, fake_on):
-    params = {"Stage": stage, "LlmProvider": provider, "AWS::StackName": stack, "LlmApiKeyParam": ""}
+    params = {"Stage": stage, "LlmProvider": provider, "AWS::StackName": stack, "LlmApiKeyParam": "", "AiFaultInject": ""}
     conds = template["Conditions"]
     rules_ok = all(_eval(a["Assert"], params, conds) for r in template["Rules"].values() for a in r["Assertions"])
     assert rules_ok is accepted
@@ -325,3 +399,13 @@ def test_makefile_build():
     for line in mk.splitlines():
         if line and not line.startswith(("#", "build-")):
             assert line.startswith("\t"), line  # 레시피 줄은 탭
+
+
+def test_compose_agent_settings():
+    """로컬 compose: 기본 pipeline(6a 로컬 23건 유지), 체크포인트 엔드포인트, 테스트 훅 기본 꺼짐(design §18.4)."""
+    import yaml as _yaml
+
+    api = _yaml.safe_load((BACKEND / "docker-compose.yml").read_text(encoding="utf-8"))["services"]["api"]["environment"]
+    assert api["AGENT_MODE"] == "${AGENT_MODE:-pipeline}" and api["CHECKPOINT_TABLE"] == "HaruAgentCheckpoints"
+    assert api["CHECKPOINT_DDB_ENDPOINT"] == "http://aws:4566" and api["STAGE"] == "local"
+    assert api["AGENT_TEST_HOOKS"] == "${AGENT_TEST_HOOKS:-false}"

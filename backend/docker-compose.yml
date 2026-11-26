@@ -3,7 +3,7 @@
 #   docker compose up -d --build
 #   docker compose logs aws     # init 출력(풀 ID, 클라이언트 ID, LOCAL_JWT_ISSUER)
 #   docker compose down         # 데이터는 floci-data 볼륨에 남는다(-v로 지운다)
-# 이번 범위(1–3단계, 6a)에는 SQS·S3·ollama를 넣지 않는다. 6a의 AI 경로는 Fake 모델이 기본이다.
+# 이번 범위(1–3단계, 6a·6b)에는 SQS·S3·ollama를 넣지 않는다. AI 경로는 Fake 모델이 기본이다.
 name: haru
 
 services:
@@ -57,7 +57,17 @@ services:
       LLM_PROVIDER: ${LLM_PROVIDER:-fake}
       FAKE_LLM_ALLOWED: "true"
       FAKE_LLM_SCENARIO: ${FAKE_LLM_SCENARIO:-happy}
-      AGENT_MODE: pipeline
+      # 기본은 레벨 0(6a 로컬 23건 그대로). 에이전트는 AGENT_MODE=agent로 다시 띄운다(tests/local/test_local_agent.py).
+      AGENT_MODE: ${AGENT_MODE:-pipeline}
+      CHECKPOINT_DDB_ENDPOINT: http://aws:4566
+      LLM_TOOL_CHOICE: ${LLM_TOOL_CHOICE:-}
+      LLM_PARALLEL_TOOL_CALLS: ${LLM_PARALLEL_TOOL_CALLS:-}
+      LLM_MAX_TOKENS: ${LLM_MAX_TOKENS:-800}
+      # 로컬 전용 테스트 훅(강제 종료 주입). STAGE=local에서만 동작한다.
+      AGENT_TEST_HOOKS: ${AGENT_TEST_HOOKS:-false}
+      AGENT_CRASH_AT: ${AGENT_CRASH_AT:-}
+      FAULT_INJECT: ${FAULT_INJECT:-}
+      FAULT_INJECT_ALLOWED: "true"
       LLM_BASE_URL: ${LLM_BASE_URL:-}
       LLM_MODEL: ${LLM_MODEL:-}
       LLM_API_KEY: ${LLM_API_KEY:-}
