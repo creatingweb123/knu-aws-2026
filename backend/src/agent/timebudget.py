@@ -71,3 +71,38 @@ class TimeBudget:
 
     def can_verify(self) -> bool:
         return self.remaining_ms() >= VERIFY_MIN_MS
+
+
+AGENT_SAVE_RESERVE_MS = 5_000   # 6b: 호출 뒤 체크포인트 쓰기 수 회 + 커밋 + 확인 조회(임시, BE-Q106)
+
+
+class AgentDeadline:
+    """에이전트 실행의 남은 시간 = min(Remaining_Time, 울타리까지 남은 시간)(design §9.1).
+
+    울타리 뒤에 LLM 호출이 끝나지 않도록 12초 규칙과 호출 deadline을 이 값으로 계산한다.
+    """
+
+    def __init__(self, budget: TimeBudget, fence_deadline: float | None, *, mono: Callable[[], float] = time.monotonic,
+                 save_reserve_ms: int = AGENT_SAVE_RESERVE_MS) -> None:
+        self.budget = budget
+        self.fence_deadline = fence_deadline
+        self._mono = mono
+        self.save_reserve_ms = save_reserve_ms
+
+    def remaining_ms(self) -> float:
+        r = self.budget.remaining_ms()
+        if self.fence_deadline is not None:
+            r = min(r, (self.fence_deadline - self._mono()) * 1000)
+        return max(0.0, r)
+
+    def lambda_remaining_ms(self) -> float:
+        return self.budget.remaining_ms()
+
+    def can_start_call(self) -> bool:
+        return self.remaining_ms() >= MIN_CALL_START_MS
+
+    def call_deadline_s(self, max_s: float) -> float:
+        return max(0.0, min(max_s, (self.remaining_ms() - self.save_reserve_ms) / 1000))
+
+    def can_verify(self) -> bool:
+        return self.budget.remaining_ms() >= VERIFY_MIN_MS

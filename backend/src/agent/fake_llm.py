@@ -130,7 +130,7 @@ AGENT_SCENARIOS: dict[str, list[dict[str, Any]]] = {
     "private_place_ask": [_content(json.dumps(PRIVATE_CARD, ensure_ascii=False)),
                           _tool("ask_planner", path="places[0].name", question="이 장소를 어떻게 할까요?", reason="비공개 장소예요.",
                                 options=["빼기"], allowFreeText=False),
-                          _tool("submit_card", card=PRIVATE_CARD)],
+                          _tool("submit_card", card=_cardd(places=[DEMO_PLACES[0]]))],
     "privacy_card": [_content(_card(summary="010-1234-5678로 연락 주세요. 101동 1203호 앞에서 출발해요.")),
                      _tool("submit_card", card=_cardd(summary="010-1234-5678로 연락 주세요.")),
                      _tool("submit_card", card=_cardd(summary="101동 1203호 앞에서 출발해요.")),

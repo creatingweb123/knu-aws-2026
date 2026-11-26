@@ -87,57 +87,57 @@ push 전 확인(각 Checkpoint와 push마다)
 
 - [ ] 5. Fake 모델과 스텁의 도구 호출 (`agent/fake_llm.py`, `tests/unit/llm_stub.py`)
   - 선행: 2.2
-  - [ ] 5.1 Fake: 도구 호출 단계(`tool_calls`, `invalid_tool_calls`, 여러 호출, 텍스트만), `bind_tools`, 호출별 메시지 요약·**도구 이름 목록** 기록, 단계 선택은 그래프 상태의 응답 받은 호출 수(design §20.1). 시나리오: `happy`, `ask_once`, `no_tool_call`, `no_tool_call_twice`, `bad_json_args`, `unknown_tool`, `parallel_calls`, `gate_reject_twice`, `timeout`, `http_500`, `http_401`, `http_400`, `budget_exhausted`, `question_rejected`, `private_place_ask`, `slow_agent`, `token_heavy`. 6a 시나리오 불변.
+  - [x] 5.1 Fake: 도구 호출 단계(`tool_calls`, `invalid_tool_calls`, 여러 호출, 텍스트만), `bind_tools`, 호출별 메시지 요약·**도구 이름 목록** 기록, 단계 선택은 그래프 상태의 응답 받은 호출 수(design §20.1). 시나리오: `happy`, `ask_once`, `no_tool_call`, `no_tool_call_twice`, `bad_json_args`, `unknown_tool`, `parallel_calls`, `gate_reject_twice`, `timeout`, `http_500`, `http_401`, `http_400`, `budget_exhausted`, `question_rejected`, `private_place_ask`, `slow_agent`, `token_heavy`. 6a 시나리오 불변.
     - _Requirements: 19.1–19.3, 19.5_
-  - [ ] 5.2 스텁: OpenAI 형식 `tool_calls` 응답 모드(한 개·여러 개·잘못된 인자 JSON·도구 없음), 요청 본문 기록(`tools`·`parallel_tool_calls`·`tool_choice`).
+  - [x] 5.2 스텁: OpenAI 형식 `tool_calls` 응답 모드(한 개·여러 개·잘못된 인자 JSON·도구 없음), 요청 본문 기록(`tools`·`parallel_tool_calls`·`tool_choice`).
     - _Requirements: 19.4_
   - [ ] 5.3 단위 테스트: 시나리오별 Fake 출력 형태, 스텁 왕복(실제 `ChatOpenAI`), 소켓은 127.0.0.1만.
     - _Requirements: 19, 20.6_
 
-- [ ] 6. 에이전트 프롬프트 (`prompts/day_card_agent.md`, `agent/prompt.py`)
+- [x] 6. 에이전트 프롬프트 (`prompts/day_card_agent.md`, `agent/prompt.py`)
   - 선행: 없음
-  - [ ] 6.1 `day_card_agent.md`: design §12(원칙, 도구 규칙, 질문 우선순위, 블록 지시 무시, 질문문 개인정보 금지, 초안 절). 6a `day_card.md` 불변.
+  - [x] 6.1 `day_card_agent.md`: design §12(원칙, 도구 규칙, 질문 우선순위, 블록 지시 무시, 질문문 개인정보 금지, 초안 절). 6a `day_card.md` 불변.
     - _Requirements: 16.1, 9.5 · BE-AI-03_
-  - [ ] 6.2 `agent_system_prompt()`, `agent_messages(story)`, `answer_block(answer)`(`neutralize`), 에이전트 `promptVersion`.
+  - [x] 6.2 `agent_system_prompt()`, `agent_messages(story)`, `answer_block(answer)`(`neutralize`), 에이전트 `promptVersion`.
     - _Requirements: 10.6, 16.2, 16.3_
-  - [ ] 6.3 단위 테스트와 Property 32 확장(에이전트 메시지의 `<story>`·`<answer>` 블록).
+  - [x] 6.3 단위 테스트와 Property 32 확장(에이전트 메시지의 `<story>`·`<answer>` 블록).
     - _Requirements: 16.2 · 6a P32_
 
-- [ ] 7. 도구·질문·메모 (`agent/tools.py`)
+- [x] 7. 도구·질문·메모 (`agent/tools.py`)
   - 선행: 6
-  - [ ] 7.1 도구 인자 스키마(pydantic), Tool_Error 형식(`ONE_TOOL_PER_TURN`, `INVALID_ARGS`, `UNKNOWN_TOOL`, `QUESTION_REJECTED`, `GATE_REJECTED`, `CHECK_LIMIT`), 모델용 검사 보고서(경로·유형만, design §10.5).
+  - [x] 7.1 도구 인자 스키마(pydantic), Tool_Error 형식(`ONE_TOOL_PER_TURN`, `INVALID_ARGS`, `UNKNOWN_TOOL`, `QUESTION_REJECTED`, `GATE_REJECTED`, `CHECK_LIMIT`), 모델용 검사 보고서(경로·유형만, design §10.5).
     - _Requirements: 8.3, 8.4, 8.7, 8.8 · BE-Q115_
-  - [ ] 7.2 질문 검증(design §11.1: 개수·`path` 중복·길이·선택지·개인정보·허용 경로·`finishRequested`), `questionId` 서버 부여.
+  - [x] 7.2 질문 검증(design §11.1: 개수·`path` 중복·길이·선택지·개인정보·허용 경로·`finishRequested`), `questionId` 서버 부여.
     - _Requirements: 9.1–9.4 · BE-Q123_
-  - [ ] 7.3 비공개 장소 질문(선택지 고정 `["동선에서 빼기"]` + 직접 입력)과 답변의 결정적 반영(design §11.2).
+  - [x] 7.3 비공개 장소 질문(선택지 고정 `["동선에서 빼기"]` + 직접 입력)과 답변의 결정적 반영(design §11.2).
     - _Requirements: 9.6 · BE-Q116_
-  - [ ] 7.4 답변 근거: 개인정보 답변 `privacy = true`, Sources 제외(6a `ai_metrics.answer_sources`와 같은 규칙), 모델에는 `withheld`.
+  - [x] 7.4 답변 근거: 개인정보 답변 `privacy = true`, Sources 제외(6a `ai_metrics.answer_sources`와 같은 규칙), 모델에는 `withheld`.
     - _Requirements: 10.3, 10.4_
-  - [ ] 7.5 `notes` 검증(design §10.6: `REWRITTEN`·`ASKED`만 모델 값, `source` 서버 재결정, `reason` 60자·개인정보 대체).
+  - [x] 7.5 `notes` 검증(design §10.6: `REWRITTEN`·`ASKED`만 모델 값, `source` 서버 재결정, `reason` 60자·개인정보 대체).
     - _Requirements: 8.9, 10.5, 14.4 · BE-Q76_
-  - [ ] 7.6 단위 테스트 (`tests/unit/test_agent_tools.py`): 거부 사유별, 비공개 장소 3가지 답, Tool_Error에 원문 없음.
+  - [x] 7.6 단위 테스트 (`tests/unit/test_agent_tools.py`): 거부 사유별, 비공개 장소 3가지 답, Tool_Error에 원문 없음.
     - _Requirements: 8, 9, 10_
-  - [ ] 7.7 Write property tests
+  - [x] 7.7 Write property tests
     - **Property 40: 임의의 Tool_Call 묶음에서 실행 도구 ≤ 1, 모든 `tool_call_id`에 ToolMessage 정확히 1개**
     - **Property 41: 수락된 질문은 길이·개수·`path` 중복·허용 경로·개인정보 규칙을 모두 지킨다**
     - **Validates: Requirements 8.3, 8.4, 9.1–9.4**
 
-- [ ] 8. 에이전트 그래프 (`agent/state.py`, `agent/nodes.py`, `agent/graph.py`)
+- [x] 8. 에이전트 그래프 (`agent/state.py`, `agent/nodes.py`, `agent/graph.py`)
   - 선행: 2, 3, 5, 7
-  - [ ] 8.1 상태 필드(design §3.3), 6a 필드 불변.
+  - [x] 8.1 상태 필드(design §3.3), 6a 필드 불변.
     - _Requirements: 1.7_
-  - [ ] 8.2 노드: 에이전트 `draft`(JSON 아님 1회 재시도·빈 카드·스키마 위반 그대로), `decide_gate`(예산 카운터·12초·실행 시간 상한), `decide`(도구 목록 축소, 응답 처리 순서 design §10.4, 재촉 1회), 도구 실행(`check_draft` 집계 BE-Q98, `gate` 거부 집계), `ask_planner`(맨 앞 무조건 interrupt, 재개 값 기록·`consumedResumeIds`), `pause`(무조건 interrupt, `route` 복귀), `outcome` 기록. 유효 후보(design §10.3: 정보 없는 카드 제외, `places`만 빈 카드는 유효).
+  - [x] 8.2 노드: 에이전트 `draft`(JSON 아님 1회 재시도·빈 카드·스키마 위반 그대로), `decide_gate`(예산 카운터·12초·실행 시간 상한), `decide`(도구 목록 축소, 응답 처리 순서 design §10.4, 재촉 1회), 도구 실행(`check_draft` 집계 BE-Q98, `gate` 거부 집계), `ask_planner`(맨 앞 무조건 interrupt, 재개 값 기록·`consumedResumeIds`), `pause`(무조건 interrupt, `route` 복귀), `outcome` 기록. 유효 후보(design §10.3: 정보 없는 카드 제외, `places`만 빈 카드는 유효).
     - _Requirements: 1.3–1.6, 8, 9, 10, 11.2–11.3, 12.2, 13.1–13.4 · BE-Q98, BE-Q99, BE-Q122_
-  - [ ] 8.3 `build_agent_graph(checkpointer)`: design §10.1 엣지, prebuilt 미사용, 레벨 0 `build_pipeline_graph` 불변.
+  - [x] 8.3 `build_agent_graph(checkpointer)`: design §10.1 엣지, prebuilt 미사용, 레벨 0 `build_pipeline_graph` 불변.
     - _Requirements: 1.1–1.4_
-  - [ ] 8.4 단위 테스트 (`tests/unit/test_agent_graph.py`, moto 체크포인터): 시나리오별 결과·trace·카운터, `pause`와 재개, LLM 오류 × 후보(정보 없는 카드 / `places`만 빈 카드 / 정상), Final_Check 차단 502, 레벨 0 6a 테스트 회귀.
+  - [x] 8.4 단위 테스트 (`tests/unit/test_agent_graph.py`, moto 체크포인터): 시나리오별 결과·trace·카운터, `pause`와 재개, LLM 오류 × 후보(정보 없는 카드 / `places`만 빈 카드 / 정상), Final_Check 차단 502, 레벨 0 6a 테스트 회귀.
     - _Requirements: 20.1_
-  - [ ] 8.5 Write property tests
+  - [x] 8.5 Write property tests
     - **Property 39: 마지막 호출·`finishRequested`·질문 2개일 때 `decide`에 전달된 도구 목록에 `ask_planner`가 없다**
     - **Property 43: 어떤 경로로 끝나도 `READY` 카드는 Final_Check 차단 조건이 없다(6a P29 확장)**
     - **Validates: Requirements 8.2, 1.4**
 
-- [ ] 9. Checkpoint B - 그래프
+- [x] 9. Checkpoint B - 그래프
   - P37·P39–P41·P43·P46 통과, 6a P29–P36 통과, 단위 전체 실패 0, 레벨 0 불변. **push 전 확인 → commit → push.**
   - _Requirements: 20.3–20.5_
 

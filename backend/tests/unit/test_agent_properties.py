@@ -225,3 +225,91 @@ def test_property_32_agent_blocks(parts):
         inner = msg[len(tag) + 3: -(len(tag) + 4)]
         assert not re.search(r"<\s*/?\s*(story|answer)\b", inner, re.I)
         assert all(a == b or (a == "<" and b == FULLWIDTH_LT) for a, b in zip(text, inner, strict=True))
+
+
+# ---------------------------------------------------------------- P39·P43: 그래프 경로
+
+from agent.fake_llm import AGENT_SCENARIOS  # noqa: E402
+
+scenario_st = st.sampled_from(sorted(AGENT_SCENARIOS))
+answer_st = st.sampled_from([{"choice": "45분"}, {"skipped": True}, {"text": "동네 공원"}, {"text": "010-1234-5678"},
+                             {"choice": "동선에서 빼기"}])
+
+
+def _run_graph(scenario, max_calls, finish, answer, story):
+    import asyncio
+
+    from langgraph.checkpoint.memory import InMemorySaver
+    from langgraph.types import Command
+
+    from agent.agent_nodes import initial_agent_state
+    from agent.budget import NoopBudget
+    from agent.graph import build_agent_graph
+    from tests.unit.agent_util import caller, config
+
+    app = build_agent_graph(InMemorySaver())
+    c = caller(scenario, budget=NoopBudget(max_calls=max_calls))
+    r = asyncio.run(app.ainvoke(initial_agent_state(story), config(c, finish=finish)))
+    turn = 1
+    while "__interrupt__" in r and turn < 6:
+        turn += 1
+        it = r["__interrupt__"][0]
+        v = "continue" if it.value.get("kind") == "continue" else {"questionId": it.value["questionId"], "resumeId": f"r{turn}", **answer}
+        r = asyncio.run(app.ainvoke(Command(resume={it.id: v}), config(c, run_turn=turn, finish=finish)))
+    return r, c
+
+
+# Feature: backend-stage6b-ai-agent, Property 39
+@PROPS
+@given(scenario=scenario_st, max_calls=st.integers(1, 6), finish=st.booleans(), answer=answer_st)
+def test_property_39_ask_planner_dropped(scenario, max_calls, finish, answer):
+    """Property 39: 마지막 호출·finishRequested·질문 2개일 때 decide에 전달된 도구 목록에 ask_planner가 없다.
+    Validates: Requirements 8.2"""
+    from agent import agent_tools as at
+    from tests.unit.agent_util import STORY
+
+    seen = []
+    real = at.tools_for
+
+    def spy(*, questions, finish_requested, last_call):
+        out = real(questions=questions, finish_requested=finish_requested, last_call=last_call)
+        seen.append((questions, finish_requested, last_call, out))
+        return out
+
+    at.tools_for = spy
+    try:
+        _, c = _run_graph(scenario, max_calls, finish, answer, STORY)
+    finally:
+        at.tools_for = real
+    decide_calls = [call for call in c.fake.calls if call["tools"]]
+    assert len(decide_calls) <= len(seen)
+    for questions, fin, last, out in seen:
+        if questions >= 2 or fin or last:
+            assert "ask_planner" not in out
+    for call, (_, _, _, out) in zip(decide_calls, seen, strict=False):
+        assert call["tools"] == list(out)
+    assert len(c.fake.calls) <= max_calls  # 예산 상한(P37의 그래프 수준 확인)
+
+
+# Feature: backend-stage6b-ai-agent, Property 43
+@PROPS
+@given(scenario=scenario_st, max_calls=st.integers(1, 6), finish=st.booleans(), answer=answer_st,
+       extra=st.sampled_from(["", " 연락처는 010-2222-3333이에요.", " 민지네 집에도 들르고 싶었어요.", " 골목 카페도 있어요."]))
+def test_property_43_ready_card_has_no_block(scenario, max_calls, finish, answer, extra):
+    """Property 43: 어떤 경로로 끝나도 READY 카드는 Final_Check 차단 조건이 없다(6a P29 확장). Validates: Requirements 1.4"""
+    from agent import repair, tools
+    from domain.privacy import HIGH
+    from tests.unit.agent_util import STORY
+
+    r, _ = _run_graph(scenario, max_calls, finish, answer, STORY + extra)
+    if r.get("outcome") != "READY":
+        assert r.get("final_card") is None
+        return
+    card = repair.with_src(r["final_card"])
+    rep = tools.check_draft(card, r["sources"])
+    assert rep["schemaErrors"] == [] and not [h for h in rep["privacy"] if h["severity"] == HIGH]
+    assert not [h for h in rep["privacy"] if h["kind"] == tools.PRIVATE_PLACE and tools.place_index(h["path"]) is not None
+                and tools.field_of(h["path"]) in ("name", "activity")]
+    assert not [p for p in rep["notInSource"] if tools.field_of(p) == "name"]
+    flagged = {f["path"] for f in r["flags"] if f["type"] == "NOT_IN_SOURCE"}
+    assert all(p in flagged for p in rep["notInSource"]) and r["blocked"] == []

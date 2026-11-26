@@ -32,3 +32,23 @@ class AgentState(TypedDict, total=False):
     token_in: int
     token_out: int
     token_estimated: bool
+
+
+class AgentGraphState(AgentState, total=False):
+    """6b 에이전트 상태(design §3.3). 6a 필드는 이름·뜻을 그대로 쓰고 더한다. 체크포인트에만 저장된다."""
+
+    mode: str
+    messages: list[Any]                 # LangChain 메시지 이력(시스템·사연·도구 호출·ToolMessage)
+    answers: list[dict[str, Any]]       # 소비한 답변 {questionId, path, choice|text|skipped, resumeId, privacy}
+    questions: list[dict[str, Any]]     # 수락된 질문
+    consumed_resume_ids: list[str]      # 그래프가 소비한 resumeId(BE-Q94 표지)
+    budget: dict[str, Any]              # 응답 받은 호출 수·검사 수·질문 수·게이트 거부 수·토큰
+    outcome: str | None                 # ASKING | WORKING | READY | FAILED
+    outcome_turn: int | None            # outcome을 쓴 턴(run_turn)
+    route: str | None
+    resume_to: str | None
+    pause_reason: str | None
+    pending_tool: dict[str, Any] | None
+    question_view: dict[str, Any] | None
+    failure_code: str | None
+    work_ready: bool

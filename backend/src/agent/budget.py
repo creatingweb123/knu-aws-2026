@@ -63,13 +63,21 @@ def estimate_tokens(messages: list[Any], tools: list[Any] | None = None) -> int:
 
 
 class NoopBudget:
-    """레벨 0·평가 스크립트용. 예약하지 않는다."""
+    """DB 없이 같은 상한을 지키는 메모리 예산(단위 테스트·평가 스크립트). 레벨 0은 예산을 쓰지 않는다."""
 
-    reserved = 0
-    max_calls = MAX_MODEL_CALLS
+    def __init__(self, max_calls: int = MAX_MODEL_CALLS, max_tokens: int = MAX_INPUT_TOKENS) -> None:
+        self.reserved = 0
+        self.charged = 0
+        self.max_calls = max_calls
+        self.max_tokens = max_tokens
 
     def reserve(self, est_tokens: int) -> Reservation:
+        if self.reserved >= self.max_calls:
+            raise BudgetExhausted("CALLS")
+        if self.charged + est_tokens > self.max_tokens:
+            raise BudgetExhausted("TOKENS")
         self.reserved += 1
+        self.charged += est_tokens
         return Reservation(self.reserved, est_tokens)
 
     def remaining_calls(self) -> int:

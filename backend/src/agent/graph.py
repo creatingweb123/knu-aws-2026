@@ -60,3 +60,48 @@ def decide_outcome(state: AgentState) -> tuple[str, int, str | None]:
     if state.get("last_failure") == LLM_ERROR:
         return FAILED, 503, LLM_ERROR_CODE
     return FAILED, 502, INVALID_OUTPUT_CODE
+
+
+# ---------------------------------------------------------------------------
+# 6b 에이전트 그래프 (design §10.1, AGENT_MODE=agent)
+# ---------------------------------------------------------------------------
+
+AGENT_NODES = ("guard_draft", "draft", "check_auto", "guard_decide", "decide", "check_tool", "ask", "pause", "gate",
+               "fallback", "final_check", "fail")
+_ROUTES = {
+    "guard_draft": ["pause", "draft"],
+    "draft": ["check_auto", "pause", "fail"],
+    "check_auto": ["guard_decide"],
+    "guard_decide": ["decide", "pause", "fallback"],
+    "decide": ["guard_decide", "check_tool", "ask", "gate", "fallback", "fail", "pause"],
+    "check_tool": ["guard_decide", "fallback"],
+    "ask": ["guard_decide"],
+    "pause": ["draft", "guard_decide"],
+    "gate": ["final_check", "guard_decide", "fallback"],
+    "fallback": ["final_check", "end"],
+    "final_check": ["end"],
+    "fail": ["end"],
+}
+
+
+def _router(allowed: list[str]) -> Any:
+    def route(state: dict[str, Any]) -> str:
+        r = state.get("route")
+        if r not in allowed:
+            raise ValueError("BAD_ROUTE")  # 노드 버그. 메시지에 상태 값을 넣지 않는다
+        return END if r == "end" else r
+    return route
+
+
+def build_agent_graph(checkpointer: Any) -> Any:
+    from agent import agent_nodes as an
+    from agent.state import AgentGraphState
+
+    g = StateGraph(AgentGraphState)
+    for name in AGENT_NODES:
+        g.add_node(name, getattr(an, name))
+    g.add_edge(START, "guard_draft")
+    for name, allowed in _ROUTES.items():
+        targets = [END if t == "end" else t for t in allowed]
+        g.add_conditional_edges(name, _router(allowed), targets)
+    return g.compile(checkpointer=checkpointer)
