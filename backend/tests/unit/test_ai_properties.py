@@ -212,3 +212,94 @@ def test_property_32_single_data_block(parts):
     assert not _re.search(r"<\s*/?\s*(story|answer)\b", inner, _re.I)
     assert len(inner) == len(story)
     assert all(a == b or (a == "<" and b == FULLWIDTH_LT) for a, b in zip(story, inner, strict=True))
+
+
+# ---------------------------------------------------------------- P35·P36: 레벨 0 그래프
+
+import asyncio as _asyncio  # noqa: E402
+import json as _json  # noqa: E402
+
+from agent import graph as _graph  # noqa: E402
+from agent import llm as _llm  # noqa: E402
+from agent import nodes as _nodes  # noqa: E402
+from agent.card import parse_card as _parse_card  # noqa: E402
+from agent.fake_llm import FakeScenarioChatModel as _Fake  # noqa: E402
+from agent.state import INVALID_OUTPUT as _INVALID, LLM_ERROR as _LLM_ERROR  # noqa: E402
+
+_OK_CARD = _json.dumps({"title": "동네 산책", "summary": None, "reason": None, "estimatedMinutes": 45,
+                        "places": [{"name": "빵집", "activity": "빵 사기", "whyChosen": None}], "question": None}, ensure_ascii=False)
+_OUTPUTS = {"ok": _OK_CARD, "not_json": "카드를 못 만들었어요.", "schema": _OK_CARD.replace("45", "999")}
+_ERRORS = ["TIMEOUT", "CONNECTION", "HTTP_400", "HTTP_429", "HTTP_5XX"]
+
+
+class _ScriptedCaller:
+    def __init__(self, results):
+        self.results, self.calls = list(results), 0
+        self.settings = _llm.load_settings({"LLM_PROVIDER": "fake", "FAKE_LLM_ALLOWED": "true", "STAGE": "local"})
+
+    async def ainvoke(self, messages, deadline_s):
+        r = self.results[min(self.calls, len(self.results) - 1)]
+        self.calls += 1
+        if r in _OUTPUTS:
+            from langchain_core.messages import AIMessage
+
+            return AIMessage(content=_OUTPUTS[r])
+        raise _llm.LlmError(r, called=True)
+
+
+class _ScriptedBudget:
+    """draft는 시도마다 remaining_ms를 한 번 읽는다. 그 값을 차례로 돌려준다."""
+
+    def __init__(self, remaining):
+        self.remaining, self.reads = list(remaining), 0
+
+    def remaining_ms(self):
+        v = self.remaining[min(self.reads, len(self.remaining) - 1)]
+        self.reads += 1
+        return v
+
+    def call_deadline_s(self, max_s):
+        return 5.0
+
+
+# Feature: backend-stage6a-ai-pipeline, Property 35
+@PROPS
+@given(results=st.lists(st.sampled_from(list(_OUTPUTS) + _ERRORS), min_size=2, max_size=2),
+       remaining=st.lists(st.sampled_from([0, 11_999, 12_000, 20_000]), min_size=2, max_size=2))
+def test_property_35_draft_attempts(results, remaining):
+    """Property 35: draft 호출은 0–2회, 2회째는 첫 시도가 검증 실패이고 그때 남은 시간이 12초 이상일 때만. LLM_Error 뒤 재시도 없음.
+    Validates: Requirements 9.4, 9.5, 9.6"""
+    caller = _ScriptedCaller(results)
+    out = _asyncio.run(_nodes.draft({"story": "빵집", "trace": []}, {"configurable": {"llm": caller, "deadline": _ScriptedBudget(remaining)}}))
+    first_ok = remaining[0] >= 12_000
+    expected = 0 if not first_ok else 2 if results[0] in ("not_json", "schema") and remaining[1] >= 12_000 else 1
+    assert caller.calls == out["model_calls"] == expected
+    if expected == 0:
+        assert out["llm_error"] == _llm.TIME_BUDGET and out["last_failure"] == _LLM_ERROR
+    last = results[expected - 1] if expected else None
+    if last in _ERRORS:
+        assert out["last_failure"] == _LLM_ERROR and out["llm_error"] == last and out["candidate"] is None
+    elif last in ("not_json", "schema"):
+        assert out["last_failure"] == _INVALID and out["candidate"] is None and len(out["invalid_kinds"]) == expected
+    elif last == "ok":
+        assert out["last_failure"] is None and out["candidate"] is not None
+
+
+# Feature: backend-stage6a-ai-pipeline, Property 36
+@PROPS
+@given(candidate=candidate_st, story=story_st)
+def test_property_36_first_proposal_preserved(candidate, story):
+    """Property 36: firstProposal·firstReport는 그래프가 끝난 뒤에도 첫 check_draft의 입력·출력과 같다(Gate 통과·거부 모두).
+    Validates: Requirements 5.2"""
+    text = _json.dumps(candidate, ensure_ascii=False)
+    parsed = _parse_card(text)
+    assert parsed.ok
+    fake = _Fake(scenario="prop", steps=[{"kind": "content", "text": text, "usage": True, "sleep": 0.0}])
+    env = {"LLM_PROVIDER": "fake", "FAKE_LLM_ALLOWED": "true", "STAGE": "local"}
+    caller = _llm.LlmCaller(_llm.load_settings(env), fake=fake, env=env)
+    state = _graph.initial_state(story)
+    budget = _ScriptedBudget([25_000])
+    final = _asyncio.run(_graph.pipeline_graph().ainvoke(state, config={"configurable": {"llm": caller, "deadline": budget}}))
+    work = repair.with_src(parsed.card)
+    assert final["first_proposal"] == tools.public_card(work)
+    assert final["first_report"] == tools.check_draft(work, [story])

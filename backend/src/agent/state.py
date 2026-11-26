@@ -1,0 +1,34 @@
+"""그래프 상태 (design §7.1). 6b는 messages·질문·예산 카운터 등을 더한다. 같은 이름을 다른 뜻으로 쓰지 않는다."""
+
+from __future__ import annotations
+
+from typing import Any, TypedDict
+
+LLM_ERROR, INVALID_OUTPUT = "LLM_ERROR", "INVALID_OUTPUT"
+
+
+class AgentState(TypedDict, total=False):
+    story: str
+    sources: list[str]                  # 원문 대조 근거: [사연] (6b: + 계획자 답변)
+    attempts: int                       # draft 시도 수
+    last_failure: str | None            # LLM_ERROR | INVALID_OUTPUT
+    llm_error: str | None               # 분류 코드
+    invalid_kinds: list[str]            # NOT_JSON | SCHEMA (원문 없음)
+    candidate: dict[str, Any] | None    # 첫 Candidate_Card
+    first_proposal: dict[str, Any] | None  # 한 번만 쓴다
+    first_report: dict[str, Any] | None    # 한 번만 쓴다
+    card: dict[str, Any] | None         # 작업 카드(장소마다 _src)
+    report: dict[str, Any] | None       # 가장 최근 Check_Report
+    gate_ok: bool
+    degraded: bool
+    notes: list[dict[str, Any]]
+    masked: list[dict[str, Any]]        # Fallback이 가린 필드 [{src, field}]
+    allowed_nis_activities: list[int]   # KEPT_FLAGGED로 허용한 장소의 _src
+    final_card: dict[str, Any] | None
+    flags: list[dict[str, Any]]
+    blocked: list[str]                  # Final_Check 차단 사유
+    trace: list[dict[str, str]]         # {tool, summary} (step은 핸들러가 매긴다)
+    model_calls: int
+    token_in: int
+    token_out: int
+    token_estimated: bool

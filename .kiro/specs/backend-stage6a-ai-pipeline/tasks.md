@@ -112,55 +112,55 @@
   - `pytest tests/unit` 실패 0건(1–3단계 296건 포함), Property 29·30·31·33 통과(각 100예시 이상). 실패는 원인을 고친 뒤 다음으로 간다.
   - _Requirements: 19.5, 19.13_
 
-- [ ] 6. 프롬프트 (`agent/prompt.py`, `prompts/day_card.md`)
+- [x] 6. 프롬프트 (`agent/prompt.py`, `prompts/day_card.md`)
   - 선행: 1.5
-  - [ ] 6.1 `prompts/day_card.md`: design §8.1 원칙(원문 장소·행동만, `null`, 공개 장소, 개인정보 제거, 질문 정확히 1개, "빼기보다 원문 표현으로 바꾸기", Card 필드 JSON 객체 하나, 블록 안 지시 무시). 예시 출력에는 데모 사연 기반 값만 쓴다.
+  - [x] 6.1 `prompts/day_card.md`: design §8.1 원칙(원문 장소·행동만, `null`, 공개 장소, 개인정보 제거, 질문 정확히 1개, "빼기보다 원문 표현으로 바꾸기", Card 필드 JSON 객체 하나, 블록 안 지시 무시). 예시 출력에는 데모 사연 기반 값만 쓴다.
     - _Requirements: 10.1, 10.2, 10.5 · BE-AI-03_
-  - [ ] 6.2 `agent/prompt.py`: 파일 로드(콜드 스타트 1회), `prompt_version()`(SHA-256 앞 12자), `neutralize(story)`(`<\s*/?\s*(story|answer)\b`의 `<` → `＜`), `build_messages(story)`, `retry_message(kinds, paths)`(실패 원문 없음).
+  - [x] 6.2 `agent/prompt.py`: 파일 로드(콜드 스타트 1회), `prompt_version()`(SHA-256 앞 12자), `neutralize(story)`(`<\s*/?\s*(story|answer)\b`의 `<` → `＜`), `build_messages(story)`, `retry_message(kinds, paths)`(실패 원문 없음).
     - _Requirements: 10.3, 10.4 · BE-Q10(마스킹 안 함)_
-  - [ ] 6.3 단위 테스트 (`tests/unit/test_ai_prompt.py`): 태그 변형(대소문자·공백·`</ story>`·`<answer>`), 그 밖 글자 보존, 재시도 메시지에 원문 없음, 버전 값이 파일 내용에 따라 바뀜.
+  - [x] 6.3 단위 테스트 (`tests/unit/test_ai_prompt.py`): 태그 변형(대소문자·공백·`</ story>`·`<answer>`), 그 밖 글자 보존, 재시도 메시지에 원문 없음, 버전 값이 파일 내용에 따라 바뀜.
     - _Requirements: 10.2, 10.3_
-  - [ ] 6.4 Write property test for 데이터 블록 (`tests/unit/test_ai_properties.py`)
+  - [x] 6.4 Write property test for 데이터 블록 (`tests/unit/test_ai_properties.py`)
     - **Property 32: 어떤 사연이든 사용자 메시지에는 `<story>`·`</story>`가 정확히 한 번씩이고, 사연 부분에 블록 태그 패턴이 없으며, 태그의 `<` 외 글자는 원문과 같다**
     - 생성기: 임의 유니코드 텍스트 + 태그 조각 삽입.
     - **Validates: Requirements 10.2, 10.3**
 
-- [ ] 7. LLM 클라이언트·Fake·시간 예산 (`agent/llm.py`, `agent/fake_llm.py`, `agent/timebudget.py`)
+- [x] 7. LLM 클라이언트·Fake·시간 예산 (`agent/llm.py`, `agent/fake_llm.py`, `agent/timebudget.py`)
   - 선행: 1.3, 2.3
-  - [ ] 7.1 `agent/timebudget.py`: `TimeBudget(context, event, clock)` — `min(lambda 남은 시간, timeEpoch + 29초 − now)`, `timeEpoch` 검증(정수, `now − 30s − 2s ≤ t ≤ now + 2s`, 아니면 무시하고 `TIME_EPOCH_IGNORED`), `can_start_call()`(≥ 12초), `call_deadline_s()`(`min(10, (remaining − 4초)/1000)`), `can_verify()`(≥ 1.5초).
+  - [x] 7.1 `agent/timebudget.py`: `TimeBudget(context, event, clock)` — `min(lambda 남은 시간, timeEpoch + 29초 − now)`, `timeEpoch` 검증(정수, `now − 30s − 2s ≤ t ≤ now + 2s`, 아니면 무시하고 `TIME_EPOCH_IGNORED`), `can_start_call()`(≥ 12초), `call_deadline_s()`(`min(10, (remaining − 4초)/1000)`), `can_verify()`(≥ 1.5초).
     - _Requirements: 9.5, 12.2, 12.5, 12.6 · BE-Q90_
-  - [ ] 7.2 `agent/llm.py` 설정·키: 환경 변수 파싱(design §11.1), `CONFIG` 사유, `fake` 런타임 차단(`FAKE_LLM_ALLOWED`, 함수 이름 `haru-dev-` 또는 로컬 `STAGE=local`), SSM 키 캐시(성공만 캐시, 실패 `KEY_READ_FAILED`, AI 전용 `Config`), 로컬 `LLM_API_KEY`, `SecretStr`.
+  - [x] 7.2 `agent/llm.py` 설정·키: 환경 변수 파싱(design §11.1), `CONFIG` 사유, `fake` 런타임 차단(`FAKE_LLM_ALLOWED`, 함수 이름 `haru-dev-` 또는 로컬 `STAGE=local`), SSM 키 캐시(성공만 캐시, 실패 `KEY_READ_FAILED`, AI 전용 `Config`), 로컬 `LLM_API_KEY`, `SecretStr`.
     - _Requirements: 7.1–7.9, 7.12, 15.10 · BE-Q81, BE-Q85, BE-Q86_
-  - [ ] 7.3 `agent/llm.py` 호출: `call_llm(messages, deadline_s)` — 호출마다 `httpx.AsyncClient`(async with) + `ChatOpenAI(…, http_async_client=…, max_retries=0, use_responses_api=False)` + `asyncio.wait_for`. 오류 분류표(design §11.3, `APITimeoutError`를 `APIConnectionError`보다 먼저), 토큰 합산·추정(`tokenEstimated`). 라이브러리 로거 수준 고정.
+  - [x] 7.3 `agent/llm.py` 호출: `call_llm(messages, deadline_s)` — 호출마다 `httpx.AsyncClient`(async with) + `ChatOpenAI(…, http_async_client=…, max_retries=0, use_responses_api=False)` + `asyncio.wait_for`. 오류 분류표(design §11.3, `APITimeoutError`를 `APIConnectionError`보다 먼저), 토큰 합산·추정(`tokenEstimated`). 라이브러리 로거 수준 고정.
     - _Requirements: 7.10, 7.11, 5.6, 13.3 · BE-Q78, BE-Q92_
-  - [ ] 7.4 `agent/fake_llm.py`: `FakeScenarioChatModel`(async, 단계 `content`·`raise`·`sleep`, 호출 기록), 시나리오 18종(design §11.4), 실제 `openai` 예외 생성.
+  - [x] 7.4 `agent/fake_llm.py`: `FakeScenarioChatModel`(async, 단계 `content`·`raise`·`sleep`, 호출 기록), 시나리오 18종(design §11.4), 실제 `openai` 예외 생성.
     - _Requirements: 8.1, 8.2, 8.3_
-  - [ ] 7.5 로컬 HTTP 스텁 (`tests/unit/llm_stub.py`): `ThreadingHTTPServer`(127.0.0.1), 모드 `ok`·`no_usage`·`fenced`·`prose_around_json`·`status:<code>`·`drip`·`hang`·`close`, 요청 기록(키는 비교만).
+  - [x] 7.5 로컬 HTTP 스텁 (`tests/unit/llm_stub.py`): `ThreadingHTTPServer`(127.0.0.1), 모드 `ok`·`no_usage`·`fenced`·`prose_around_json`·`status:<code>`·`drip`·`hang`·`close`, 요청 기록(키는 비교만).
     - _Requirements: 8.4_
-  - [ ] 7.6 단위 테스트
+  - [x] 7.6 단위 테스트
     - `test_ai_timebudget.py`: `timeEpoch` 없음·문자열·음수·미래 +10초·과거 −40초·정상 −3초(남은 26초), 12초·4초·1.5초 경계, 콜드 스타트 흉내(Init 3초 뒤 시작).
     - `test_ai_llm.py`: 설정 오류 각 사유(값을 로그에 안 남김), `LLM_TEMPERATURE` 빈 값, `LLM_EXTRA_BODY` 비객체, `LLM_MAX_RETRIES` 0 외, SSM 캐시(Stubber: 성공 1회만 호출·실패는 다음 호출에서 다시 읽음·`WithDecryption=True`·이름만 사용), `fake` 차단 3경우, AWS 설정에서 `LLM_API_KEY` 미사용.
     - `test_ai_llm_stub.py`(실제 `ChatOpenAI`): 경로 `/v1/chat/completions`, `max_completion_tokens`, `extra_body` 합침, `temperature` 생략, `tools` 없음, 호출 1회(재시도 0), 400·401·403·404·429·500·503·연결 거부·연결 타임아웃의 분류 코드, usage 없음 → 추정, 펜스·설명문 JSON 추출.
     - `test_ai_fake_vs_stub.py`: 같은 시나리오(정상·잘못된 JSON·스키마 오류·타임아웃·400·401·429·500)를 Fake와 스텁에서 돌려 분류 코드·그래프 결과가 같음(작업 8 뒤 그래프 수준 비교 추가).
     - _Requirements: 7.1–7.11, 8.1–8.4, 19.6 · BE-Q78, BE-Q90_
-  - [ ] 7.7 취소·Warm 호출 테스트 (`tests/unit/test_ai_cancel.py`)
+  - [x] 7.7 취소·Warm 호출 테스트 (`tests/unit/test_ai_cancel.py`)
     - `drip`·`hang`·`close`에서 `call_llm` 전체 반환 시간(취소 + `aclose` 포함) ≤ deadline + 500ms, 20회 반복 최댓값을 출력해 README 근거로 쓴다.
     - 취소된 호출 뒤 같은 프로세스의 다음 호출 정상.
     - Warm: 같은 프로세스에서 `asyncio.run`을 30회 반복(정상·취소 섞음) → `Event loop is closed` 없음, `ResourceWarning`·미완료 태스크 경고를 오류로 바꿔도 통과, 열린 소켓 수가 늘지 않음(`psutil` 없이 `/proc/self/fd` 수로 확인, 리눅스 전용 표시).
     - _Requirements: 7.11, 12.5, 12.6 · BE-Q78_
 
-- [ ] 8. 레벨 0 그래프 (`agent/state.py`, `agent/nodes.py`, `agent/graph.py`)
+- [x] 8. 레벨 0 그래프 (`agent/state.py`, `agent/nodes.py`, `agent/graph.py`)
   - 선행: 4, 6, 7
-  - [ ] 8.1 `state.py`(design §7.1), `nodes.py`(draft·check_draft·rules·gate·fallback·final_check, draft는 async, 나머지 순수), `graph.py`(`build_pipeline_graph()`, 체크포인터 없이 compile, 조건부 엣지 2개, 모듈 로드 때 1회 생성).
+  - [x] 8.1 `state.py`(design §7.1), `nodes.py`(draft·check_draft·rules·gate·fallback·final_check, draft는 async, 나머지 순수), `graph.py`(`build_pipeline_graph()`, 체크포인터 없이 compile, 조건부 엣지 2개, 모듈 로드 때 1회 생성).
     - draft: design §8.3 알고리즘(12초 확인, LLM_Error 재시도 없음, 검증 실패만 1회 재시도, `TIME_BUDGET`, `model_calls`는 실제 요청 수, 실패 원문 미보관). check_draft 첫 실행만 `first_proposal`·`first_report`를 쓴다. trace 항목(design §10.4 문구·개수·유형만).
     - _Requirements: 9.1–9.9, 5.2, 4.9 · BE-AI-11, BE-AI-13_
-  - [ ] 8.2 단위 테스트 (`tests/unit/test_ai_graph.py`): Fake 시나리오별 최종 상태(후보·`llm_error`·`last_failure`·`model_calls`·`degraded`·`flags`·`notes`·`blocked`·trace), 12초 미만 재시도 생략, 첫 호출 전 12초 미만 → `TIME_BUDGET`·호출 0회, `slow` + deadline, 체크포인터 없음, prebuilt 미사용(import 검사).
+  - [x] 8.2 단위 테스트 (`tests/unit/test_ai_graph.py`): Fake 시나리오별 최종 상태(후보·`llm_error`·`last_failure`·`model_calls`·`degraded`·`flags`·`notes`·`blocked`·trace), 12초 미만 재시도 생략, 첫 호출 전 12초 미만 → `TIME_BUDGET`·호출 0회, `slow` + deadline, 체크포인터 없음, prebuilt 미사용(import 검사).
     - _Requirements: 9.1–9.7, 19.1_
-  - [ ] 8.3 Write property test for draft 호출 수 (`tests/unit/test_ai_properties.py`)
+  - [x] 8.3 Write property test for draft 호출 수 (`tests/unit/test_ai_properties.py`)
     - **Property 35: `draft` 호출 수는 0–2회이고, 2회째는 첫 시도가 검증 실패였고 시작 때 남은 시간이 12초 이상일 때만이다. LLM_Error 뒤에는 재시도하지 않는다**
     - 생성기: 시도별 결과(정상·`NOT_JSON`·`SCHEMA`·LLM_Error 종류)와 남은 시간 열.
     - **Validates: Requirements 9.4, 9.5, 9.6**
-  - [ ] 8.4 Write property test for 첫 제안 보존 (`tests/unit/test_ai_properties.py`)
+  - [x] 8.4 Write property test for 첫 제안 보존 (`tests/unit/test_ai_properties.py`)
     - **Property 36: `firstProposal`·`firstReport`는 그래프가 끝난 뒤에도 첫 `check_draft`의 입력·출력과 같다**
     - 생성기: 4.5의 카드 생성기를 Fake 응답으로 감싼 것, Gate 통과·거부 모두.
     - **Validates: Requirements 5.2**
