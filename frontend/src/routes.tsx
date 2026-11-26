@@ -15,7 +15,9 @@ import { InboxPage } from './pages/inbox/InboxPage';
 import { AbandonPage } from './pages/me/AbandonPage';
 import { MyDayPage } from './pages/me/MyDayPage';
 import { DonePage } from './pages/record/DonePage';
+import { PhotoReplacePage } from './pages/record/PhotoReplacePage';
 import { RecordPage } from './pages/record/RecordPage';
+import { SendingPage } from './pages/record/SendingPage';
 import { PlanDetailPage } from './pages/plan/PlanDetailPage';
 import { PlacePage } from './pages/plan/create/PlacePage';
 import { PlanFormPage } from './pages/plan/create/PlanFormPage';
@@ -92,8 +94,15 @@ export const SCREENS: ScreenRoute[] = [
     stage: 4,
     element: <RecordPage />,
   },
-  { path: '/claims/:claimId/sending', screen: '5-1', name: '보내는 중', stage: 5 },
-  { path: '/claims/:claimId/record/photo', screen: '5-3', name: '사진 교체', back: true, stage: 5 },
+  { path: '/claims/:claimId/sending', screen: '5-1', name: '보내는 중', stage: 5, element: <SendingPage /> },
+  {
+    path: '/claims/:claimId/record/photo',
+    screen: '5-3',
+    name: '사진 교체',
+    back: true,
+    stage: 5,
+    element: <PhotoReplacePage />,
+  },
   { path: '/claims/:claimId/done', screen: '5-4', name: '전송 완료', stage: 4, element: <DonePage /> },
   { path: '/inbox', screen: '6', name: '수신함', tab: true, stage: 4, element: <InboxPage /> },
   {

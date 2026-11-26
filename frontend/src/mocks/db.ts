@@ -61,6 +61,12 @@ export interface DbRecord {
   photoStatus: PhotoStatus;
   updatedAt: string;
   deliveredAt: string | null;
+  /** 내부 속성(응답에 없음). 5단계 사진 경로 */
+  photoKey?: string;
+  photoContentType?: string;
+  /** PROCESSING이 끝나는 시각과 결과(업로드 때 시나리오로 정한다, FE-Q24) */
+  processReadyAt?: string;
+  photoOutcome?: 'READY' | 'FAILED';
 }
 
 export interface DbInboxItem {

@@ -60,3 +60,96 @@
   font-weight: 700;
   cursor: pointer;
 }
+
+/* 사진 선택(FE-REC-03) */
+.photo-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.photo-label {
+  font-size: var(--font-size-sm);
+  font-weight: 700;
+}
+
+.photo-input {
+  font-size: var(--font-size-sm);
+}
+
+.photo-preview {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+.photo-img {
+  width: 100%;
+  max-height: 240px;
+  object-fit: cover;
+  border-radius: var(--radius-md);
+}
+
+.photo-name {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-sub);
+  word-break: break-all;
+}
+
+.photo-error {
+  font-size: var(--font-size-sm);
+  color: var(--color-danger);
+}
+
+/* 하단 고정 버튼 두 개 */
+.two-buttons {
+  padding-bottom: calc(52px + var(--space-2));
+}
+
+/* 보내는 중(5-1) */
+.sending {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-8) 0 var(--space-4);
+  text-align: center;
+}
+
+.spinner {
+  width: 56px;
+  height: 56px;
+  border: 5px solid var(--color-record);
+  border-top-color: var(--color-primary);
+  border-radius: var(--radius-pill);
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation: none;
+  }
+}
+
+.sending-title {
+  font-size: var(--font-size-title);
+  font-weight: 700;
+}
+
+.sending-text {
+  color: var(--color-text-sub);
+}
+
+.slow {
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--color-plan);
+  font-size: var(--font-size-sm);
+}

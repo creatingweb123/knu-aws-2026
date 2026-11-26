@@ -76,6 +76,8 @@
 | FE-Q20 | 폼(3-2)에서 이미 넣은 장소를 고치거나 빼는 방법(문서는 3-3 장소 추가만 정했다). | 장소마다 "고치기"(같은 3-3 화면, `/plans/new/place?index=n`)와 "빼기" 버튼을 둔다. 6단계 AI 카드의 장소(`flags`가 붙은 장소 포함)도 같은 방법으로 고친다. |
 | FE-Q21 | 내 하루(4)에 `ACTIVE` 이어받기가 여러 개일 때의 표시(FE-ME-01은 "이어받은 하루"만 정했다. 서버는 한 사람이 여러 하루를 이어받는 것을 막지 않는다). | `GET /me/claims?status=ACTIVE` 항목을 응답 순서(이어받은 시각 최신순)대로 모두 카드로 보여 준다. 카드마다 기한·동선·"다녀온 이야기 쓰기"·"이어받기 포기"가 있다. |
 | FE-Q22 | "다녀온 이야기 쓰기" 이동 규칙(FE-ME-03)에 없는 `photoStatus`(`READY`이지만 아직 미전달, `DISCARDED`). | 작성 화면(5)으로 간다. 보내는 중(5-1)은 `UPLOAD_PENDING`·`PROCESSING`·`FAILED`일 때만 간다. |
+| FE-Q23 | 보내는 중(5-1)의 60초 강조·`UPLOAD_PENDING` 30초 기준 시각, 새로고침 뒤 기준, 브라우저 업로드 실패를 서버 상태(`UPLOAD_PENDING` 그대로)와 어떻게 구분할지. 판정 순서(FE-REC-06)에 없는 `NONE`·`DISCARDED`(보낼 사진이 없음)일 때. | 업로드를 시작할 때(작성 5·교체 5-3) sessionStorage `haru.sending.{claimId}`에 `{ startedAt, uploadFailed }`를 저장하고 두 기준 모두 `startedAt`부터 잰다. 값이 없으면(다른 탭·새 탭) `record.updatedAt`을 기준으로 쓴다. 브라우저 업로드가 실패하면 `uploadFailed = true`로 두고 바로 실패 화면(5-2)을 보여 준다. 미전달인데 `NONE`·`DISCARDED`이면 실패 화면과 같게 "사진 바꾸기"·"글로 완료하기"를 보여 준다. |
+| FE-Q24 | 사진 경로 MSW 목업 시나리오(§2.10은 `?mock=photo-fail`만 예로 들었다)와 처리 지연. | 업로드 URL `https://mock-upload.haru.local/...`의 PUT을 MSW가 받는다. 처리는 업로드 후 3초 뒤 첫 조회에서 끝난다(시각 기준으로 계산, 탭끼리 공유). `?mock=photo-fail`: 처리 결과 `FAILED`. `?mock=photo-slow`: 처리 90초(60초 강조 확인). `?mock=photo-upload-fail`: 업로드 PUT이 500. 돌아온 하루의 `photoUrl`은 고정 그림(data URL)이다. |
 
 ## 8.3 결정 시점
 
@@ -88,6 +90,7 @@
 | 프론트 2단계(둘러보기·이어받기) | FE-Q17 (임시 결정으로 구현) |
 | 프론트 3단계(하루 남기기 직접 작성) | FE-Q18–FE-Q20 (임시 결정으로 구현), FE-Q6(외부 AI 전송 안내의 공급자명·국가·보관 기간은 비워 둠) |
 | 프론트 4단계(내 하루·방문 기록·수신함) | FE-Q21, FE-Q22 (임시 결정으로 구현), FE-Q19 적용 범위 확장 |
+| 프론트 5단계(사진) | FE-Q23, FE-Q24 (임시 결정으로 구현) |
 | 백엔드 1단계(로컬 환경 구성) | BE-Q17·FE-Q8, BE-Q16, BE-Q27, BE-Q28, BE-Q30 |
 | 백엔드 2단계(계획 API) | BE-Q22, BE-Q23, BE-Q24, BE-Q25, BE-Q29, BE-Q31, BE-Q32, BE-Q33 |
 | 백엔드 3단계(이어받기·포기·완료) | BE-Q34–BE-Q41 (임시 결정으로 구현, AWS 판정 때 확인) |

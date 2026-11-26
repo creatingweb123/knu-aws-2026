@@ -46,12 +46,17 @@ PowerShell에서 `npm.ps1` 실행이 막혀 있으면 `npm.cmd`로 실행한다.
 - 화면 위쪽 검은 **목업 바**(개발 빌드 + 목업 모드에서만 보임)에서 사용자(지연·수현·민준)를 고른다. 목업 모드에서는 고른 사용자로 로그인된 상태로 본다(FE-Q10, FE-Q13).
 - 사용자 선택은 **탭별**이다. 탭 A는 수현, 탭 B는 민준으로 두면 같은 목업 데이터에서 동시 이어받기 경합을 재현할 수 있다(2단계).
 - 목업 데이터는 localStorage `haru.mock.db`에 있어 탭끼리 공유된다. 목업 바의 **초기화**로 시드로 되돌린다.
-- 시나리오는 진입 URL의 `?mock=값`으로 고르고 탭을 닫을 때까지 유지된다(FE-Q11). `?mock=`(빈 값)이면 지운다. 사진(5단계)·AI(6단계) 시나리오는 그 단계에서 추가한다.
+- 시나리오는 진입 URL의 `?mock=값`으로 고르고 탭을 닫을 때까지 유지된다(FE-Q11). `?mock=`(빈 값)이면 지운다. AI(6단계) 시나리오는 그 단계에서 추가한다.
 
-| 시나리오               | 동작                                                           | 단계 |
-| ---------------------- | -------------------------------------------------------------- | ---- |
-| `?mock=claim-conflict` | 이어받기가 항상 409 `ALREADY_CLAIMED`(한 탭에서 2-1 안내 확인) | 2    |
-| `?mock=browse-empty`   | 둘러보기 목록이 비어 있음(빈 상태 확인)                        | 2    |
+| 시나리오                  | 동작                                                           | 단계 |
+| ------------------------- | -------------------------------------------------------------- | ---- |
+| `?mock=claim-conflict`    | 이어받기가 항상 409 `ALREADY_CLAIMED`(한 탭에서 2-1 안내 확인) | 2    |
+| `?mock=browse-empty`      | 둘러보기 목록이 비어 있음(빈 상태 확인)                        | 2    |
+| `?mock=photo-fail`        | 사진 처리 결과 `FAILED`(5-2 실패 화면)                         | 5    |
+| `?mock=photo-slow`        | 사진 처리 90초(5-1에서 60초 뒤 "글로 완료하기" 강조)           | 5    |
+| `?mock=photo-upload-fail` | 업로드 PUT이 500(브라우저 업로드 실패 → 5-2)                   | 5    |
+
+사진은 시나리오가 없으면 업로드 3초 뒤 처리가 끝나 사진과 함께 전달된다. 업로드 주소는 `https://mock-upload.haru.local/...`이고 MSW가 받는다(FE-Q24).
 
 두 탭 경합 확인: 목업 바에서 **초기화** → 탭 A 수현, 탭 B 민준으로 `/plans/pln_demo`를 연다 → A에서 이어받기(내 하루로 이동) → B에서 이어받기(같은 화면에 "이미 다른 사람이 이어받았어요").
 
@@ -75,8 +80,9 @@ src/
   components/ Header, BottomTab, PrimaryButton, StatusBadge, RouteTimeline, TextField/TextArea,
               Toast, ResultScreen, PageTitle, Layout, DevMockBar(개발 전용)
   pages/      login/ browse/ plan/(상세·이어받기, create/ 하루 남기기) me/(내 하루·포기)
-              record/(방문 기록·전송 완료·종료 안내) inbox/(수신함·돌아온 하루)
-  state/      planDraft.ts(하루 남기기 작성 상태, sessionStorage), letterDraft.ts(방문 기록 임시 글, localStorage)
+              record/(방문 기록·사진·보내는 중·실패·교체·전송 완료·종료 안내) inbox/(수신함·돌아온 하루)
+  state/      planDraft.ts(하루 남기기 작성 상태, sessionStorage), letterDraft.ts(방문 기록 임시 글, localStorage),
+              sendingClock.ts(보내는 중 기준 시각·업로드 실패, sessionStorage)
   mocks/      db.ts, session.ts, handlers/, browser.ts
   styles/     tokens.css, global.css
   utils/      date.ts(KST), plan.ts, validation.ts(백엔드와 같은 규칙·문구), hash.ts, uuid.ts
@@ -88,19 +94,21 @@ src/
 
 ## 임시 결정 (docs/08 §8.2)
 
-| #      | 결정                                                                           |
-| ------ | ------------------------------------------------------------------------------ |
-| FE-Q3  | CSS Modules                                                                    |
-| FE-Q10 | 개발 전용 목업 바, 사용자 선택은 탭별 sessionStorage, 데이터는 localStorage    |
-| FE-Q11 | `?mock=`은 sessionStorage `haru.mock.scenario`에 유지                          |
-| FE-Q12 | 하단 탭은 `/`, `/me`, `/inbox`                                                 |
-| FE-Q13 | `/login`을 뺀 모든 경로 보호                                                   |
-| FE-Q14 | 시스템 글꼴, 4px 간격, 모서리 14px(추정값)                                     |
-| FE-Q15 | 시드 장소 이름은 명세(출근길 빵집)                                             |
-| FE-Q16 | Node 22, 버전은 `package-lock.json`으로 고정                                   |
-| FE-Q17 | 2단계 목업 시나리오 `claim-conflict`, `browse-empty`                           |
-| FE-Q18 | 공개 키 재사용은 `durationMs`를 뺀 본문 해시로 판단, 재전송은 처음 본문 그대로 |
-| FE-Q19 | 폼 값은 앞뒤 공백을 빼고 검증·전송, 글자 수는 코드 포인트                      |
-| FE-Q20 | 폼의 장소는 "고치기"(`/plans/new/place?index=n`)·"빼기"                        |
-| FE-Q21 | 내 하루는 진행 중인 이어받기를 모두 카드로                                     |
-| FE-Q22 | `READY`(미전달)·`DISCARDED`면 "다녀온 이야기 쓰기"는 작성 화면으로             |
+| #      | 결정                                                                            |
+| ------ | ------------------------------------------------------------------------------- |
+| FE-Q3  | CSS Modules                                                                     |
+| FE-Q10 | 개발 전용 목업 바, 사용자 선택은 탭별 sessionStorage, 데이터는 localStorage     |
+| FE-Q11 | `?mock=`은 sessionStorage `haru.mock.scenario`에 유지                           |
+| FE-Q12 | 하단 탭은 `/`, `/me`, `/inbox`                                                  |
+| FE-Q13 | `/login`을 뺀 모든 경로 보호                                                    |
+| FE-Q14 | 시스템 글꼴, 4px 간격, 모서리 14px(추정값)                                      |
+| FE-Q15 | 시드 장소 이름은 명세(출근길 빵집)                                              |
+| FE-Q16 | Node 22, 버전은 `package-lock.json`으로 고정                                    |
+| FE-Q17 | 2단계 목업 시나리오 `claim-conflict`, `browse-empty`                            |
+| FE-Q18 | 공개 키 재사용은 `durationMs`를 뺀 본문 해시로 판단, 재전송은 처음 본문 그대로  |
+| FE-Q19 | 폼 값은 앞뒤 공백을 빼고 검증·전송, 글자 수는 코드 포인트                       |
+| FE-Q20 | 폼의 장소는 "고치기"(`/plans/new/place?index=n`)·"빼기"                         |
+| FE-Q21 | 내 하루는 진행 중인 이어받기를 모두 카드로                                      |
+| FE-Q22 | `READY`(미전달)·`DISCARDED`면 "다녀온 이야기 쓰기"는 작성 화면으로              |
+| FE-Q23 | 보내는 중 기준 시각·업로드 실패는 sessionStorage `haru.sending.{claimId}`       |
+| FE-Q24 | 사진 목업: 업로드 주소, 3초 처리, `photo-fail`·`photo-slow`·`photo-upload-fail` |

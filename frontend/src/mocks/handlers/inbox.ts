@@ -7,7 +7,9 @@ import { HttpResponse, http } from 'msw';
 
 import type { InboxDetailResponse, InboxItem, InboxListResponse, ReplyResponse } from '../../api/types';
 import type { DbInboxItem, MockDb } from '../db';
-import { iso, loadDb, updateDb } from '../db';
+import { iso } from '../db';
+import { MOCK_PHOTO_URL } from '../photos';
+import { withDb } from './claims';
 import { api, apiError, currentUser, unauthorized } from './common';
 import { toPlan } from './plans';
 
@@ -54,7 +56,7 @@ export function inboxDetail(
     record: {
       letter: record.letter,
       deliveredAt: record.deliveredAt,
-      photoUrl: null,
+      photoUrl: item.hasPhoto ? MOCK_PHOTO_URL : null,
       photoCaption: item.hasPhoto && last ? `${last.name}에서` : null,
     },
   };
@@ -90,20 +92,20 @@ export const inboxHandlers = [
   http.get(api('/inbox'), ({ request }) => {
     const user = currentUser(request);
     if (!user) return unauthorized();
-    return HttpResponse.json(listInbox(loadDb(), user.userId));
+    return HttpResponse.json(withDb((db) => listInbox(db, user.userId)));
   }),
 
   http.get(api('/inbox/:itemId'), ({ request, params }) => {
     const user = currentUser(request);
     if (!user) return unauthorized();
-    const detail = inboxDetail(loadDb(), String(params.itemId), user.userId, new Date().toISOString());
+    const detail = withDb((db, now) => inboxDetail(db, String(params.itemId), user.userId, iso(now)));
     return detail ? HttpResponse.json(detail) : apiError('NOT_FOUND', '찾을 수 없어요.');
   }),
 
   http.post(api('/inbox/:itemId/read'), ({ request, params }) => {
     const user = currentUser(request);
     if (!user) return unauthorized();
-    const ok = updateDb((db) => markRead(db, String(params.itemId), user.userId));
+    const ok = withDb((db) => markRead(db, String(params.itemId), user.userId));
     return ok ? new HttpResponse(null, { status: 204 }) : apiError('NOT_FOUND', '찾을 수 없어요.');
   }),
 
@@ -116,7 +118,7 @@ export const inboxHandlers = [
     } catch {
       body = null;
     }
-    const out = updateDb((db) => replyInbox(db, String(params.itemId), user.userId, body, Date.now()));
+    const out = withDb((db) => replyInbox(db, String(params.itemId), user.userId, body, Date.now()));
     if ('reply' in out) return HttpResponse.json(out, { status: 201 });
     if (out.error === 'VALIDATION_ERROR') {
       return apiError('VALIDATION_ERROR', '입력값을 확인해 주세요.', 400, {
