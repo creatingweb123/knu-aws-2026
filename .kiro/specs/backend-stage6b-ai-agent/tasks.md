@@ -236,6 +236,7 @@ push 전 확인(각 Checkpoint와 push마다)
   - [x] 17.3 `--collect-only`(`-m integration`, `-m "integration and fault"`) 오류 없음, `STACK_NAME` 없으면 skip.
     - _Requirements: 22.5_
     - 상태: `-m integration` 26건 수집, `-m "integration and fault"` 3건 수집, `STACK_NAME` 없이 전부 skip. T20은 비종료 세션이 필요해 Fake dev(happy 고정)에서는 skip된다(실제 공급자 스택의 빈칸 사연으로 판정).
+    - 보강(커밋 `b2b7c5d`): T20 판정을 `tests/integration/verdicts.py`로 분리했다. 세션당 예약 6 상한 외에, 예약 증가가 커밋된 턴의 모델 호출 수와 같은지(중복 요청의 추가 호출 0), 200 본문이 같은 턴의 같은 SessionView인지, 응답 코드 집합을 본다. 판정 함수는 단위 테스트 16건으로 확인했다.
 
 - [x] 18. 오프라인 평가 도구 (`scripts/eval_agent.py`)
   - 선행: 8
@@ -257,15 +258,18 @@ push 전 확인(각 Checkpoint와 push마다)
 
 ### 공급자 검증 (개발용 NVIDIA NIM, BE-Q6 개발용 결정 승인됨, 합성 사연만)
 
-- [ ] 20. 실제 공급자 호환성·스모크
+- [ ] 20. 실제 공급자 호환성·스모크 (**20.1 완료. 20.2–20.4 실행은 대기: `LLM_API_KEY`가 `knu-aws-2026/backend/.env`에 없다, 2026-11-26 23:47 확인**)
   - 선행: 20.1 없음, 20.2는 10, 20.3은 18
   - [x] 20.1 6a 파이프라인과 요청 필드 확인(`scripts/probe_provider.py`, 2026-11-26, 커밋 `2e306a9`): Thinking 기본 켜짐 → `LLM_EXTRA_BODY={"chat_template_kwargs":{"enable_thinking":false}}` 필수, `max_completion_tokens`·`max_tokens`·`temperature=0`·`tools`·`parallel_tool_calls=false`·ToolMessage 후속·usage 동작, 레벨 0 합성 15건 14 READY·1건 502(장소 5곳, BE-Q127), 중앙값 1.13초·최대 4.33초·타임아웃 0, 잘못된 키 403(BE-Q128), 6a 핸들러 끝까지 200 READY. README 10.5·10.9·10.10.
     - _Requirements: 19.4 · BE-Q6(개발용), BE-Q9, BE-Q12_
   - [ ] 20.2 6b 에이전트 스모크: `AGENT_MODE=agent`로 합성 사연 5건(데모·비공개 장소·연락처·인젝션·빈칸)을 끝까지(질문은 픽스처 자동 답) 진행해 도구 호출 형태, 질문 수, 예약 사용 수, 턴 지연, deadline 준수를 기록한다(moto + 메모리 또는 Floci 체크포인터). Thinking OFF 고정. 6a 제한·예산 값을 완화하지 않는다.
+    - 상태: **준비 완료, 실행 대기(키).** `tests/local/test_local_agent_real.py`(Floci DynamoDB + 실제 핸들러, `LOCAL_REAL_PROVIDER=1`)를 커밋 `14b6b83`에 두었다. 페이크 드라이런으로 흐름과 기준 판정을 확인했다(5건 READY, 동시 요청 통과, `llmMode` 가드 작동). 실제 공급자 결과는 없다.
     - _Requirements: 8, 11, 12 · BE-Q9, BE-Q12_
   - [ ] 20.3 오프라인 평가 실제 실행: 15건 × 반복 3, 실행 전 예상 호출 수를 출력하고 공급자 한도 안에서 나눠 돈다. 결과 표를 README에 붙이고 에이전트가 낫지 않은 유형도 적는다. 결과는 개발용 trial 결과이며 운영 공급자 결정 근거가 아니다(작업 23).
+    - 상태: **도구 보강 완료(커밋 `ddc5612`), 실행 대기(키).** ①은 검사만 한 초안, ②는 같은 draft의 최종 카드, ③은 별도 호출(NoopBudget, 메모리 체크포인터). 429가 3회 연속이면 우회 없이 중단하고 부분 결과를 남긴다. 키 없이 실행하면 네트워크 호출 전에 종료함을 확인했다.
     - _Requirements: 23 · BE-Q112_
   - [ ] 20.4 BE-Q127(장소 4곳 이상)·BE-Q128(잘못된 키 403과 T12) 결정 요청. 결정에 따라 프롬프트·재시도 메시지·T12 기대값을 별도 커밋으로 바꾼다(결정 전에는 바꾸지 않는다).
+    - 상태: 결정과 반영은 끝났다. BE-Q127 옵션 B(프롬프트 규칙과 재시도 메시지, promptVersion `ca6ada9ac3ef`, 서버는 배열을 자르지 않음, 커밋 `c69ac89`). BE-Q128 401·403과 `T12_BASELINE`(커밋 `c69ac89`). **남은 것은 키가 있을 때 장소 5곳 사연 3회 재검증(BE-Q127)과 정상 키 기준 기록 생성뿐이다.**
     - _Requirements: 13.4, 22 · BE-Q83, BE-Q91_
   - 각 하위 작업 뒤 **push 전 확인(실제 키 0회 포함) → commit → push.** `test-results/`는 커밋하지 않는다.
 

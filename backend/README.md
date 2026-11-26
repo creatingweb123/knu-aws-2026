@@ -382,9 +382,20 @@ BE-Q6의 **개발·검증용** 공급자는 NVIDIA NIM(`nvidia/nemotron-3.5-ligh
 | `LLM_EXTRA_BODY` 권장 값(BE-Q9) | `{"chat_template_kwargs":{"enable_thinking":false}}` |
 
 발견한 것
-- 장소가 5곳 나오는 사연(`many_places`)에서 모델이 프롬프트의 "장소는 0–3곳"을 어기고 5곳을 두 번 모두 냈다(경로 `places`의 SCHEMA) → 502. BE-Q127(후보 B)로 프롬프트와 재시도 메시지에 장소 선택 규칙을 넣었다(`promptVersion` `ca6ada9ac3ef`). 재검증 결과는 아래 "BE-Q127 재검증".
+- 장소가 5곳 나오는 사연(`many_places`)에서 모델이 프롬프트의 "장소는 0–3곳"을 어기고 5곳을 두 번 모두 냈다(경로 `places`의 SCHEMA) → 502. BE-Q127(후보 B)로 프롬프트와 재시도 메시지에 장소 선택 규칙을 넣었다(`promptVersion` `ca6ada9ac3ef`). 재검증 결과는 아래 "BE-Q127 재검증"(**대기: 키 없음**).
 - 잘못된 키가 403이다. BE-Q128로 T12 판정을 401 또는 403으로 넓혔다.
 - 레벨 0 결과의 품질(원문 대조·개인정보)은 15건 1회 실행이라 평가가 아니다. 비교 평가는 `scripts/eval_agent.py`(6b)로 한다.
+
+#### BE-Q127 재검증 (대기: `LLM_API_KEY` 없음, 2026-11-26 23:47 확인)
+
+장소 5곳 사연(`many_places`)을 프롬프트 규칙(사연 순서로 최대 3곳) 적용 뒤 실제 공급자로 3회 돌린다. 판정: 세 번 모두 `READY` 또는 `degraded` 카드(502 아님), 장소 수 ≤ 3, `legit_order`가 증가 순서(사연 순서). 하나라도 어기면 BE-Q127을 다시 연다. 서버가 배열을 자르지 않는 원칙은 그대로다.
+
+```bash
+cd backend
+.venv/bin/python scripts/probe_provider.py --env-file <키가 든 .env 경로> --only pipeline --ids many_places --reps 3
+```
+
+결과는 `test-results/provider-probe-*.json`(gitignore)에 남고, 장소 이름은 남지 않는다. 결과 표는 키가 준비된 뒤 여기에 붙인다.
 
 ### 10.6 429 세 종류 (BE-Q92)
 
@@ -444,7 +455,7 @@ cd backend
 | 로컬(Docker) | 기본 `pipeline`에서 기존 23건 통과. `AGENT_MODE=agent FAKE_LLM_SCENARIO=ask_once`로 다시 띄워 새 9건 통과(`LOCAL_AGENT_MODE=agent LOCAL_COMPOSE_CONTROL=1`). `llmMode: fake`, 판정 근거 아님(BE-Q15) |
 | SAM | `cfn-lint` 0건, `sam validate --lint` 통과, `sam build --use-container` 성공(`--require-hashes`) |
 | AWS 통합 테스트 | T18–T22 작성·수집만(`-m integration` 26건, `-m "integration and fault"` 3건). 실행·판정은 AWS 담당 |
-| 실제 공급자 | NVIDIA NIM 개발용 trial로 6a 확인은 끝났다(10.5절). 6b 에이전트 스모크·오프라인 평가·BE-Q127 재검증은 **로컬 `.env`의 `LLM_API_KEY`가 비어 있어 대기**(작업 20.2–20.4) |
+| 실제 공급자 | NVIDIA NIM 개발용 trial로 6a 확인은 끝났다(10.5절). 6b 에이전트 스모크·오프라인 평가·BE-Q127 재검증은 **`LLM_API_KEY`가 없어 대기**(2026-11-26 23:47 확인, `knu-aws-2026/backend/.env`). 실행 절차는 11.9절. 실제 공급자 호출은 0회다 |
 
 ### 11.2 배포 전 주의 (AWS 담당)
 
@@ -468,7 +479,7 @@ cd backend
 |---|---|---|---|
 | T18 | `test_ai.py::test_T18_fidelity_gate`(nis 3건) | `AGENT_MODE=agent`, 실제 공급자 | `READY` 카드에 플래그 없이 남은 근거 없는 장소 0. Fake면 skip(통과 아님) |
 | T19 | `test_T19_privacy_not_published`(연락처·동호수·혼합) | 같음 | 공개된 Plan 텍스트에 전화·동호수 0, `privacyInPublished` 0 |
-| T20 | `test_T20_concurrent_same_turn` | `AGENT_MODE=agent` | 같은 `expectedTurn` 5회 동시: 200이 있고 나머지 409 `AI_SESSION_BUSY`, `turn` +1, 같은 SessionView, 예약 ≤ 6. 생성 응답이 비종료여야 한다. **Fake `dev`는 시나리오가 happy로 고정이라 생성 응답이 READY라 skip된다.** 실제 공급자 스택에서 빈칸 사연으로 판정 |
+| T20 | `test_T20_concurrent_same_turn` | `AGENT_MODE=agent` | 같은 `expectedTurn` 5회 동시. 판정(`tests/integration/verdicts.py`): 커밋 1회(또는 울타리 WORKING), 응답은 200 1건 이상과 `AI_SESSION_BUSY` 409뿐, 200 본문은 같은 턴의 같은 SessionView, **예약 증가 = 커밋된 턴의 모델 호출 수 증가**(중복 요청의 추가 호출 0), 예약 ≤ 6. 생성 응답이 비종료여야 한다. **Fake `dev`는 시나리오가 happy로 고정이라 생성 응답이 READY라 skip된다.** 실제 공급자 스택에서 빈칸 사연으로 판정 |
 | T21 | `test_T21_ai_slow`(`fault`) | `AiFaultInject=ai-slow`, `haru-dev` | 모든 응답이 30초 안에 200(`WORKING`·`ASKING`·`READY`) 또는 503 |
 | T22 | `test_T22_injection`(인젝션 2건) | 실제 공급자 | 장소가 모두 `legitPlaces`와 원문 대조로 맞거나 `NOT_IN_SOURCE` 플래그, 주입 장소 미추가(BE-Q111). 자동 판정 + 결과 표 검토 |
 
@@ -507,11 +518,52 @@ AWS에서만 확인되는 것(미검증): 체크포인트 테이블 IAM 5개 연
 
 ```bash
 cd backend
-.venv/bin/python scripts/eval_agent.py --fake --reps 1                     # 도구 확인(품질 근거 아님)
-.venv/bin/python scripts/eval_agent.py --env-file .env --reps 3 --out test-results/eval-agent.json
+.venv/bin/python scripts/eval_agent.py --fake --reps 1 --stories demo,nis_1 --out /tmp/eval-fake.json   # 도구 확인(품질 근거 아님)
+.venv/bin/python scripts/eval_agent.py --env-file <키가 든 .env 경로> --reps 3 --yes --out test-results/eval-agent-<날짜>.json
 ```
+
+키 없이 실행하면 `LLM_API_KEY가 비어 있다`로 네트워크 호출 전에 끝난다. 실행 절차 전체는 11.9절.
 
 - ①·②는 같은 레벨 0 실행의 첫 초안(검사만)과 최종 카드, ③은 별도 에이전트 실행(메모리 체크포인터, 자동 답)이다(BE-Q112). ③과 ①·②의 차이에는 프롬프트·도구 루프·모델 무작위성이 섞인다.
 - 실행 전 예상 호출 수(최대 사연 × 반복 × 8)를 출력하고 확인을 받는다. `--pause`로 호출 사이를 쉰다.
 - 출력: READY·degraded·실패 수, `NOT_IN_SOURCE`·`MISSING`·`PRIVACY`·`NEW_PLACE`(legitPlaces 밖) 잔존 수, 호출·토큰·지연(중앙값·p95), 질문 수, 사연별로 에이전트가 레벨 0보다 나은지(BETTER·WORSE·SAME·MIXED). 결과 파일은 `test-results/`(gitignore)에 둔다.
 - NVIDIA trial 결과는 개발용이며 운영 공급자 결정 근거가 아니다(10.10절).
+
+### 11.9 실제 공급자 검증 절차 (작업 20.2–20.4, 대기)
+
+상태(2026-11-26 23:47): `knu-aws-2026/backend/.env`에 `LLM_API_KEY`가 없다(다른 `.env`와 셸 환경에도 없다). 그래서 실제 공급자 호출은 한 번도 하지 않았다. 아래 순서로 키가 들어온 뒤 실행한다. 키 값은 출력·복사·커밋하지 않는다. 도구는 `--env-file`로 `.env`를 읽고 값은 출력하지 않는다.
+
+| 순서 | 확인할 것 | 방법 | 기준 |
+|---|---|---|---|
+| 1 | 키와 공급자 설정이 유효한가 | `probe_provider.py --env-file <.env> --only raw` | 정상 키 요청 200. 결과 JSON의 `raw` 항목 |
+| 2 | Thinking이 꺼졌는가 | 같은 결과의 `raw.thinking_off` | `status` 200, 응답 `content`가 비지 않음, `has_think_tag` false |
+| 3 | BE-Q127 장소 5곳 재검증 | 위 BE-Q127 재검증 절 | 3회 모두 장소 ≤ 3, 사연 순서. 실패하면 BE-Q127 재개방 |
+| 4 | 에이전트 스모크 5건(데모·비공개 장소·연락처·인젝션·빈칸) | 아래 로컬 명령 | `test_smoke_five_stories` 통과(READY, 예약 ≤ 6, `llmMode` openai_compat, 체크포인트 0, 요청 27초 미만, 답변 질문당 1건). 문제가 있으면 5번을 실행하지 않는다 |
+| 5 | 같은 턴 동시 5요청(실제 모델) | `test_concurrent_same_turn_real` | `t20_checks` 전 항목 통과 |
+| 6 | 오프라인 평가 15건 × 3회 | 아래 평가 명령 | 결과 파일과 표를 README 11.10절에 붙인다 |
+
+로컬 스모크(Floci DynamoDB + 실제 핸들러. AWS가 아니다):
+
+```bash
+cd backend
+# .env를 compose 변수 보간에 쓴다. 값은 컨테이너 환경 변수로만 들어간다(docker inspect로 볼 수 있으니 실행 뒤 되돌린다).
+AGENT_MODE=agent docker compose --env-file <.env 경로> up -d --no-deps --force-recreate api
+LOCAL_REAL_PROVIDER=1 LOCAL_AGENT_MODE=agent .venv/bin/pytest -m local tests/local/test_local_agent_real.py -s
+# 끝나면 기본 설정(pipeline, fake)으로 되돌린다
+docker compose up -d --no-deps --force-recreate api
+```
+
+오프라인 평가(NoopBudget, 메모리 체크포인터. DynamoDB를 쓰지 않는다):
+
+```bash
+.venv/bin/python scripts/eval_agent.py --env-file <.env 경로> --reps 3 --yes --out test-results/eval-agent-<날짜>.json > test-results/eval-agent-<날짜>.md
+```
+
+- 호출 한도: 사연 15 × 반복 3 × (레벨 0 최대 2 + 에이전트 최대 6) = 최대 360회. 실행 전 예상 호출 수를 출력한다. 호출 사이 2초, 턴 27초, 울타리 24초, 세션 예산(호출 6회, 입력 토큰 3만)은 그대로다.
+- 429: 한 번 나오면 10초 쉰다. 3회 연속이면 우회하지 않고 멈춘다. 결과 파일에 `aborted`와 그때까지 행이 남는다(`complete: false`).
+- 결과 파일과 표는 `test-results/`에 두고 커밋하지 않는다. 요약만 README 11.10절에 옮긴다.
+
+### 11.10 실제 공급자 결과 (대기)
+
+키 준비 뒤 채운다. 비교 대상은 ① 최초 draft, ② 레벨 0 최종, ③ 에이전트다. 정상 READY·degraded READY·FAILED 비율, NOT_IN_SOURCE·MISSING·PRIVACY·NEW_PLACE, 모델 호출·입력·출력 토큰, 질문·게이트 거부·자체 수정, 응답 시간 중앙값·p95·최댓값, 타임아웃·공급자 오류, 사연별 개선·악화를 적는다. ①과 ②는 같은 draft 호출의 출력이다. NoopBudget 평가 결과와 Floci 통합 스모크 결과는 따로 적는다.
+
