@@ -315,7 +315,7 @@
 
 ### PR
 
-- [ ] 23. 6a PR **[사용자 확인 필요]**
+- [x] 23. 6a PR — **Draft PR #8 생성(2026-11-26)**: https://github.com/creatingweb123/knu-aws-2026/pull/8 (`feat/be-6a-ai-pipeline` → `fix/be-3-local-verify`). 생성 시점에 선행 PR #1–#7은 모두 열린 상태(병합 없음). Ready for Review 전환·병합은 하지 않았다
   - 선행: 18 (19–22와 독립. 끝나기 전이면 그 사실을 본문에 적는다)
   - push는 이 브랜치만 명시적으로 한다. PR은 Draft, base는 그때 병합 상태에 따라 사용자와 정한다(`fix/be-3-local-verify` 또는 병합된 기준 브랜치). 본문에 요구사항·BE-Q 번호, 단위·로컬 결과, 빌드 측정, T12 미검증과 판정 절차, 변경 범위 확인(17), 공급자·프론트·팀·AWS 대기 항목을 적는다.
   - _Requirements: 20.7_

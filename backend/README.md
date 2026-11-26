@@ -14,8 +14,8 @@ AWS 계정 없이 개발한 백엔드를 AWS 담당이 배포·판정할 수 있
 | 로컬 환경(Docker) | **2026-11-25 첫 구동 성공**, `pytest -m local tests/local` 16건 통과(5절). 판정 근거는 아니다(BE-Q15) |
 | AWS 판정 | T1·T13·T3·T4·T5·T6·T7·T14·T16 **15건 모두 통과**(2026-11-25, `haru-dev`, AWS 담당). 첫 실행에서 T1 액세스 토큰 1건이 실패해 `common/auth.py`를 고친 뒤 다시 통과했다(3.1절) |
 | 다음 단계 조건 | T3–T7이 AWS에서 통과해야 4단계를 시작한다(docs/07 §7.2). **2026-11-25 충족** |
-| PR | 아직 열지 않았다(8절) |
-| **6a단계(AI 레벨 0)** | 브랜치 `feat/be-6a-ai-pipeline`(기준 `fix/be-3-local-verify`), spec `.kiro/specs/backend-stage6a-ai-pipeline/`. 개발 PC에서 구현·검증까지 마쳤고 **AWS 배포·판정은 아직 없다**(10절) |
+| PR | 1–3단계 PR #2–#6, 6a Draft PR #8이 열려 있다. 병합된 것은 없다(2026-11-26, 8절) |
+| **6a단계(AI 레벨 0)** | 브랜치 `feat/be-6a-ai-pipeline`(기준 `fix/be-3-local-verify`), **Draft PR #8**(https://github.com/creatingweb123/knu-aws-2026/pull/8, 2026-11-26 생성, 리뷰 전), spec `.kiro/specs/backend-stage6a-ai-pipeline/`. 개발 PC에서 구현·검증까지 마쳤고 **AWS 배포·판정은 아직 없다**(10절) |
 
 AWS에서만 확인되는 것은 4절, 로컬 환경 구동 기록과 절차는 5절, 테스트 데이터 정리 보완은 3.2절에 있다.
 
@@ -271,13 +271,14 @@ Docker 없이 확인한 대체 수단: moto 테스트(`tests/unit/test_plan_serv
 
 ## 8. 리뷰가 필요한 것과 PR
 
-PR은 아직 열지 않았다. 리뷰할 때 아래 순서로 연다.
+2026-11-26 기준 아래 PR이 모두 열려 있고 병합된 것은 없다(1번부터 PR #2–#6, 6번이 Draft PR #8). 4단계는 PR #1, 5단계는 Draft PR #7이다. 리뷰·병합은 아래 순서로 한다.
 
 1. `docs/monorepo-stage1-2-spec` → `main`: 문서·spec
 2. `feat/be-1-2-foundation` → `docs/monorepo-stage1-2-spec`(1이 병합되면 `main`): 1·2단계 코드
 3. (3단계 인계 후) `feat/be-3-claim-transaction` → `feat/be-1-2-foundation`
 4. `fix/be-3-aws-verify` → `feat/be-3-claim-transaction`: AWS 판정 중 고친 `token_use` 확인과 판정 기록(3.1절)
 5. `fix/be-3-local-verify` → `fix/be-3-aws-verify`: 로컬 테스트 수정, `_cleanup` 보완(3.2절), 로컬 구동 기록(5절)
+6. (6a) `feat/be-6a-ai-pipeline` → `fix/be-3-local-verify`: **Draft PR #8**. 4단계(PR #1)·5단계(PR #7)와 독립 브랜치이고, 선행 PR이 병합되면 merge로 통합한다(10.8절)
 
 비교 링크: `https://github.com/creatingweb123/knu-aws-2026/compare/<기준>...<브랜치>`
 
