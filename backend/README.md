@@ -391,4 +391,4 @@ Floci `DynamoDBSaver`(`tests/local/test_local_checkpointer.py`, BE-Q21): `floci/
 
 ### 10.8 4·5단계 병합 뒤 통합 회귀 계획 (작업 22, 보류)
 
-이 브랜치는 `fix/be-3-local-verify` 기준이라 4·5단계(PR #4–#7) 변경이 없다. 병합 때 겹치는 곳: `common/ddb.py`의 `use_table`(5단계와 같은 함수), `common/metrics.py`의 `emit(..., unit=)`(5단계와 같은 시그니처), `template.yaml`의 `Stage` 파라미터·`IsDev` 조건(5단계와 같은 정의), `handlers/routes.py`, `common/errors.py`, `docs/08`의 질문 번호(4단계 BE-Q42–48, 5단계 BE-Q49–72, 6a BE-Q73–92). 병합 뒤 전체 단위·로컬 테스트와 `check_ai_build.py`를 다시 돌린다.
+이 브랜치는 `fix/be-3-local-verify` 기준이라 4단계(PR #1 `feat/be-4-inbox`)·5단계(PR #7 `feat/be-5-photo-pipeline`) 변경이 없다. 병합 때 겹치는 곳: `common/ddb.py`의 `use_table`(5단계와 같은 함수), `common/metrics.py`의 `emit(..., unit=)`(5단계와 같은 시그니처), `template.yaml`의 `Stage` 파라미터·`IsDev` 조건(5단계와 같은 정의), `handlers/routes.py`, `common/errors.py`, `docs/08`의 질문 번호(4단계 BE-Q42–48, 5단계 BE-Q49–72, 6a BE-Q73–92). 병합 뒤 전체 단위·로컬 테스트와 `check_ai_build.py`를 다시 돌린다.
