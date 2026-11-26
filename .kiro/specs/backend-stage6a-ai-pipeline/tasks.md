@@ -196,18 +196,18 @@
   - `pytest tests/unit` 실패 0건(296건 포함), Property 29–36 중 지금까지의 7개 통과, `test_ai_cancel.py`의 반환 시간 최댓값 기록. 실제 공급자 호출 0회(스텁·Fake만, 소켓 대상은 127.0.0.1뿐인지 테스트가 확인).
   - _Requirements: 8.6, 8.7, 19.13_
 
-- [ ] 11. `POST /plans` AI 지표 (`domain/ai_metrics.py`, `plan_service.py`)
+- [x] 11. `POST /plans` AI 지표 (`domain/ai_metrics.py`, `plan_service.py`)
   - 선행: 3.3
-  - [ ] 11.1 `domain/ai_metrics.py`: design §16.2 계산식 전부(순수 함수, AI 패키지 import 없음), `fieldsEditedAfterHandoff` 비교 단위.
+  - [x] 11.1 `domain/ai_metrics.py`: design §16.2 계산식 전부(순수 함수, AI 패키지 import 없음), `fieldsEditedAfterHandoff` 비교 단위.
     - _Requirements: 14.3 · BE-Q79_
-  - [ ] 11.2 `plan_service.compute_metrics`: `AI_EDITED` + `aiSessionId`일 때만 `get_live_session`(기존 테이블 클라이언트), 제외 사유(없음·만료·소유자 다름·`READY` 아님·읽기 실패·계산 예외)는 로그 사유 코드만, Plan 생성은 막지 않음. 기존 네 지표·본문 해시·멱등 경로 불변.
+  - [x] 11.2 `plan_service.compute_metrics`: `AI_EDITED` + `aiSessionId`일 때만 `get_live_session`(기존 테이블 클라이언트), 제외 사유(없음·만료·소유자 다름·`READY` 아님·읽기 실패·계산 예외)는 로그 사유 코드만, Plan 생성은 막지 않음. 기존 네 지표·본문 해시·멱등 경로 불변.
     - _Requirements: 14.1, 14.2, 14.4–14.8 · BE-Q79_
-  - [ ] 11.3 단위 테스트 (`tests/unit/test_ai_metrics.py`, `test_plan_service_moto.py`·`test_handlers.py` 보강)
+  - [x] 11.3 단위 테스트 (`tests/unit/test_ai_metrics.py`, `test_plan_service_moto.py`·`test_handlers.py` 보강)
     - 계산식 각 지표, 비교 단위 예(design §16.2), `whyChosen` `null` = `""`, 장소 수가 다를 때, `editMs` 음수 → 0.
     - 제외 사유 6종 → AI 지표 없이 201(응답 본문은 지표 외 같음), `MANUAL` → 세션 조회 0회(+ `aiSessionId`가 와도), 멱등 재요청 → 지표 불변·세션 조회 0회.
     - **기존 `MANUAL` 경로 회귀**: 1·2단계 Plan 테스트 전부 통과, `MANUAL` 요청의 저장 항목·응답이 6a 전과 같음(같은 입력으로 비교).
     - _Requirements: 14.1–14.8, 19.7_
-  - [ ] 11.4 의존성 분리 테스트 (`tests/unit/test_ai_isolation.py`): 하위 프로세스에서 `langgraph`·`langchain*`·`openai`·`langsmith` import를 막고 `handlers.plans`·`handlers.me`·`handlers.claims`·`domain.ai_metrics`·`domain.ai_session_service`를 import하고 `compute_metrics`를 표본 세션으로 실행. 다른 핸들러가 `agent`를 import하지 않음(AST).
+  - [x] 11.4 의존성 분리 테스트 (`tests/unit/test_ai_isolation.py`): 하위 프로세스에서 `langgraph`·`langchain*`·`openai`·`langsmith` import를 막고 `handlers.plans`·`handlers.me`·`handlers.claims`·`domain.ai_metrics`·`domain.ai_session_service`를 import하고 `compute_metrics`를 표본 세션으로 실행. 다른 핸들러가 `agent`를 import하지 않음(AST).
     - _Requirements: 16.3, 15.9_
 
 - [x] 12. SAM 템플릿 (`template.yaml`, `samconfig.toml`, `src/Makefile`)

@@ -7,20 +7,25 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 from datetime import datetime, timedelta
 from typing import Any
 
 from boto3.dynamodb.conditions import Attr, Key
+from botocore.exceptions import BotoCoreError, ClientError
 
 from common import ddb
 from common.auth import User
 from common.errors import IDEMPOTENCY_CONFLICT, NOT_FOUND, TRY_AGAIN, VALIDATION_ERROR, ApiError
-from common.ids import new_plan_id
+from common.ids import is_session_id, new_plan_id
 from common.responses import iso_utc, parse_iso, serialize_claim, serialize_plan, serialize_plan_summary, utc_now
 from common.validation import PlanCreate
+from domain import ai_metrics, ai_session_service
 from domain.fidelity import Target, find_not_in_source
 from domain.privacy import scan_privacy
+
+_log = logging.getLogger("haru.ai")
 
 IDEMPOTENCY_TTL = timedelta(hours=24)
 GSI1 = "GSI1"
@@ -65,6 +70,45 @@ def compute_metrics(body: PlanCreate) -> dict[str, Any]:
     }
 
 
+def ai_session_metrics(user: User, body: PlanCreate, now: datetime) -> dict[str, Any]:
+    """AI_EDITED + aiSessionId일 때만 AiSession을 읽어 AI 지표를 만든다(design §16.1, BE-Q79).
+
+    세션이 없거나 만료·남의 것·READY 아님·읽기 실패·계산 예외면 빈 dict(지표 없음)이고 Plan 생성은 막지 않는다.
+    사유 코드만 로그에 남긴다. MANUAL이면 세션을 읽지 않는다.
+    """
+    sid = body.authoring.aiSessionId
+    if body.authoring.mode != "AI_EDITED" or not sid:
+        return {}
+    reason = None
+    session = None
+    if not is_session_id(sid):
+        reason = "AI_METRICS_SESSION_ID_INVALID"
+    else:
+        try:
+            session = ai_session_service.get_session(sid)
+        except (ClientError, BotoCoreError) as e:
+            _log.warning("ai_metrics reason=AI_METRICS_READ_FAILED type=%s", type(e).__name__)
+            return {}
+        if session is None:
+            reason = "AI_METRICS_SESSION_NOT_FOUND"
+        elif not ai_session_service.is_live(session, now):
+            reason = "AI_METRICS_SESSION_EXPIRED"
+        elif session.get("ownerId") != user.id:
+            reason = "AI_METRICS_OWNER_MISMATCH"
+        elif session.get("status") != ai_session_service.READY:
+            reason = "AI_METRICS_NOT_READY"
+    if reason:
+        _log.info("ai_metrics reason=%s", reason)
+        return {}
+    assert session is not None
+    final = body.model_dump(mode="json", exclude={"authoring"})
+    try:
+        return ai_metrics.session_metrics(session, final, body.authoring.story, iso_utc(now))
+    except Exception as e:  # noqa: BLE001 - 지표 계산 실패가 공개를 막지 않는다
+        _log.warning("ai_metrics reason=AI_METRICS_COMPUTE_FAILED type=%s", type(e).__name__)
+        return {}
+
+
 def build_plan(user: User, body: PlanCreate, now: datetime) -> dict[str, Any]:
     plan_id = new_plan_id()
     created = iso_utc(now)
@@ -86,7 +130,7 @@ def build_plan(user: User, body: PlanCreate, now: datetime) -> dict[str, Any]:
         "status": OPEN,
         "createdAt": created,
         "version": 1,
-        "metrics": compute_metrics(body),
+        "metrics": compute_metrics(body) | ai_session_metrics(user, body, now),
         "GSI1PK": gsi1_pk(OPEN),
         "GSI1SK": created,
         "GSI2PK": f"USER#{user.id}",
