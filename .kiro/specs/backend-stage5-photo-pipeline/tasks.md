@@ -154,6 +154,7 @@
     - 판정표 각 줄, dry-run이 테이블·큐를 바꾸지 않음(전후 스냅샷), `--apply`의 조건 실패("그새 바뀜") 처리, 금지 API 미호출(스파이), 처리 중 메시지가 있을 때 경고, 출력에 키·사용자 ID 없음.
     - _Requirements: 9.3, 14.1 · BE-Q68_
   - [x] 7.3 런북 초안 (`backend/README.md`에 넣을 절, 작업 16에서 반영)
+  - [x] 7.4 `--apply` 안전 확인 강화(2026-11-26 사용자 요청): 스택 재확인, 매핑 `Disabled`·60초, 처리 중 메시지 0(3회), 실행 종료(지표 지연 300초 뒤, 데이터 없음은 0으로 보지 않음). dry-run의 가시성 변경 명시. `test_photo_dlq_recover.py` 28건
     - "DLQ에 메시지가 있어도 같은 사진을 처리하는 Lambda가 실행 중일 수 있다", `--apply` 전 확인(처리 중 메시지 0, 가시성 180초 경과), SQS 메시지 수는 근사값이므로 필요하면 이벤트 소스 매핑을 끄고(`update-event-source-mapping --no-enabled`) 실행 종료(`ConcurrentExecutions` 0, 새 `START` 로그 없음)를 확인한 뒤 복구하고 다시 켜는 절차, 메시지 삭제·redrive는 운영자가 판정 확인 뒤 수동, 사용자 복구 경로, 필요한 권한.
     - _Requirements: 9.3, 15.4 · BE-Q68_
 
@@ -247,7 +248,7 @@
 
 ### 묶음 B 의존 (4단계 `GET /claims/{claimId}/record`가 브랜치에 들어온 뒤)
 
-- [ ] 17. `GET /record` 폴링 확인 **[대기: BE-Q46 승인과 묶음 B 병합 뒤]**
+- [ ] 17. `GET /record` 폴링 확인 **[대기: BE-Q46 승인과 묶음 B 병합 뒤]** (2026-11-26 현재 보류)
   - 선행: 16, BE-Q46 결정(승인 → 묶음 B 병합, 또는 거부 → 대안 A로 교체된 묶음 B 병합)
   - [ ] 17.1 PR base를 묶음 B가 들어간 브랜치로 옮긴다(rebase 없이 base 변경 또는 병합 커밋, 사용자 확인).
   - [ ] 17.2 로컬 `test_record_polling_view`와 AWS 같은 이름 사례: 업로드 흐름에서 `GET /record`의 `photoStatus`(`UPLOAD_PENDING` → `PROCESSING`/`FAILED`/`READY`)·`delivered`·`claimStatus`를 확인한다. 묶음 B 전에는 이 사례가 `ROUTES`에 경로가 없어 skip(사유 출력)되는지 지금(작업 11.3·13.2)도 확인해 둔다.
@@ -257,15 +258,16 @@
 
 ### 프론트 승인 의존 (프론트엔드 담당 리뷰·승인 뒤)
 
-- [ ] 18. 계약 문서 반영과 스위치 켜기 **[대기: 프론트엔드 담당 승인]**
+- [ ] 18. 계약 문서 반영과 스위치 켜기 **[대기: 프론트엔드 담당 승인]** (2026-11-26 현재 보류, `UploadIfNoneMatch=false`)
   - 선행: 16, 프론트엔드 담당의 BE-Q51·BE-Q52·BE-Q65 리뷰 결과. 순서는 docs/07 §7.2(docs/03 수정 PR → 승인 → 반영)
   - [ ] 18.1 BE-Q51·BE-Q52 **[승인 대기]**: 승인되면 docs/03 §3.4 `POST /claims/{claimId}/record/photo`에 "200 `{ upload }`", "Record가 없으면 400 `RECORD_REQUIRED`(끝난 이어받기는 409가 먼저)"를 적는다. 거부·변경되면 3.2·3.3·3.4와 design을 함께 고친다.
   - [ ] 18.2 BE-Q65 **[승인 대기]**: 승인되면 docs/03 §3.4 `upload.headers`에 `If-None-Match: *`가 들어갈 수 있음과 업로드 실패 처리(design "presigned PUT의 S3 응답별 처리")를 적는다. `samconfig.toml` dev에 `UploadIfNoneMatch=true`를 더하는 변경은 AWS 담당과 함께 정하고, 켠 배포에서 CORS 허용 헤더·버킷 정책(헤더 없는 PUT 403)·재업로드 412를 AWS 판정 항목으로 추가한다. 프론트 `types.ts`·MSW·업로드 코드는 프론트 담당이 같은 시점에 고친다(이 spec 범위 밖).
   - [ ] 18.3 거부되면 스위치를 끈 상태를 유지하고 "스위치 꺼짐 동안의 한계"를 영구 한계로 README·docs/08에 적는다.
   - _Requirements: 2.3, 3.2, 3.4, 15.1 · BE-Q51, BE-Q52, BE-Q65, docs/07 §7.2_
 
-- [ ] 19. 5단계 PR **[사용자 확인 필요]**
+- [x] 19. 5단계 PR **[사용자 확인 2026-11-26, Draft PR #7]**
   - 선행: 16 (17·18과 독립. 17·18이 끝나기 전이면 그 사실을 PR 본문에 적는다)
+  - 결과: https://github.com/creatingweb123/knu-aws-2026/pull/7 (Draft, base `feat/be-4-inbox`). 본문에 작업 17·18 보류, AWS 판정 미실행, `UploadIfNoneMatch=false`를 적었다. Ready for Review 전환·병합은 하지 않는다.
   - PR base `feat/be-4-inbox`, 묶음 B `f3626c0` 미포함. 본문에 요구사항·BE-Q 번호, 단위·로컬 결과, AWS 판정 미실행과 판정 절차, 변경 범위 확인(15), 묶음 B·프론트 승인 대기 항목을 적는다.
   - _Requirements: 15.6_
 

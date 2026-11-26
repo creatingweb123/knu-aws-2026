@@ -8,18 +8,18 @@ AWS 계정 없이 개발한 백엔드를 AWS 담당이 배포·판정할 수 있
 |---|---|
 | 범위 | 백엔드 1·2단계(인증, `GET /me`, 계획 생성·목록·상세, 멱등 키, 원문 충실도·개인정보 함수), **3단계**(이어받기·포기·완료 트랜잭션, 방문 기록 글 저장 최소 구현, `GET /me/claims`, EMF 지표 3종), **4단계**(수신함 4종, `GET /me`의 `unreadInboxCount`, `InboxFunction`), **5단계**(사진 업로드 URL·교체, 사진 처리 Lambda·큐·DLQ, 수신함 `photoUrl`·`photoCaption`, 운영자 복구 스크립트, 10절). 4단계의 `GET /claims/{claimId}/record`는 계약 변경 승인 대기(BE-Q46, 3.3절·8절) |
 | 브랜치 | 4단계 수신함: `feat/be-4-inbox`(`fix/be-3-local-verify` `8fcf239` 위, 이 PR). `GET /claims/{claimId}/record`는 이 브랜치에 없고 `feat/be-4-record-inbox`의 `f3626c0`에만 있다(BE-Q46 승인 전 PR 제외). 3단계까지: `feat/be-3-claim-transaction` ← `feat/be-1-2-foundation` ← `docs/monorepo-stage1-2-spec` |
-| 브랜치(5단계) | `feat/be-5-photo-pipeline`(`feat/be-4-inbox` `dc3af68` 위, 커밋 8개). **push·PR 전**(사용자 확인 대기). 묶음 B(`f3626c0`)는 들어 있지 않다 |
+| 브랜치(5단계) | `feat/be-5-photo-pipeline`(`feat/be-4-inbox` `dc3af68` 위). 2026-11-26 원격에 push, **Draft PR [#7](https://github.com/creatingweb123/knu-aws-2026/pull/7)**(base `feat/be-4-inbox`, 병합 전). 묶음 B(`f3626c0`)는 들어 있지 않다. 작업 17(묶음 B 의존)·18(프론트 승인 의존) 보류 |
 | spec | `.kiro/specs/backend-stage1-2-foundation/`, `.kiro/specs/backend-stage3-claim/`, `.kiro/specs/backend-stage4-record-inbox/`, `.kiro/specs/backend-stage5-photo-pipeline/` |
 | 단위 테스트 | `pytest tests/unit` 전부 통과(2026-11-25 로컬 검증: 289건, `_cleanup` 회귀 테스트 추가 후 296건). moto(인프로세스 DynamoDB 흉내)로 실제 조건식·갱신식·GSI 조회·트랜잭션 취소 사유를 확인. 3단계는 상태 전이 속성 테스트 포함 |
 | 단위 테스트(4단계) | 2026-11-25 수신함 묶음까지 385건 통과(속성 기반 Property 18–23 포함) |
-| 단위 테스트(5단계) | 2026-11-25 `pytest tests/unit` **625건 통과**, `pytest -m slow tests/unit` 2건 통과(40MP 메모리 측정). 속성 기반 Property 25–28 각 100예시 통과(P27은 600예시로 한 번 더 통과) |
+| 단위 테스트(5단계) | 2026-11-26 `pytest tests/unit` **647건 통과**(복구 스크립트 안전 확인 강화 포함), `pytest -m slow tests/unit` 2건 통과(40MP 메모리 측정). 속성 기반 Property 25–28 각 100예시 통과(P27은 600예시로 한 번 더 통과) |
 | SAM | `cfn-lint` 0건, `sam validate --lint` 통과, `sam build` 성공. **2026-11-25 AWS 담당이 `haru-dev`에 배포**(3.1절). 4단계 템플릿은 2026-11-25 개발 담당이 SAM CLI 1.174.1로 `sam validate --lint`·`sam build`까지 확인했고 배포하지 않았다. 5단계 템플릿은 `cfn-lint` 0건, `sam validate --lint` 통과, **`sam build --use-container` 성공**(Pillow 레이어, 10.2절), 배포하지 않았다 |
 | 로컬 환경(Docker) | **2026-11-25 첫 구동 성공**, `pytest -m local tests/local` 16건 통과(5절). 4단계 수신함 추가 후 23건 통과(5.4절). 5단계 추가 후 28건 통과·8건 사유 skip(5.5절). 판정 근거는 아니다(BE-Q15) |
 | AWS 판정 | T1·T13·T3·T4·T5·T6·T7·T14·T16 **15건 모두 통과**(2026-11-25, `haru-dev`, AWS 담당). 첫 실행에서 T1 액세스 토큰 1건이 실패해 `common/auth.py`를 고친 뒤 다시 통과했다(3.1절) |
 | AWS 판정(4단계) | T1 확장·T2·T17 테스트 코드 작성, **미실행**(3.3절). 배포와 실행은 AWS 담당 |
 | AWS 판정(5단계) | T8·T9·T10·T11·T15, 재업로드, IAM·CORS, 주입 차단 테스트 코드 작성, 수집만 확인하고 **미실행**(3.4절) |
 | 다음 단계 조건 | T3–T7이 AWS에서 통과해야 4단계를 시작한다(docs/07 §7.2). **2026-11-25 충족**. 4단계 이후 PR마다 `tests/integration/test_concurrency.py`를 다시 돌린다(docs/07 §7.2) |
-| PR | 2026-11-25 6개 열림(#1–#6), 병합 전(8절) |
+| PR | 2026-11-25 6개 열림(#1–#6), 2026-11-26 5단계 Draft #7. 모두 병합 전(8절) |
 
 AWS에서만 확인되는 것은 4절, 로컬 환경 구동 기록과 절차는 5절, 테스트 데이터 정리 보완은 3.2절에 있다.
 
@@ -410,9 +410,11 @@ Floci 2.5.0-compat 확인 결과(BE-Q64, 실제 구동으로 판단)
 | 4 | [#5](https://github.com/creatingweb123/knu-aws-2026/pull/5) | `fix/be-3-aws-verify` → `feat/be-3-claim-transaction` | `token_use` 확인, 판정 기록(3.1절) | 289 passed | 수정 후 15건 통과 |
 | 5 | [#6](https://github.com/creatingweb123/knu-aws-2026/pull/6) | `fix/be-3-local-verify` → `fix/be-3-aws-verify` | 로컬 테스트 수정, `_cleanup` 보완(3.2절), 로컬 기록(5절) | 296 passed | `_cleanup` 보완은 미실행 |
 | 6 | [#1](https://github.com/creatingweb123/knu-aws-2026/pull/1) | `feat/be-4-inbox` → `fix/be-3-local-verify` | 4단계 수신함(묶음 A, 계약 변경 없음) | 385 passed | 미실행(3.3절) |
+| 7 | [#7](https://github.com/creatingweb123/knu-aws-2026/pull/7) **Draft** | `feat/be-5-photo-pipeline` → `feat/be-4-inbox` | 5단계 사진 파이프라인(10절). `UploadIfNoneMatch=false` | 647 passed(2026-11-26) | 미실행(3.4절) |
 
 - 묶음 B(`GET /claims/{claimId}/record`, `feat/be-4-record-inbox`의 `f3626c0`)는 PR을 열지 않았다. BE-Q46 승인과 docs/03 §3.4 수정 PR이 먼저다.
-- 5단계(`feat/be-5-photo-pipeline`, base 예정 `feat/be-4-inbox`)는 **push·PR 전**이다. 사용자 확인 뒤 연다(작업 19). PR 본문에는 10.8절 변경 범위 확인 결과를 넣는다.
+- 5단계 #7은 **Draft**다. Ready for Review 전환과 병합은 AWS 판정, 프론트 승인(작업 18), 묶음 B(작업 17) 상태를 보고 정한다. #1이 병합되면 base를 옮긴다(rebase하지 않는다).
+- 2026-11-26 03:10–03:11에 이 브랜치가 승인 전에 원격에 올라간 일이 있었다. IDE(Kiro) Git 확장 로그에 `git push -u`와 동기화(`pull --tags` → `push`)가 남아 있고 에이전트 명령에는 없다. 누가 실행했는지는 확인하지 못했다. 올라간 변경에 비밀값·산출물이 없음을 확인했다. IDE의 "브랜치 게시"·"변경 내용 동기화"는 현재 브랜치를 그대로 push하므로 주의한다.
 - 모든 PR의 `cfn-lint`는 0건이다.
 
 비교 링크: `https://github.com/creatingweb123/knu-aws-2026/compare/<기준>...<브랜치>`
@@ -450,8 +452,8 @@ spec: `.kiro/specs/backend-stage5-photo-pipeline/`(requirements·design·tasks).
 
 | 항목 | 상태 |
 |---|---|
-| 브랜치·커밋 | `feat/be-5-photo-pipeline`: `819dcfb` spec, `74c92dd` 공통·이미지, `430dc8f` API, `593a8f6` 처리 Lambda, `6cd4178` 복구 스크립트, `25ded68` 템플릿, `cfc65a7` 로컬, `40a767f` AWS 테스트, 이 문서 커밋. push 안 함 |
-| 단위 테스트 | 625건 통과, `-m slow` 2건 통과. Property 25(처리본 규칙)·26(거부 사유)·27(전달 1회·현재 사진)·28(업로드 URL·교체) 각 100예시 |
+| 브랜치·커밋 | `feat/be-5-photo-pipeline`: `819dcfb` spec, `74c92dd` 공통·이미지, `430dc8f` API, `593a8f6` 처리 Lambda, `6cd4178` 복구 스크립트, `25ded68` 템플릿, `cfc65a7` 로컬, `40a767f` AWS 테스트, `563d33d` 문서, `2a7a3cc`·`f7026ad` 복구 스크립트 안전 확인 강화, 상태 갱신 커밋. Draft PR #7 |
+| 단위 테스트 | 647건 통과(2026-11-26), `-m slow` 2건 통과. Property 25(처리본 규칙)·26(거부 사유)·27(전달 1회·현재 사진)·28(업로드 URL·교체) 각 100예시 |
 | 이미지 측정(`test_photo_memory.py`, 별도 프로세스) | 40MP JPEG 최대 상주 104.8MB·303ms, 40MP PNG 325.3MB·947ms. 한도 717MB(1024MB의 70%) 안(BE-Q56) |
 | 중첩 재시도 상한(`test_photo_retry_budget.py`) | 완료 호출 1번이 최대 GetItem 16회·TransactWriteItems 12회(합 28회), SDK 총 시도 2회면 56회. 시간 guard는 완료를 시작할지만 정한다(BE-Q71) |
 | SAM | `cfn-lint` 0건, `sam validate --lint` 통과, `sam build --use-container` 성공. 레이어에 Pillow 13.0.0 cp312 manylinux x86_64. Lambda 빌드 이미지 안에서 `process_image`(EXIF 제거)와 핸들러 import 확인. 다른 함수 빌드 결과에 Pillow 없음 |
@@ -530,7 +532,7 @@ python scripts/photo_dlq_recover.py --stack haru-dev --apply --confirm-stack har
 
 - 묶음 B 의존(작업 17, BE-Q46 승인과 묶음 B 병합 뒤): `GET /claims/{claimId}/record`로 `photoStatus`(`UPLOAD_PENDING` → `PROCESSING`/`FAILED`/`READY`)·`delivered`·`claimStatus` 폴링 확인(로컬·AWS), S3 연동 지점을 프론트에 전달.
 - 프론트엔드 승인 의존(작업 18): BE-Q51·BE-Q52를 docs/03 §3.4에 적기, BE-Q65 승인 시 docs/03 `upload.headers`·업로드 실패 처리 반영과 dev `UploadIfNoneMatch=true`(AWS 담당과 함께). 거부되면 스위치를 끈 채 10.4절 첫 항목을 영구 한계로 적는다.
-- 5단계 PR(작업 19): 사용자 확인 뒤 push·PR.
+- 5단계 PR(작업 19): 2026-11-26 Draft PR #7로 열었다. Ready for Review 전환·병합은 하지 않았다.
 
 ### 10.8 변경 범위 확인 (`git diff feat/be-4-inbox`, PR 본문용)
 
