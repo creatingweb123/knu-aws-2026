@@ -602,6 +602,8 @@ SQS 재전달 → Lambda A': 1단계 Record deliveredAt 있음 → ignored(deliv
 `backend/scripts/photo_dlq_recover.py --stack haru-dev [--apply]`
 
 - **기본은 dry-run이다.** `--apply`를 명시했을 때만 DynamoDB에 쓴다. DLQ 메시지를 지우거나 redrive하는 기능은 넣지 않는다(운영자가 판정을 확인한 뒤 콘솔·CLI로 직접 한다).
+- **dry-run도 DLQ 메시지의 가시성을 바꾼다.** 판정에 `ReceiveMessage(VisibilityTimeout=60)`를 쓰므로 읽은 메시지는 60초 동안 보이지 않고 수신 횟수가 1 오른다(데이터는 바뀌지 않는다). README 런북에 적는다.
+- **`--apply` 안전 확인(2026-11-26 강화)**: `--confirm-stack` = `--stack`, 처리 함수의 이벤트 소스 매핑이 모두 `Disabled`이고 마지막 변경 뒤 60초 이상, PhotoQueue 처리 중 메시지 0(5초 간격 3회), `ConcurrentExecutions`(매핑 변경 + 30초 이후) 최대 0이고 조회 가능. 하나라도 실패하면 DLQ를 읽지 않고 쓰지 않으며 종료 코드 2. 건너뛰기 옵션은 없다. 실행 뒤 매핑 상태를 다시 읽어 바뀌었으면 경고한다. 아래 2번 안전 확인 출력은 dry-run의 참고 정보로 남긴다.
 
 1. 스택에서 `PhotoDLQ`·`PhotoQueue` URL과 테이블 이름을 읽는다.
 2. 안전 확인을 출력한다: `PhotoQueue`의 `ApproximateNumberOfMessages`·`ApproximateNumberOfMessagesNotVisible`, `PhotoProcessorFunction`의 최근 5분 `ConcurrentExecutions` 최대값(CloudWatch, 권한이 없으면 "확인 못 함"). 처리 중인 메시지가 있으면 경고한다.

@@ -3,6 +3,7 @@
 import importlib.util
 import json
 import sys
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import boto3
@@ -32,6 +33,45 @@ def env(monkeypatch):
         for name in FORBIDDEN:
             monkeypatch.setattr(sqs, name, lambda *a, _n=name, **k: called.append(_n) or (_ for _ in ()).throw(AssertionError(f"{_n} 금지")))
         yield table, sqs, dlq, q, called
+
+
+T0 = datetime(2026, 11, 26, 3, 0, tzinfo=timezone.utc)
+MAPPING = "11111111-2222-3333-4444-555555555555"
+LAMBDA_FORBIDDEN = ("update_event_source_mapping", "delete_event_source_mapping", "create_event_source_mapping",
+                    "update_function_configuration", "put_function_concurrency", "invoke")
+
+
+class FakeLambda:
+    def __init__(self, state="Disabled", age_s=600, extra=None, fail=None):
+        self.items = [{"UUID": MAPPING, "State": state, "LastModified": T0 - timedelta(seconds=age_s)}] + list(extra or [])
+        self.fail = fail
+        self.calls = []
+        for name in LAMBDA_FORBIDDEN:
+            setattr(self, name, lambda *a, _n=name, **k: (_ for _ in ()).throw(AssertionError(f"{_n} 금지")))
+
+    def list_event_source_mappings(self, FunctionName):
+        self.calls.append(FunctionName)
+        if self.fail:
+            raise self.fail
+        return {"EventSourceMappings": self.items}
+
+
+class FakeCw:
+    def __init__(self, peaks=(), fail=None):
+        self.peaks, self.fail, self.calls = list(peaks), fail, []
+
+    def get_metric_statistics(self, **kw):
+        self.calls.append(kw)
+        if self.fail:
+            raise self.fail
+        return {"Datapoints": [{"Maximum": v} for v in self.peaks]}
+
+
+def apply_kw(**over):
+    kw = {"lam": FakeLambda(), "cw": FakeCw(), "mapping": MAPPING, "stack": "haru-dev", "confirm_stack": "haru-dev",
+          "now": lambda: T0, "sleep": lambda s: None}
+    kw.update(over)
+    return kw
 
 
 def put_dlq(sqs, dlq, key):
@@ -88,7 +128,7 @@ def test_dry_run_judges_and_writes_nothing(env):
 def test_apply_recovers_only_processing(env):
     table, sqs, dlq, q, called = env
     sc = scenario(table, sqs, dlq)
-    res = rec_mod.run(sqs=sqs, cw=None, dlq_url=dlq, queue_url=q, function=None, apply=True, out=lambda *_: None)
+    res = rec_mod.run(sqs=sqs, dlq_url=dlq, queue_url=q, function="haru-dev-PhotoProcessorFunction-x", apply=True, out=lambda *_: None, **apply_kw())
     assert res["counts"]["applied"] == 1 and called == []
     pid, cid, _ = sc["recover"]
     r = record(pid, cid)
@@ -113,7 +153,7 @@ def test_apply_condition_changed_meanwhile(env, monkeypatch):
         return verdict
 
     monkeypatch.setattr(rec_mod, "judge", judge_then_change)
-    res = rec_mod.run(sqs=sqs, cw=None, dlq_url=dlq, queue_url=q, function=None, apply=True, out=lambda *_: None)
+    res = rec_mod.run(sqs=sqs, dlq_url=dlq, queue_url=q, function="haru-dev-PhotoProcessorFunction-x", apply=True, out=lambda *_: None, **apply_kw())
     assert res["counts"].get("changed_meanwhile") == 1 and "applied" not in res["counts"]
     assert record(pid, cid)["photoStatus"] == "DISCARDED"
 
@@ -130,7 +170,7 @@ def test_safety_warning_when_queue_busy(env):
 def test_dlq_messages_are_only_received(env):
     table, sqs, dlq, q, called = env
     scenario(table, sqs, dlq)
-    rec_mod.run(sqs=sqs, cw=None, dlq_url=dlq, queue_url=q, function=None, apply=True, out=lambda *_: None)
+    rec_mod.run(sqs=sqs, dlq_url=dlq, queue_url=q, function="haru-dev-PhotoProcessorFunction-x", apply=True, out=lambda *_: None, **apply_kw())
     attrs = sqs.get_queue_attributes(QueueUrl=dlq, AttributeNames=["ApproximateNumberOfMessages", "ApproximateNumberOfMessagesNotVisible"])["Attributes"]
     assert int(attrs["ApproximateNumberOfMessages"]) + int(attrs["ApproximateNumberOfMessagesNotVisible"]) == 6  # 하나도 지우지 않았다
     assert called == []
@@ -140,12 +180,111 @@ def test_cli_requires_stack_and_defaults_to_dry_run(monkeypatch):
     with pytest.raises(SystemExit):
         rec_mod.main([])  # --stack 필수
     seen = {}
-    monkeypatch.setattr(rec_mod, "resolve", lambda stack, region: {"dlq_url": "d", "queue_url": "q", "table": "HaruTable", "function": "f"})
-    monkeypatch.setattr(rec_mod, "run", lambda **kw: seen.update(kw))
+    monkeypatch.setattr(rec_mod, "resolve", lambda stack, region: {"dlq_url": "d", "queue_url": "q", "table": "HaruTable", "function": "f", "mapping": MAPPING})
+    monkeypatch.setattr(rec_mod, "run", lambda **kw: seen.update(kw) or {"counts": {}})
     monkeypatch.setattr(rec_mod.boto3, "resource", lambda *a, **k: type("R", (), {"Table": lambda self, n: n})())
     monkeypatch.setattr(rec_mod.boto3, "client", lambda *a, **k: None)
     monkeypatch.setattr(rec_mod.ddb, "use_table", lambda t: None)  # 전역 테이블을 더럽히지 않는다
     rec_mod.main(["--stack", "haru-dev"])
     assert seen["apply"] is False
-    rec_mod.main(["--stack", "haru-dev", "--apply"])
-    assert seen["apply"] is True
+    rec_mod.main(["--stack", "haru-dev", "--apply", "--confirm-stack", "haru-dev"])
+    assert seen["apply"] is True and seen["confirm_stack"] == "haru-dev" and seen["mapping"] == MAPPING
+    monkeypatch.setattr(rec_mod, "run", lambda **kw: {"counts": {}, "blocked": ["confirm_stack_mismatch"]})
+    assert rec_mod.main(["--stack", "haru-dev", "--apply"]) == rec_mod.EXIT_BLOCKED
+
+
+# ------------------------------------------------------------------ --apply 안전 확인
+
+
+def _blocked(env, capsys=None, **over):
+    """안전 확인 실패 시: DLQ를 읽지 않고(수신 횟수 불변) 아무것도 쓰지 않는다."""
+    table, sqs, dlq, q, called = env
+    scenario(table, sqs, dlq)
+    before = snapshot(table)
+    received = []
+    real = sqs.receive_message
+    sqs.receive_message = lambda **kw: received.append(kw["QueueUrl"]) or real(**kw)
+    lines = []
+    res = rec_mod.run(sqs=sqs, dlq_url=dlq, queue_url=q, function="haru-dev-PhotoProcessorFunction-x", apply=True, out=lines.append, **apply_kw(**over))
+    assert snapshot(table) == before and called == []
+    assert dlq not in received, "막혔으면 DLQ를 읽지 않는다(가시성 변경 없음)"
+    assert res["counts"] == {} and any(line.startswith("BLOCKED") for line in lines)
+    return res["blocked"]
+
+
+def test_gate_passes_and_reports(env):
+    table, sqs, dlq, q, _ = env
+    scenario(table, sqs, dlq)
+    lines = []
+    lam = FakeLambda()
+    res = rec_mod.run(sqs=sqs, dlq_url=dlq, queue_url=q, function="haru-dev-PhotoProcessorFunction-x", apply=True, out=lines.append, **apply_kw(lam=lam))
+    assert res["gate"]["in_flight_samples"] == [0, 0, 0] and res["gate"]["executions_peak"] == 0
+    assert any(line.startswith("apply_gate ok") for line in lines) and any(line.startswith("NEXT") for line in lines)
+    assert lam.calls == ["haru-dev-PhotoProcessorFunction-x"] * 2  # 실행 전 확인 + 실행 뒤 재확인. 매핑을 바꾸지 않는다
+
+
+def test_gate_confirm_stack_required(env):
+    assert "confirm_stack_mismatch" in _blocked(env, confirm_stack=None)
+    assert "confirm_stack_mismatch" in _blocked(env, confirm_stack="haru-demo")
+
+
+@pytest.mark.parametrize("state", ["Enabled", "Enabling", "Disabling", "Updating"])
+def test_gate_mapping_must_be_disabled(env, state):
+    assert f"mapping_not_disabled:{state}" in _blocked(env, lam=FakeLambda(state=state))
+
+
+def test_gate_mapping_disabled_recently(env):
+    assert "mapping_disabled_less_than_60s" in _blocked(env, lam=FakeLambda(age_s=59))
+
+
+def test_gate_any_other_enabled_mapping_blocks(env):
+    other = {"UUID": "other", "State": "Enabled", "LastModified": T0 - timedelta(hours=1)}
+    assert "mapping_not_disabled:Enabled" in _blocked(env, lam=FakeLambda(extra=[other]))
+
+
+def test_gate_mapping_lookup_failure_blocks(env):
+    assert any(r.startswith("mapping_unavailable") for r in _blocked(env, lam=FakeLambda(fail=RuntimeError("denied"))))
+    assert "mapping_not_found" in _blocked(env, mapping="not-this-stack")
+
+
+def test_gate_in_flight_sampled_repeatedly(env):
+    _, sqs, _, q, _ = env
+    counts = iter(["0", "1", "0"])  # 한 번이라도 0이 아니면 막는다(근사값)
+    real = sqs.get_queue_attributes
+
+    def attrs(**kw):
+        if kw["QueueUrl"] == q and kw["AttributeNames"] == ["ApproximateNumberOfMessagesNotVisible"]:
+            return {"Attributes": {"ApproximateNumberOfMessagesNotVisible": next(counts)}}
+        return real(**kw)
+
+    sqs.get_queue_attributes = attrs
+    sleeps = []
+    assert "queue_in_flight_not_zero" in _blocked(env, sleep=sleeps.append)
+    assert sleeps == [rec_mod.QUEUE_SAMPLE_INTERVAL_S] * (rec_mod.QUEUE_SAMPLES - 1)
+
+
+def test_gate_executions_after_disable_block(env):
+    assert "executions_after_disable" in _blocked(env, cw=FakeCw(peaks=[0, 1]))
+
+
+def test_gate_executions_window_starts_after_disable(env):
+    cw = FakeCw()
+    _, sqs, dlq, q, _ = env
+    rec_mod.run(sqs=sqs, dlq_url=dlq, queue_url=q, function="f", apply=True, out=lambda *_: None, **apply_kw(cw=cw, lam=FakeLambda(age_s=120)))
+    start = cw.calls[-1]["StartTime"]
+    assert start == T0 - timedelta(seconds=120) + timedelta(seconds=rec_mod.FUNCTION_TIMEOUT_S)
+
+
+@pytest.mark.parametrize("cw", [None, FakeCw(fail=RuntimeError("AccessDenied"))])
+def test_gate_executions_unavailable_blocks(env, cw):
+    assert any(r.startswith("executions_unavailable") for r in _blocked(env, cw=cw))
+
+
+def test_dry_run_notes_visibility_change(env):
+    table, sqs, dlq, q, _ = env
+    scenario(table, sqs, dlq)
+    lines = []
+    rec_mod.run(sqs=sqs, cw=None, dlq_url=dlq, queue_url=q, function=None, apply=False, out=lines.append)
+    assert any(line.startswith("NOTE dry-run도 ReceiveMessage") for line in lines)
+    attrs = sqs.get_queue_attributes(QueueUrl=dlq, AttributeNames=["ApproximateNumberOfMessagesNotVisible"])["Attributes"]
+    assert int(attrs["ApproximateNumberOfMessagesNotVisible"]) == 6  # dry-run도 읽은 메시지를 잠시 숨긴다(문서화한 동작)

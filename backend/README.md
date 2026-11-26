@@ -472,23 +472,33 @@ spec: `.kiro/specs/backend-stage5-photo-pipeline/`(requirements·design·tasks).
 DLQ 처리 Lambda는 없다. 강제 종료 등으로 DLQ에 간 메시지의 Record는 `PROCESSING`으로 남을 수 있다. 실행자는 그동안에도 사진 교체나 글로 완료로 스스로 끝낼 수 있다.
 
 ```bash
-python scripts/photo_dlq_recover.py --stack haru-dev            # dry-run(기본). 아무것도 쓰지 않는다
-python scripts/photo_dlq_recover.py --stack haru-dev --apply    # 복구 대상만 조건부 FAILED RETRY_EXHAUSTED
+python scripts/photo_dlq_recover.py --stack haru-dev                                   # dry-run(기본). DynamoDB에 쓰지 않는다
+python scripts/photo_dlq_recover.py --stack haru-dev --apply --confirm-stack haru-dev  # 안전 확인을 모두 통과하면 복구
 ```
 
-- 스크립트는 DLQ를 `ReceiveMessage(VisibilityTimeout=60)`로 읽기만 한다. 메시지 삭제·redrive·가시성 변경·이벤트 소스 매핑 변경을 하지 않는다. 출력에 키·사용자 ID·URL이 없다(`claimId`는 앞 8자).
+- **dry-run도 DLQ 메시지의 가시성을 바꾼다.** 스크립트는 판정을 위해 `ReceiveMessage(VisibilityTimeout=60)`를 부르므로, 읽은 메시지는 dry-run에서도 60초 동안 다른 소비자에게 보이지 않고 `ApproximateReceiveCount`가 1 오른다. DLQ에는 소비자가 없어 데이터는 바뀌지 않지만, 그 60초 동안 콘솔의 메시지 폴링·redrive·`aws sqs receive-message`에서 그 메시지가 빠져 보이고 `ApproximateNumberOfMessagesVisible`(알람 지표)이 잠시 줄어든다. 스크립트를 돌린 직후 DLQ를 직접 확인하거나 redrive하려면 60초 기다린다. 스크립트는 메시지 삭제·redrive·`ChangeMessageVisibility`·이벤트 소스 매핑 변경을 하지 않는다. 출력에 키·사용자 ID·URL이 없다(`claimId`는 앞 8자).
 - 판정: `photoKey` 일치·`PROCESSING`·미전달 → 복구 대상(`--apply` 때 조건 `photoKey = :key AND photoStatus = PROCESSING AND attribute_not_exists(deliveredAt)`로 씀, 조건 실패는 "그새 바뀜"). 이미 `FAILED` → 없음. 키 불일치·전달됨·`DISCARDED`·Record 없음 → 지난 메시지. `UPLOAD_PENDING` → 처리 전 실패(사용자가 교체·글로 완료). `READY`·미전달 → 비정상(BE-Q66), 개발 담당에게 넘긴다.
-- **DLQ에 메시지가 있어도 같은 사진을 처리하는 Lambda가 실행 중일 수 있다**(같은 키의 중복 이벤트, 가시성 타임아웃 직후 재전달과 DLQ 이동의 겹침). `--apply` 전에 스크립트의 안전 확인에서 `PhotoQueue`의 처리 중 메시지가 0이고, DLQ 메시지가 들어온 뒤 180초(가시성 타임아웃) 이상 지났는지 본다.
-- SQS 메시지 수는 근사값이다. 처리 중인 실행이 없음을 확실히 해야 하면 이벤트 소스 매핑을 끄고 실행 종료를 확인한 뒤 복구한다.
-  1. `aws lambda list-event-source-mappings --function-name <PhotoProcessorFunction>`으로 PhotoQueue 매핑 UUID를 찾는다.
-  2. `aws lambda update-event-source-mapping --uuid <UUID> --no-enabled`, `get-event-source-mapping`의 `State`가 `Disabled`가 될 때까지 기다린다.
-  3. 실행 종료 확인: 함수 타임아웃(30초)보다 길게(최소 60초) 기다린 뒤 CloudWatch `AWS/Lambda` `ConcurrentExecutions`(함수 차원) 최근 1분 최대값이 0이고 함수 로그에 새 `START` 줄이 없는지 본다.
-  4. `photo_dlq_recover.py`(dry-run → `--apply`).
-  5. `aws lambda update-event-source-mapping --uuid <UUID> --enabled`, `State = Enabled` 확인. 꺼 둔 동안 들어온 메시지는 큐에 남아 있다가 처리된다.
-  - 매핑 끄기·켜기는 운영 변경이다. AWS 담당이 하고 시각을 기록한다.
-- 확인을 건너뛰고 `--apply`해도 데이터는 깨지지 않는다. 진행 중이던 Lambda의 완료는 `PROCESSING` 조건이 맞지 않아 거부되고 그 Lambda는 자기 처리본만 지운다. 다만 성공했을 사진이 `FAILED`로 보일 수 있다.
-- 복구 뒤 메시지: "복구 대상(적용됨)·이미 실패·지난 메시지"는 운영자가 판정을 확인한 뒤 직접 지운다. "비정상"은 남겨 개발 담당에게 넘긴다. redrive는 원인을 고친 뒤 운영자가 판단해 한다(redrive된 메시지는 무시 조건으로 안전하게 끝난다).
-- 운영자 권한: PhotoDLQ `sqs:ReceiveMessage`, PhotoQueue `sqs:GetQueueAttributes`, HaruTable `dynamodb:GetItem`·`UpdateItem`, `cloudformation:DescribeStacks`·`DescribeStackResource`, `cloudwatch:GetMetricStatistics`(선택). 매핑 절차에는 `lambda:ListEventSourceMappings`·`GetEventSourceMapping`·`UpdateEventSourceMapping`.
+- **DLQ에 메시지가 있어도 같은 사진을 처리하는 Lambda가 실행 중일 수 있다**(같은 키의 중복 이벤트, 가시성 타임아웃 직후 재전달과 DLQ 이동의 겹침). 그래서 `--apply`는 아래 안전 확인을 **모두** 통과해야 DLQ를 읽고 쓴다. 하나라도 실패하면 `BLOCKED`와 사유를 출력하고, DLQ를 읽지 않고(가시성도 바꾸지 않는다) 아무것도 쓰지 않고 종료 코드 2로 끝난다. 확인을 건너뛰는 옵션은 없다.
+
+  | 확인 | 통과 조건 | 실패 사유 코드 |
+  |---|---|---|
+  | 스택 재확인 | `--confirm-stack` = `--stack` | `confirm_stack_mismatch` |
+  | 이벤트 소스 매핑 | 처리 함수의 매핑이 모두 `Disabled`, 스택의 `PhotoProcessorQueueMapping`이 그중에 있음, 마지막 변경 뒤 60초(함수 타임아웃 30초의 2배) 이상 | `mapping_not_disabled:<State>`, `mapping_not_found`, `mapping_disabled_less_than_60s`, `mapping_unavailable:*` |
+  | 처리 중 메시지 | PhotoQueue `ApproximateNumberOfMessagesNotVisible`를 5초 간격으로 3번 읽어 모두 0(근사값이라 한 번만 보지 않는다). 대기 중(Visible) 메시지는 매핑이 꺼져 있으면 처리되지 않으므로 막지 않는다 | `queue_in_flight_not_zero` |
+  | 실행 종료 | CloudWatch `AWS/Lambda` `ConcurrentExecutions`(함수 차원)를 읽을 수 있고, 매핑 변경 시각 + 30초 이후 최대값이 0(데이터 없음은 호출 없음으로 본다) | `executions_after_disable`, `executions_unavailable:*` |
+
+- 절차
+  1. dry-run으로 판정을 본다(60초 가시성 변경을 감안한다).
+  2. `aws lambda list-event-source-mappings --function-name <PhotoProcessorFunction>`으로 PhotoQueue 매핑 UUID를 찾는다.
+  3. `aws lambda update-event-source-mapping --uuid <UUID> --no-enabled`, `get-event-source-mapping`의 `State`가 `Disabled`가 될 때까지 기다린다. 끈 시각을 기록한다.
+  4. 최소 60초 기다린다. 함수 로그에 새 `START` 줄이 없는지도 눈으로 본다(스크립트는 로그를 읽지 않는다).
+  5. `--apply --confirm-stack <스택>`으로 실행한다. `BLOCKED`면 사유를 해소하고 다시 실행한다. CloudWatch 지표는 1–2분 늦게 들어오므로 `executions_after_disable`이 나오면 몇 분 뒤 다시 본다.
+  6. 스크립트는 실행 뒤 매핑 상태를 한 번 더 읽어, 실행 중에 누가 매핑을 켰으면 `WARNING`을 출력한다(쓴 항목은 조건부라 깨지지 않는다).
+  7. `aws lambda update-event-source-mapping --uuid <UUID> --enabled`로 다시 켜고 `State = Enabled`를 확인한다. 꺼 둔 동안 들어온 메시지는 큐에 남아 있다가 처리된다(가시성·보존 기간 안).
+  - 매핑 끄기·켜기는 운영 변경이다. AWS 담당이 하고 시각을 기록한다. 스크립트는 매핑을 바꾸지 않는다.
+- 안전 확인을 통과한 뒤에 늦게 시작한 실행이 있더라도 데이터는 깨지지 않는다. 그 실행의 완료는 `photoStatus = PROCESSING` 조건이 맞지 않아 거부되고, 그 실행은 자기 처리본만 지운다. 다만 성공했을 사진이 `FAILED`로 보일 수 있다(사용자는 교체·글로 완료 가능).
+- 복구 뒤 메시지: "복구 대상(적용됨)·이미 실패·지난 메시지"는 운영자가 판정을 확인한 뒤 직접 지운다(스크립트 실행 뒤 60초가 지나야 다시 보인다). "비정상"은 남겨 개발 담당에게 넘긴다. redrive는 원인을 고친 뒤 운영자가 판단해 한다(redrive된 메시지는 무시 조건으로 안전하게 끝난다).
+- 운영자 권한: PhotoDLQ `sqs:ReceiveMessage`, PhotoQueue `sqs:GetQueueAttributes`, HaruTable `dynamodb:GetItem`·`UpdateItem`, `cloudformation:DescribeStacks`·`DescribeStackResource`, `lambda:ListEventSourceMappings`(`--apply` 필수), `cloudwatch:GetMetricStatistics`(`--apply` 필수, dry-run은 선택). 매핑 절차에는 `lambda:GetEventSourceMapping`·`UpdateEventSourceMapping`.
 
 ### 10.4 알려진 한계
 
