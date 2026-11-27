@@ -154,14 +154,18 @@ def _agent_only(ai_env):
         pytest.skip("함수가 AGENT_MODE=agent가 아니다(6b 판정은 에이전트 모드 스택에서)")
 
 
+REAL_PROVIDERS = ("openai_compat", "bedrock")  # bedrock은 2026-11-27 기본 공급자(실제 공급자)
+
+
 def _real_only(ai_env, name):
     _agent_only(ai_env)
-    if ai_env.get("LLM_PROVIDER") != "openai_compat":
+    if ai_env.get("LLM_PROVIDER") not in REAL_PROVIDERS:
         pytest.skip(f"{name}는 실제 공급자에서만 판정한다(함수가 Fake). {name} 미검증")
 
 
 def _llm_mode(ai_env):
-    return "fake" if ai_env.get("LLM_PROVIDER") == "fake" else "openai_compat"
+    provider = ai_env.get("LLM_PROVIDER")
+    return provider if provider in REAL_PROVIDERS else "fake"
 
 
 def _place_flagged(view, i):
