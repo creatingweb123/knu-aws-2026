@@ -2,6 +2,31 @@
 
 AWS 계정 없이 개발한 백엔드를 AWS 담당이 배포·판정할 수 있도록 정리한 문서다. 역할 분담은 [docs/07 §7.8](../docs/07-development-plan.md), 명세는 [docs/](../docs/)와 spec(`.kiro/specs/`)이 기준이다.
 
+## 0. 2026-11-27 최신 상태 (이 절이 1절 이하의 과거 기록보다 우선한다)
+
+기준: `main` `17486ed`에서 갈라진 브랜치 `feat/be-7-completion`(push·PR·병합 없음). 1절 이하는 각 날짜·커밋 시점의 **과거 기록**이라 지우지 않고 남긴다. 아래가 현재 `main`과 어긋나는 항목이다.
+
+| 과거 기록 | 현재 사실(Git 기준) |
+|---|---|
+| 1절 "브랜치" 행, 8절 PR #1–#8 "병합된 것은 없다" | `feat/be-1-2-foundation`·`feat/be-3-claim-transaction`·`feat/be-4-inbox`·`feat/be-5-photo-pipeline`·`feat/be-6a-ai-pipeline`·`feat/be-6b-ai-agent`·`feat/be-bedrock`·`fix/be-3-*`·`feat/fe-1…7`은 모두 `main`에 병합돼 있다(`git branch -r --merged main`) |
+| "`GET /claims/{claimId}/record`는 `feat/be-4-record-inbox`의 `f3626c0`에만 있다" | `f3626c0`은 이 저장소에 없다. `feat/be-7-completion`의 `a8afb61`에 문서 기준으로 새로 구현했다. `main`에는 아직 없고 §3.4 503 계약은 승인 대기(BE-Q46) |
+| 6a 로컬 `docker-compose.yml` 구동 기록 | 병합 뒤 `api` 서비스에 `FAULT_INJECT`가 두 번 들어가 compose가 파싱되지 않았다. `c17600c`에서 고쳤다(회귀 테스트 포함). 이 사이의 로컬 구동 기록은 병합 전 브랜치 기준이다 |
+
+### 이번 작업(2026-11-27)의 완료 수준
+
+| 항목 | 구현 | 단위 | 로컬 통합 | SAM 정적 | 남은 것 |
+|---|---|---|---|---|---|
+| `GET /claims/{claimId}/record`(스냅샷, 503 재시도 소진) | 완료 | 완료 | 완료(폴링 4건) | 통과 | **승인 대기**(BE-Q46 §3.4), AWS 판정(T1 확장·T2·스냅샷) |
+| 웹 버킷 + CloudFront(OAC, SPA, CORS 연동) | 완료 | 완료 | 해당 없음 | 통과 | **AWS 배포·판정 대기** |
+| 알람 5종 추가·대시보드·선택 Budgets | 완료 | 완료 | 해당 없음 | 통과 | 임계값·예산 **결정 대기**(BE-Q130·Q131), 배포 대기 |
+| `scripts/seed.py`, `report.py`, `deploy_web.py`, `photo_orphans.py` | 완료 | 완료 | seed·report는 Floci 확인 | — | `demo` 스택 실행 |
+| 마스킹 스위치 `AI_MASK_BEFORE_SEND`(기본 꺼짐) | 완료 | 완료 | — | 통과 | **BE-Q10 결정 대기** |
+| 사진 `UploadIfNoneMatch` | 기존 구현(스위치) | 기존 | 켠 상태 로컬 확인 | 통과 | **승인 대기**(BE-Q65), 프론트 재업로드 |
+
+검증 기록(2026-11-27, 개발 PC, 실제 AWS·유료 API 없음): `pytest tests/unit`·`pytest -m local tests/local`(Floci + Fake LLM, 에이전트 모드·`UploadIfNoneMatch`·`photo-slow`·`photo` 장애 조건 포함)·`pytest -m integration --collect-only`(수집만)·`cfn-lint`·`sam validate --lint`·`sam build --use-container`·`scripts/check_ai_build.py`(linux/amd64)·프론트 `tsc`·`vitest`·`eslint`·`vite build`(node:22 컨테이너)·실제 브라우저로 로컬 프론트(dev-jwt)↔로컬 백엔드 글로 완료 흐름. 건수와 실행하지 못한 항목은 최종 보고와 인계 문서에 있다. 인계 절차는 [`.kiro/specs/backend-stage7-ops/aws-handoff.md`](../.kiro/specs/backend-stage7-ops/aws-handoff.md).
+
+로컬 한계: 브라우저에서 Floci Cognito(`localhost:4566`)는 CORS로 막혀 로컬 프론트는 `VITE_AUTH_MODE=dev-jwt`를 쓴다(시드는 `python scripts/seed.py --local --apply --users fixed`로 `dev-jiyeon` 등 프론트 인물과 맞춘다).
+
 ## 1. 인계 상태 요약
 
 | 항목 | 상태 |

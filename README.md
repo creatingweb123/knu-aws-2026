@@ -87,18 +87,23 @@ frontend/     # 프론트엔드 코드: React, TypeScript, Vite (구조는 §2.1
 - **API 계약의 기준은 [`docs/03-api-contract.md`](./docs/03-api-contract.md)입니다.** 프론트엔드의 타입과 MSW 목업은 이 계약을 따릅니다. 계약을 바꿀 때는 이 문서를 먼저 고치고 프론트엔드 담당의 리뷰를 받은 뒤 코드에 반영합니다.
 - 요구사항 목록(6장)과 명세(2–5장)가 다르면 명세가 우선합니다.
 
-## 진행 현황 (2026-11-21)
+## 진행 현황 (2026-11-27)
 
-- 문서: 명세, 요구사항, 개발 계획 작성 완료.
-- 구현: 프론트엔드 1–7단계, 백엔드 1–7단계(6단계는 6a·6b) 모두 시작 전입니다.
+상태 용어는 [`.kiro/specs/backend-stage7-ops/requirements.md`](./.kiro/specs/backend-stage7-ops/requirements.md)의 표를 따릅니다(구현·단위·로컬 통합·SAM 정적 검증·승인 대기·실제 AWS 배포 대기·실제 AWS 인수 판정 대기).
+
+- 문서: 명세, 요구사항, 개발 계획 작성 완료. 백엔드 7단계 spec은 [`.kiro/specs/backend-stage7-ops/`](./.kiro/specs/backend-stage7-ops/)입니다.
+- 백엔드(`main`에 병합): 1–6b단계(6a·6b는 AI 레벨 0·에이전트)와 LLM 공급자 Amazon Bedrock 전환(`bedrock` 기본, `openai_compat`·`fake` 선택). 이 중 1–3단계 15건만 2026-11-25 `haru-dev`에서 AWS 판정을 통과했고 나머지는 AWS 판정 전입니다.
+- 백엔드(브랜치 `feat/be-7-completion`, 2026-11-27, 아직 `main`에 없음): `GET /claims/{claimId}/record`(BE-Q46 권장안, §3.4 503 계약은 **프론트엔드 담당 승인 대기**), 7단계 웹 버킷·CloudFront(OAC)·알람·대시보드·선택 Budgets, `scripts/seed.py`·`report.py`·`deploy_web.py`·`photo_orphans.py`. 단위·로컬 통합·`cfn-lint`·`sam validate --lint`·`sam build --use-container` 통과, **실제 AWS 배포·인수 판정 대기**([인계 문서](./.kiro/specs/backend-stage7-ops/aws-handoff.md)).
+- 프론트엔드: 1–7단계 코드 완료(MSW 목업 + 로컬 백엔드 dev-jwt 연동 확인). 실제 Cognito·API 전환과 배포는 AWS 스택 배포 뒤입니다.
 - 일정: 담당자와 날짜는 아직 정해지지 않았습니다([`docs/07-development-plan.md`](./docs/07-development-plan.md)).
-- LLM 공급자와 모델: 아직 정해지지 않았습니다([`docs/08-open-questions.md`](./docs/08-open-questions.md)).
+- LLM 운영 공급자·모델·외부 전송 동의 문구·마스킹 정책: 팀 결정 대기(BE-Q6·Q7·Q10, [`docs/08-open-questions.md`](./docs/08-open-questions.md)).
 - 데모 링크: 배포 후 기재합니다.
 
 ## 최근 변경
 
 | 날짜 | 내용 |
 |---|---|
+| 2026-11-27 | 백엔드 7단계(웹 호스팅·알람·대시보드·시드·성과 집계)와 `GET /record`를 `feat/be-7-completion`에 구현(AWS 배포 전). 병합 충돌로 깨진 `docker-compose.yml` 수정. 상세는 backend/README 0절 |
 | 2026-11-21 | LLM을 Amazon Bedrock에서 외부 OpenAI 호환 API로, 에이전트를 직접 구현한 루프에서 LangGraph 그래프로, 개발 환경을 로컬 Docker(AWS 호환 에뮬레이터)로 전환. 데모와 검증은 계속 실제 AWS에서 한다 |
 | 2026-11-21 | AI 하루 카드를 단발 생성에서 세션형 정리 에이전트로 전환 |
 | 2026-11-20 | 명세, 요구사항, 개발 계획 작성 |
