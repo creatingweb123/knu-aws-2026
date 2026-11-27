@@ -75,7 +75,7 @@ def test_all_routes_reject_missing_or_bad_tokens(stack):
 
 
 # 액세스 토큰으로 확인하는 경로. Auth_Guard(get_user)가 DB 조회 전에 거부하므로 ID는 없는 값이어도 된다.
-ACCESS_TOKEN_ROUTES = ["GET /me", "GET /inbox", "GET /inbox/{itemId}", "POST /inbox/{itemId}/read", "POST /inbox/{itemId}/reply"]
+ACCESS_TOKEN_ROUTES = ["GET /me", "GET /claims/{claimId}/record", "GET /inbox", "GET /inbox/{itemId}", "POST /inbox/{itemId}/read", "POST /inbox/{itemId}/reply"]
 
 
 def test_access_token_is_rejected(stack):
@@ -119,7 +119,7 @@ def _leaks(body, secrets: list[str]) -> list[str]:
 
 
 def test_T2_role_based_access(stack):
-    """T2 역할별 기대 결과(requirements.md Requirement 11.3 표). `GET /claims/{claimId}/record` 행은 BE-Q46 묶음에서 확인한다.
+    """T2 역할별 기대 결과(requirements.md Requirement 11.3 표). `GET /claims/{claimId}/record` 행(A 403, C 200, B 403, 없는 ID 404, 403 뒤 불변)은 BE-Q46 묶음.
 
     Planner(A)가 계획을 만들고 Claimer(C)가 이어받는다. Claim이 ACTIVE일 때 A·B의 Claim 쓰기 경로를 먼저 확인하고,
     C가 글을 저장·완료해 InboxItem을 만든 뒤 수신함 경로를 확인한다. 상태 확인은 DynamoDB ConsistentRead(BE-Q38).
@@ -155,7 +155,18 @@ def test_T2_role_based_access(stack):
     assert get_item(stack, f"PLAN#{pid}", f"CLAIM#{cid}")["status"] == "ACTIVE"
     assert get_item(stack, f"PLAN#{pid}", f"RECORD#{cid}") is None
 
+    # GET /record: 기록 전에는 C만 200(record null), A·B는 403 본문 에러 형식만(BE-Q1, BE-Q46)
+    st, resp = check("C", "GET", f"/claims/{cid}/record", 200)
+    assert resp == {"record": None, "claimStatus": "ACTIVE", "delivered": False, "photoStatus": "NONE"}, resp
+    for role in ("A", "B"):
+        check(role, "GET", f"/claims/{cid}/record", 403, "FORBIDDEN")
+    check("C", "GET", "/claims/clm_00000000000000000000000000/record", 404, "NOT_FOUND")
+
     check("C", "PUT", f"/claims/{cid}/record", 200, body={"letter": letter})
+    st, resp = check("C", "GET", f"/claims/{cid}/record", 200)
+    assert resp["record"]["letter"] == letter and resp["delivered"] is False and resp["claimStatus"] == "ACTIVE"
+    for role in ("A", "B"):
+        check(role, "GET", f"/claims/{cid}/record", 403, "FORBIDDEN")
     for role in ("A", "B"):
         check(role, "PUT", f"/claims/{cid}/record", 403, "FORBIDDEN", body={"letter": "덮어쓰기"})
     record = get_item(stack, f"PLAN#{pid}", f"RECORD#{cid}")

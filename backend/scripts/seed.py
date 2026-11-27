@@ -22,7 +22,8 @@
 사용자
 - 기본: Cognito에서 이메일로 `sub`를 찾는다(`admin_get_user`, 읽기만). 없으면 `--create-users`로 만든다. 새 사용자 비밀번호는 환경 변수 SEED_PASSWORD에서만
   읽고(기본값 없음, 로컬은 init과 같은 예시 값) 출력하지 않는다. 이메일은 SEED_JIYEON_EMAIL 등 환경 변수로 바꾼다(기본 example.com).
-- `--users fixed`: Cognito를 쓰지 않고 고정 ID(seed-jiyeon 등)를 쓴다(로컬 dev-jwt 모드 전용).
+- `--users fixed`: Cognito를 쓰지 않고 프론트 dev-jwt 모드의 시드 인물 ID(dev-jiyeon·dev-suhyun·dev-minjun, frontend/src/auth/devUsers.ts)를 쓴다(로컬 전용).
+  로컬 프론트가 Cognito 모드면 브라우저가 Floci(localhost:4566)의 CORS에 막히므로 dev-jwt 모드를 쓴다.
 
 출력에는 사용자 ID·토큰·이메일·사연 원문을 남기지 않는다.
 """
@@ -145,7 +146,7 @@ def users_by_key(idp: Any, pool_id: str, *, create: bool, password: str | None) 
 
 
 def fixed_users() -> dict[str, tuple[str, str]]:
-    return {key: (f"seed-{key}", nickname) for key, nickname, _, _ in DEMO_USERS}
+    return {key: (f"dev-{key}", nickname) for key, nickname, _, _ in DEMO_USERS}
 
 
 # ---------------------------------------------------------------------------

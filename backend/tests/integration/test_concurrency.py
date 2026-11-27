@@ -92,3 +92,50 @@ def test_T14_expired_claim_is_replaced(stack):
     # 대체된 첫 실행자의 늦은 쓰기는 거부된다(G3)
     status, err = call(stack, "PUT", f"/claims/{old}/record", token=first, body={"letter": "늦은 글"})
     assert status == 409 and err["error"]["code"] == "CLAIM_NOT_ACTIVE"
+
+
+def test_get_record_snapshot_during_writes(stack):
+    """BE-Q46 권장안: 기록 저장·완료가 오가는 동안 GET /record를 반복 호출해도 한 응답 안의 값이 서로 어긋나지 않는다.
+
+    합격 기준: 모든 응답이 200 또는 503 TRY_AGAIN(재시도 소진)이고, 200이면
+    claimStatus == COMPLETED ⇔ delivered == true ⇔ record.deliveredAt != null, photoStatus == record.photoStatus.
+    503 비율은 측정값으로 남긴다(판정 근거가 아니라 BE-Q46·BE-Q48 결정 자료).
+    """
+    _, owner = create_user(stack, "SN지연")
+    pid = create_plan(stack, owner)
+    _, token = create_user(stack, "SN수현")
+    status, body = call(stack, "POST", f"/plans/{pid}/claims", token=token)
+    assert status == 201
+    cid = body["claim"]["claimId"]
+    stop = {"flag": False}
+
+    def writer():
+        for i in range(5):
+            call(stack, "PUT", f"/claims/{cid}/record", token=token, body={"letter": f"글 {i}"})
+        for _ in range(3):
+            call(stack, "POST", f"/claims/{cid}/complete", token=token, body={"mode": "TEXT_ONLY"})
+        stop["flag"] = True
+
+    def reader(_):
+        seen = []
+        while not stop["flag"] and len(seen) < 200:
+            seen.append(call(stack, "GET", f"/claims/{cid}/record", token=token))
+        return seen
+
+    with ThreadPoolExecutor(5) as ex:
+        w = ex.submit(writer)
+        reads = [r for rs in ex.map(reader, range(4)) for r in rs]
+        w.result()
+    bad = []
+    for status, body in reads:
+        if status == 503 and body["error"]["code"] == "TRY_AGAIN":
+            continue
+        if status != 200:
+            bad.append((status, body))
+            continue
+        rec = body["record"]
+        delivered = bool(rec and rec.get("deliveredAt"))
+        if (body["claimStatus"] == "COMPLETED") != body["delivered"] or body["delivered"] != delivered or (rec and rec["photoStatus"] != body["photoStatus"]):
+            bad.append((status, body))
+    log = save_result("T-record-snapshot", {"reads": len(reads), "try_again": sum(1 for s, _ in reads if s == 503), "inconsistent": bad[:5]})
+    assert bad == [], f"스냅샷 불일치 또는 예상 밖 응답 {len(bad)}건 (로그: {log})"

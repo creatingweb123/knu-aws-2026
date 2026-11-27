@@ -57,7 +57,7 @@ def test_seed_creates_scenario(table):
 def test_seed_shapes_match_api_flow(table):
     sd.seed(table, USERS, now=NOW, out=lambda *_: None)
     inbox = [i for i in scan(table) if i["SK"].startswith("INBOX#")]
-    assert {i["ownerId"] for i in inbox} == {"seed-jiyeon"} and sum(1 for i in inbox if i.get("read")) == 1
+    assert {i["ownerId"] for i in inbox} == {"dev-jiyeon"} and sum(1 for i in inbox if i.get("read")) == 1
     replied = [i for i in inbox if "reply" in i]
     assert len(replied) == 1 and replied[0]["read"] is True
     records = [i for i in scan(table) if i["SK"].startswith("RECORD#")]
@@ -171,3 +171,12 @@ def test_no_real_addresses_or_secrets_in_script():
     text = Path(sd.__file__).read_text(encoding="utf-8")
     emails = set(re.findall(r"[\w.+-]+@[\w-]+\.[\w.]+", text))
     assert emails <= {"jiyeon@example.com", "suhyun@example.com", "minjun@example.com"}
+
+
+def test_fixed_users_match_frontend_dev_jwt_ids():
+    """로컬 프론트 dev-jwt 모드의 시드 인물(frontend/src/auth/devUsers.ts)과 같은 ID여야 시드 데이터가 로그인한 사용자에게 보인다."""
+    import re
+
+    ts = (Path(sd.__file__).resolve().parents[2] / "frontend" / "src" / "auth" / "devUsers.ts").read_text(encoding="utf-8")
+    front = dict(re.findall(r"userId: '([^']+)', nickname: '([^']+)'", ts))
+    assert {sub: nick for sub, nick in sd.fixed_users().values()} == front
