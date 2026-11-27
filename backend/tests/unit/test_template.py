@@ -126,6 +126,10 @@ def test_iam_least_privilege(template):
     me = _only_statement(fns["MeFunction"])
     assert set(me["Action"]) == {"dynamodb:GetItem", "dynamodb:Query"}
     assert me["Resource"] == WITH_INDEX
+    inbox = _only_statement(fns["InboxFunction"])  # spec backend-stage4-record-inbox Requirement 9.2
+    assert set(inbox["Action"]) == {"dynamodb:GetItem", "dynamodb:Query", "dynamodb:UpdateItem"}
+    assert inbox["Resource"] == {"!GetAtt": "HaruTable.Arn"}  # index/* 없음
+    assert "Condition" not in inbox
     for props in fns.values():
         for stmt in (s for p in props.get("Policies", []) for s in _statements(p)):
             actions = stmt["Action"] if isinstance(stmt["Action"], list) else [stmt["Action"]]
@@ -178,7 +182,7 @@ def test_samconfig_envs():
 # ---------------------------------------------------------------- 6a: AiCardFunction (Requirement 15, 작업 12.5)
 
 AI_ROUTES = {"POST /ai/card-sessions", "GET /ai/card-sessions/{sessionId}", "POST /ai/card-sessions/{sessionId}/turns"}
-OLD_FUNCTIONS = {"MeFunction", "PlansFunction", "ClaimsFunction", "PreSignUpFunction"}
+OLD_FUNCTIONS = {"MeFunction", "PlansFunction", "ClaimsFunction", "InboxFunction", "PreSignUpFunction"}
 
 
 def test_ai_function_settings(template):

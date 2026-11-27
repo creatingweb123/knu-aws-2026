@@ -6,16 +6,19 @@ Validates: Requirements 7.6, 8.1, 8.2, 8.3, 8.4, 8.8
 import json
 from decimal import Decimal
 
-from hypothesis import given
+from hypothesis import given, settings
 from hypothesis import strategies as st
 
 from common.responses import (
     CLAIM_FIELDS,
+    INBOX_FIELDS,
     METRIC_FIELDS,
     PLACE_FIELDS,
     PLAN_FIELDS,
     SUMMARY_FIELDS,
     serialize_claim,
+    serialize_inbox_item,
+    serialize_inbox_record,
     serialize_plan,
     serialize_plan_summary,
 )
@@ -111,3 +114,86 @@ def test_claim_allowlist():
     assert out["claimer"] == {"userId": "u2", "nickname": "수현"}
     assert out["completedAt"] is None and out["late"] is False
     assert serialize_claim(None) is None
+
+
+# ---------------------------------------------------------------- 수신함 (spec backend-stage4-record-inbox)
+
+ISO_MS = r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$"
+INBOX_INTERNAL = ["PK", "SK", "ownerId", "GSI1PK", "GSI2PK", "version", "ttl"]
+
+
+def test_inbox_item_shape_and_nulls():
+    """Requirement 7.1–7.4: 허용 목록, reply·claimerNickname 없으면 null, 불리언(BE-Q17·BE-Q43·BE-Q45)."""
+    stored = {
+        "PK": "USER#u-owner", "SK": "INBOX#clm_1", "ownerId": "u-owner", "itemId": "clm_1", "planId": "pln_1",
+        "planTitle": "제목", "hasPhoto": False, "read": False, "createdAt": "2026-11-20T09:00:00.000Z",
+    }
+    out = serialize_inbox_item(stored)
+    assert out == {
+        "itemId": "clm_1", "planId": "pln_1", "planTitle": "제목", "claimerNickname": None,
+        "hasPhoto": False, "read": False, "createdAt": "2026-11-20T09:00:00.000Z", "reply": None,
+    }
+    with_reply = serialize_inbox_item({**stored, "claimerNickname": "수현", "read": True, "reply": {"text": "고마워요", "sentAt": "2026-11-20T10:00:00.000Z", "extra": 1}})
+    assert with_reply["reply"] == {"text": "고마워요", "sentAt": "2026-11-20T10:00:00.000Z"}
+    assert with_reply["claimerNickname"] == "수현" and with_reply["read"] is True
+
+
+def test_inbox_time_values_are_millis_utc():
+    import re
+
+    out = serialize_inbox_item({"itemId": "c", "createdAt": "2026-11-20T09:00:00.000Z", "reply": {"text": "t", "sentAt": "2026-11-20T10:00:00.123Z"}})
+    rec = serialize_inbox_record({"letter": "글", "deliveredAt": "2026-11-20T09:00:00.000Z"})
+    for v in (out["createdAt"], out["reply"]["sentAt"], rec["deliveredAt"]):
+        assert re.match(ISO_MS, v)
+
+
+def test_inbox_record_photo_fields_null():
+    """BE-Q42: 5단계 전까지 photoUrl·photoCaption은 null. photoKey 등 내부 속성은 나가지 않는다."""
+    rec = {"PK": "PLAN#p", "SK": "RECORD#c", "letter": "글", "deliveredAt": "2026-11-20T09:00:00.000Z", "photoKey": "photos/x.jpg", "authorId": "u"}
+    assert serialize_inbox_record(rec) == {"letter": "글", "deliveredAt": "2026-11-20T09:00:00.000Z", "photoUrl": None, "photoCaption": None}
+
+
+inbox_value = st.none() | st.text(max_size=10) | st.booleans() | st.integers(0, 5).map(Decimal)
+
+
+@st.composite
+def stored_inbox_item(draw):
+    item = {
+        "PK": "USER#" + draw(st.text(min_size=1, max_size=5)),
+        "SK": "INBOX#" + draw(st.text(min_size=1, max_size=5)),
+        "ownerId": draw(st.text(min_size=1, max_size=5)),
+        "itemId": draw(st.text(min_size=1, max_size=8)),
+        "planId": draw(st.text(min_size=1, max_size=8)),
+        "planTitle": draw(st.text(max_size=40)),
+        "hasPhoto": draw(st.booleans()),
+        "read": draw(st.booleans()),
+        "createdAt": draw(st.text(max_size=24)),
+    }
+    if draw(st.booleans()):
+        item["claimerNickname"] = draw(st.text(min_size=1, max_size=10))
+    if draw(st.booleans()):
+        item["reply"] = {"text": draw(st.text(min_size=1, max_size=100)), "sentAt": draw(st.text(max_size=24)), **draw(st.dictionaries(st.text(min_size=1, max_size=5), inbox_value, max_size=2))}
+    item.update(draw(st.dictionaries(st.sampled_from(INBOX_INTERNAL) | st.text(min_size=1, max_size=8), inbox_value, max_size=4)))
+    return item
+
+
+@settings(max_examples=200)
+@given(item=stored_inbox_item(), record=st.fixed_dictionaries({"letter": st.text(max_size=20), "deliveredAt": st.text(max_size=24)}, optional={"photoKey": st.text(max_size=5), "photoStatus": st.text(max_size=5)}))
+def test_property22_inbox_serialization(item, record):
+    """Feature: backend-stage4-record-inbox, Property 22: 수신함·기록 직렬화는 허용 목록을 벗어나지 않고 round-trip이 안정하다.
+
+    Validates: Requirements 4.6, 7.1, 7.2, 7.3, 7.4, 7.5
+    """
+    out = serialize_inbox_item(item)
+    assert set(out) <= set(INBOX_FIELDS)
+    assert not ({"PK", "SK", "ownerId"} & set(out))
+    assert isinstance(out["hasPhoto"], bool) and isinstance(out["read"], bool)
+    if isinstance(item.get("reply"), dict):
+        assert set(out["reply"]) == {"text", "sentAt"} and out["reply"]["text"] == item["reply"]["text"]
+    else:
+        assert out["reply"] is None
+    assert out["claimerNickname"] == item.get("claimerNickname")
+    assert json.loads(json.dumps(out, ensure_ascii=False)) == out
+    rec = serialize_inbox_record(record)
+    assert rec["photoUrl"] is None and rec["photoCaption"] is None and set(rec) == {"letter", "deliveredAt", "photoUrl", "photoCaption"}
+    assert json.loads(json.dumps(rec, ensure_ascii=False)) == rec

@@ -1,7 +1,7 @@
 """API 경로 목록. template.yaml의 이벤트 경로와 로컬 어댑터가 이 목록 하나를 기준으로 맞춘다(요구사항(1·2단계) 13.9).
 
 키는 HTTP API routeKey(`METHOD /path`), 값은 Lambda 핸들러(`모듈.함수`, CodeUri=src 기준)다.
-지금까지 구현한 단계(1–3단계, 6a)의 경로만 둔다. `GET /claims/{claimId}/record`·수신함은 4단계, 사진은 5단계.
+지금까지 구현한 단계(1–3단계, 4단계 수신함, 6a)의 경로만 둔다. `GET /claims/{claimId}/record`는 BE-Q46(계약 변경 승인 대기) 묶음, 사진은 5단계.
 """
 
 ROUTES: dict[str, str] = {
@@ -17,4 +17,8 @@ ROUTES: dict[str, str] = {
     "POST /ai/card-sessions": "handlers.ai_card.handler",
     "GET /ai/card-sessions/{sessionId}": "handlers.ai_card.handler",
     "POST /ai/card-sessions/{sessionId}/turns": "handlers.ai_card.handler",
+    "GET /inbox": "handlers.inbox.handler",
+    "GET /inbox/{itemId}": "handlers.inbox.handler",
+    "POST /inbox/{itemId}/read": "handlers.inbox.handler",
+    "POST /inbox/{itemId}/reply": "handlers.inbox.handler",
 }

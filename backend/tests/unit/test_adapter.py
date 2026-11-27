@@ -53,8 +53,9 @@ def adapter():
     return make()
 
 
-@pytest.fixture
+@pytest.fixture(autouse=True)
 def table(monkeypatch):
+    """빈 HaruTable. GET /me가 4단계부터 수신함을 Query하므로(unreadInboxCount) 모든 테스트에 둔다."""
     t = FakeTable()
     monkeypatch.setattr(ddb, "table", lambda: t)
     monkeypatch.setattr(ddb, "transact_with_retry", t.transact)
@@ -234,3 +235,42 @@ def test_http_server_end_to_end():
         assert exc.value.code == 401
     finally:
         server.shutdown()
+
+
+# ------------------------------------------------------- 4단계 수신함 경로
+
+
+@pytest.mark.parametrize(
+    "method,path,route_key,params",
+    [
+        ("GET", "/inbox", "GET /inbox", None),
+        ("GET", "/inbox/clm_1", "GET /inbox/{itemId}", {"itemId": "clm_1"}),
+        ("POST", "/inbox/clm_1/read", "POST /inbox/{itemId}/read", {"itemId": "clm_1"}),
+        ("POST", "/inbox/clm_1/reply", "POST /inbox/{itemId}/reply", {"itemId": "clm_1"}),
+    ],
+)
+def test_inbox_routes_resolve_exactly(adapter, monkeypatch, method, path, route_key, params):
+    seen = {}
+
+    def capture(target):
+        def handler(event, context):
+            seen.update(target=target, routeKey=event["routeKey"], params=event["pathParameters"])
+            return {"statusCode": 204}
+
+        return handler
+
+    monkeypatch.setattr(app, "_load_handler", capture)
+    resp = adapter.dispatch(method, path, auth(floci_token()))
+    assert resp.status == 204
+    assert seen == {"target": "handlers.inbox.handler", "routeKey": route_key, "params": params}
+
+
+def test_inbox_read_is_not_detail_and_wrong_methods_404(adapter):
+    for method, path in [("GET", "/inbox/clm_1/read"), ("POST", "/inbox/clm_1"), ("PUT", "/inbox/clm_1/reply"), ("GET", "/inbox/clm_1/x")]:
+        resp = adapter.dispatch(method, path, auth(floci_token()))
+        assert resp.status == 404 and body(resp)["error"]["code"] == "NOT_FOUND", (method, path)
+
+
+def test_inbox_through_adapter_with_empty_table(adapter):
+    resp = adapter.dispatch("GET", "/inbox", auth(floci_token()))
+    assert resp.status == 200 and body(resp) == {"items": []}

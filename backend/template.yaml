@@ -1,7 +1,7 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Transform: AWS::Serverless-2016-10-31
 Description: >-
-  이어온 하루 백엔드 1–3단계와 6a·6b단계 (HttpApi + JWT authorizer, Cognito, HaruTable, /me, /plans, /claims,
+  이어온 하루 백엔드 1–4단계와 6a·6b단계 (HttpApi + JWT authorizer, Cognito, HaruTable, /me, /plans, /claims, /inbox,
   AI 하루 카드 /ai/card-sessions, 레벨 0과 6b 에이전트·체크포인트 테이블). CloudFront·웹 버킷·사진은 이후 단계에서 추가한다.
 
 Parameters:
@@ -213,7 +213,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       Handler: handlers.me.handler
-      # GET /me는 4단계 전까지 DB를 쓰지 않는다(BE-Q30). GET /me/claims가 GSI2 조회와 Plan·Record 읽기를 쓴다.
+      # GET /me는 HaruTable 기본 테이블 Query로 미확인 수를 센다. GET /me/claims가 GSI2 조회와 Plan·Record 읽기를 쓴다.
       Policies:
         - Version: "2012-10-17"
           Statement:
@@ -377,6 +377,31 @@ Resources:
       Threshold: 300000
       ComparisonOperator: GreaterThanThreshold
       TreatMissingData: notBreaching
+
+  InboxFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: handlers.inbox.handler
+      Policies:
+        - Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              # 수신함 Query·상세 GetItem(InboxItem·Plan·Record)과 read·reply 조건부 UpdateItem. GSI는 쓰지 않는다.
+              Action: [dynamodb:GetItem, dynamodb:Query, dynamodb:UpdateItem]
+              Resource: !GetAtt HaruTable.Arn
+      Events:
+        ListInbox:
+          Type: HttpApi
+          Properties: { ApiId: !Ref HttpApi, Path: /inbox, Method: GET }
+        GetInboxItem:
+          Type: HttpApi
+          Properties: { ApiId: !Ref HttpApi, Path: "/inbox/{itemId}", Method: GET }
+        ReadInboxItem:
+          Type: HttpApi
+          Properties: { ApiId: !Ref HttpApi, Path: "/inbox/{itemId}/read", Method: POST }
+        ReplyInboxItem:
+          Type: HttpApi
+          Properties: { ApiId: !Ref HttpApi, Path: "/inbox/{itemId}/reply", Method: POST }
 
   PreSignUpFunction:
     Type: AWS::Serverless::Function

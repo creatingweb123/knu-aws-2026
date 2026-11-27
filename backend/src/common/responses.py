@@ -170,6 +170,38 @@ def serialize_record(item: dict[str, Any] | None) -> dict[str, Any] | None:
     }
 
 
+INBOX_FIELDS = ("itemId", "planId", "planTitle", "claimerNickname", "hasPhoto", "read", "createdAt", "reply")
+
+
+def serialize_reply(value: Any) -> dict[str, Any] | None:
+    """InboxItem.reply. 저장 속성이 없으면 null, 있으면 {text, sentAt}만."""
+    if not isinstance(value, dict):
+        return None
+    return {"text": value.get("text"), "sentAt": value.get("sentAt")}
+
+
+def serialize_inbox_item(item: dict[str, Any]) -> dict[str, Any]:
+    """InboxItem(§2.5). PK·SK·ownerId는 내보내지 않는다(BE-Q43).
+
+    claimerNickname은 이어받을 때 ID 토큰에 nickname 클레임이 없었으면 저장되지 않아 null이다(BE-Q17, BE-Q45).
+    """
+    return {
+        "itemId": item.get("itemId"),
+        "planId": item.get("planId"),
+        "planTitle": item.get("planTitle"),
+        "claimerNickname": item.get("claimerNickname"),
+        "hasPhoto": bool(item.get("hasPhoto", False)),
+        "read": bool(item.get("read", False)),
+        "createdAt": item.get("createdAt"),
+        "reply": serialize_reply(item.get("reply")),
+    }
+
+
+def serialize_inbox_record(record: dict[str, Any]) -> dict[str, Any]:
+    """GET /inbox/{itemId}의 record. 사진 필드는 5단계 전까지 null이다(BE-Q42)."""
+    return {"letter": record.get("letter"), "deliveredAt": record.get("deliveredAt"), "photoUrl": None, "photoCaption": None}
+
+
 def iso_utc(dt: datetime) -> str:
     """ISO 8601 UTC 문자열(`2026-11-17T09:00:00.000Z`). naive datetime은 UTC로 본다.
 

@@ -154,6 +154,12 @@ class AiTurn(BaseModel):
     expectedTurn: Annotated[int, Field(ge=1)]
     answer: AiAnswer | None = None
     finish: bool | None = None
+class Reply(BaseModel):
+    """POST /inbox/{itemId}/reply (BE-INBOX-04). 길이는 코드 포인트 수, 앞뒤 공백은 자르지 않는다(FE-Q19)."""
+
+    model_config = _STRICT
+
+    text: Annotated[str, Field(min_length=1, max_length=100)]
 
 
 # 필드 이름(경로의 마지막 이름 요소)별 사유 메시지

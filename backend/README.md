@@ -6,14 +6,16 @@ AWS 계정 없이 개발한 백엔드를 AWS 담당이 배포·판정할 수 있
 
 | 항목 | 상태 |
 |---|---|
-| 범위 | 백엔드 1·2단계(인증, `GET /me`, 계획 생성·목록·상세, 멱등 키, 원문 충실도·개인정보 함수)와 **3단계**(이어받기·포기·완료 트랜잭션, 방문 기록 글 저장 최소 구현, `GET /me/claims`, EMF 지표 3종) |
-| 브랜치 | 3단계까지: `feat/be-3-claim-transaction` ← `feat/be-1-2-foundation` ← `docs/monorepo-stage1-2-spec` |
-| spec | `.kiro/specs/backend-stage1-2-foundation/`, `.kiro/specs/backend-stage3-claim/` |
+| 범위 | 백엔드 1·2단계(인증, `GET /me`, 계획 생성·목록·상세, 멱등 키, 원문 충실도·개인정보 함수), **3단계**(이어받기·포기·완료 트랜잭션, 방문 기록 글 저장 최소 구현, `GET /me/claims`, EMF 지표 3종), **4단계**(수신함 4종, `GET /me`의 `unreadInboxCount`, `InboxFunction`). 4단계의 `GET /claims/{claimId}/record`는 계약 변경 승인 대기(BE-Q46, 3.3절·8절) |
+| 브랜치 | 4단계 수신함: `feat/be-4-inbox`(`fix/be-3-local-verify` `8fcf239` 위, 이 PR). `GET /claims/{claimId}/record`는 이 브랜치에 없고 `feat/be-4-record-inbox`의 `f3626c0`에만 있다(BE-Q46 승인 전 PR 제외). 3단계까지: `feat/be-3-claim-transaction` ← `feat/be-1-2-foundation` ← `docs/monorepo-stage1-2-spec` |
+| spec | `.kiro/specs/backend-stage1-2-foundation/`, `.kiro/specs/backend-stage3-claim/`, `.kiro/specs/backend-stage4-record-inbox/` |
 | 단위 테스트 | `pytest tests/unit` 전부 통과(2026-11-25 로컬 검증: 289건, `_cleanup` 회귀 테스트 추가 후 296건). moto(인프로세스 DynamoDB 흉내)로 실제 조건식·갱신식·GSI 조회·트랜잭션 취소 사유를 확인. 3단계는 상태 전이 속성 테스트 포함 |
-| SAM | `cfn-lint` 0건, `sam validate --lint` 통과, `sam build` 성공. **2026-11-25 AWS 담당이 `haru-dev`에 배포**(3.1절) |
-| 로컬 환경(Docker) | **2026-11-25 첫 구동 성공**, `pytest -m local tests/local` 16건 통과(5절). 판정 근거는 아니다(BE-Q15) |
+| 단위 테스트(4단계) | 2026-11-25 수신함 묶음까지 385건 통과(속성 기반 Property 18–23 포함) |
+| SAM | `cfn-lint` 0건, `sam validate --lint` 통과, `sam build` 성공. **2026-11-25 AWS 담당이 `haru-dev`에 배포**(3.1절). 4단계 템플릿은 2026-11-25 개발 담당이 SAM CLI 1.174.1로 `sam validate --lint`·`sam build`까지 확인했고 배포하지 않았다 |
+| 로컬 환경(Docker) | **2026-11-25 첫 구동 성공**, `pytest -m local tests/local` 16건 통과(5절). 4단계 수신함 추가 후 23건 통과(5.4절). 판정 근거는 아니다(BE-Q15) |
 | AWS 판정 | T1·T13·T3·T4·T5·T6·T7·T14·T16 **15건 모두 통과**(2026-11-25, `haru-dev`, AWS 담당). 첫 실행에서 T1 액세스 토큰 1건이 실패해 `common/auth.py`를 고친 뒤 다시 통과했다(3.1절) |
-| 다음 단계 조건 | T3–T7이 AWS에서 통과해야 4단계를 시작한다(docs/07 §7.2). **2026-11-25 충족** |
+| AWS 판정(4단계) | T1 확장·T2·T17 테스트 코드 작성, **미실행**(3.3절). 배포와 실행은 AWS 담당 |
+| 다음 단계 조건 | T3–T7이 AWS에서 통과해야 4단계를 시작한다(docs/07 §7.2). **2026-11-25 충족**. 4단계 이후 PR마다 `tests/integration/test_concurrency.py`를 다시 돌린다(docs/07 §7.2) |
 | PR | 1–3단계 PR #2–#6, 6a Draft PR #8이 열려 있다. 병합된 것은 없다(2026-11-26, 8절) |
 | **6a단계(AI 레벨 0)** | 브랜치 `feat/be-6a-ai-pipeline`(기준 `fix/be-3-local-verify`), **Draft PR #8**(https://github.com/creatingweb123/knu-aws-2026/pull/8, 2026-11-26 생성, 리뷰 전), spec `.kiro/specs/backend-stage6a-ai-pipeline/`. 개발 PC에서 구현·검증까지 마쳤고 **AWS 배포·판정은 아직 없다**(10절) |
 | **6b단계(AI 에이전트)** | 브랜치 `feat/be-6b-ai-agent`(기준 `feat/be-6a-ai-pipeline`), spec `.kiro/specs/backend-stage6b-ai-agent/`. 작업 1–19 구현·개발 PC 검증까지. **PR·AWS 배포·판정은 아직 없다**. 실제 공급자 검증(작업 20.2–20.4)은 2026-11-27에 GPT-6 Luna 게이트웨이로 끝냈다(11.12절, 출시 모드 제안 11.13절) |
@@ -133,6 +135,36 @@ T3·T4·T5에서 503 `TRY_AGAIN`은 나오지 않았다.
 
 남은 데이터(2026-11-25 판정분): 이번 작업에서 지우지 않았다. 테이블 스캔이나 일괄 삭제는 이 코드에 넣지 않았다. 지우려면 AWS 담당이 대상(테스트 이메일 `it-*@example.com` 사용자, 해당 항목)을 확인한 뒤 수동으로 지운다. `IDEM#` 항목은 TTL(24시간)로도 사라진다.
 
+### 3.3 4단계 판정 실행표 (미실행)
+
+배포 후 3절과 같은 명령(`pytest -m integration tests/integration -v`)으로 함께 돈다. 아래는 4단계에서 더한 것이다.
+
+| T | 내용 | 파일 | 판정 |
+|---|---|---|---|
+| T1(확장) | `ROUTES`를 도는 401 테스트에 수신함 경로 4개가 자동으로 들어간다. 액세스 토큰 테스트는 `GET /me`, `GET /inbox`, `GET /inbox/{itemId}`, `POST /inbox/{itemId}/read`, `POST /inbox/{itemId}/reply` 모두 401 `UNAUTHORIZED`(계약 형식) | `tests/integration/test_authz.py` | `T1-authz-*.json`, `T1-access-token-*.json` |
+| T2 | 역할별 권한. 아래 표 | `tests/integration/test_authz.py::test_T2_role_based_access` | `T2-role-access-*.json`(칸별 상태와 판정) |
+| T17 | 첫 답장 201, 두 번째 409 `REPLY_ALREADY_SENT`. 10스레드 동시 답장에서 201 정확히 1건, 나머지 409, 저장된 답장은 201 응답 값 | `tests/integration/test_inbox.py` | `T17-reply-twice-*.json`, `T17-concurrent-replies-*.json` |
+| 회귀 | T3·T4·T5·T14(`test_concurrency.py`), T6·T7·T16을 함께 다시 돈다 | | docs/07 §7.2 |
+
+T2 역할별 기대 결과(requirements Requirement 11.3). Planner(A)가 계획을 만들고 Claimer(C)가 이어받는다. Third_Party(B)는 둘 다 아니다.
+
+| 경로 | A | C | B |
+|---|---|---|---|
+| `GET /claims/{claimId}/record` | 403 | 200 | 403 |
+| `PUT /claims/{claimId}/record` | 403 | 200 | 403 |
+| `POST /claims/{claimId}/abandon` | 403 | 200(별도 Claim) | 403 |
+| `POST /claims/{claimId}/complete` | 403 | 200 | 403 |
+| `GET /inbox` | 200, 해당 항목 포함 | 200, A의 항목 없음 | 200, A의 항목 없음 |
+| `GET /inbox/{itemId}` | 200 | 404 | 404 |
+| `POST /inbox/{itemId}/read` | 204 | 404 | 404 |
+| `POST /inbox/{itemId}/reply` | 201 | 404 | 404 |
+| `GET /me` | A의 미확인 항목을 셈 | 세지 않음 | 세지 않음 |
+
+- 없는 `claimId`·`itemId`는 모든 역할에서 404다. 403·404 본문은 에러 형식만 담고 글·답장·Plan 제목이 없어야 한다. 403·404 뒤 Claim·Record·InboxItem이 바뀌지 않았는지 DynamoDB `ConsistentRead`로 확인한다(BE-Q38).
+- `GET /claims/{claimId}/record` 행은 BE-Q46 묶음 테스트에서 확인한다. 그 묶음이 들어가기 전에는 이 행을 판정하지 않는다.
+- 4단계 테스트도 사용자는 `create_user`, 계획은 `create_plan`으로 만들어 `_cleanup`이 지운다(3.2절). `_cleanup`은 바꾸지 않았다.
+- 2026-11-25 개발 담당이 T2·T17 테스트 함수를 로컬 환경(`call`·`get_item`을 로컬 어댑터·Floci로 바꿔 끼움)에서 한 번 돌려 통과를 확인했다. 테스트 코드 점검용이며 판정 근거가 아니다(BE-Q15).
+
 ## 4. AWS에서만 확인되는 것 (1·2단계 해당분, docs/02 §2.4.4)
 
 | # | 항목 | 확인 방법 |
@@ -227,15 +259,28 @@ pytest tests/unit
 
 Docker 없이 확인한 대체 수단: moto 테스트(`tests/unit/test_plan_service_moto.py`, `test_claim_service_moto.py`, `test_claim_properties.py`, `test_handlers_claims.py`)가 실제 DynamoDB 조건식·취소 사유 코드·GSI 조회를 확인한다. moto와 Floci 모두 실제 병렬성은 재현하지 않으므로 동시성 판정은 AWS에서만 한다.
 
+### 5.4 4단계 로컬 통합 테스트 결과 (2026-11-25, 개발 담당)
+
+| 항목 | 값 |
+|---|---|
+| 기준 | `feat/be-4-record-inbox`, `8fcf239` 위 4단계 수신함 묶음(커밋 전 작업 트리) |
+| 실행 | `docker compose up -d --build`(api 이미지 재빌드) 후 `pytest -m local tests/local` |
+| 결과 | **23건 통과**(기존 16건 + `test_local_inbox.py` 7건) |
+| 확인한 것 | 완료 → 계획자 `GET /me` 미확인 1 → `GET /inbox` 1건 → 상세(사진 필드 null) → 읽음 204(재요청도 204) → 미확인 0 → 답장 201 → 두 번째 409. 실행자·제3자의 수신함 경로 404와 404 뒤 불변, 토큰 없음 401 |
+| 고친 테스트 | `test_local_flow.py::test_me_with_dev_jwt`가 고정 사용자 ID 대신 새 사용자로 `unreadInboxCount == 0`을 확인한다(4단계부터 계산값) |
+
+- Floci에서 수신함의 조건부 `UpdateItem`(읽음 `attribute_exists(PK) AND ownerId = :me`, 답장 `ownerId = :me AND attribute_not_exists(reply)`)이 계약대로 돈다. T 판정 근거는 아니다(BE-Q15).
+
 ## 6. 함수별 IAM 권한
 
 | 함수 | 권한 | 이유 |
 |---|---|---|
-| `MeFunction` | `HaruTable`과 `index/*`에 `dynamodb:GetItem`, `Query` | `GET /me/claims`(GSI2 조회 + Plan·Record 읽기). `GET /me`는 4단계 전까지 DB를 읽지 않는다(BE-Q30) |
+| `MeFunction` | `HaruTable`과 `index/*`에 `dynamodb:GetItem`, `Query` | `GET /me/claims`(GSI2 조회 + Plan·Record 읽기), `GET /me`의 미확인 수(기본 테이블 Query, `ConsistentRead`). 권한은 3단계 그대로다 |
 | `PlansFunction` | `HaruTable`과 `index/*`에 `dynamodb:GetItem`, `PutItem`, `UpdateItem`, `Query` | 생성(Plan + 멱등 키 트랜잭션), 상세(ConsistentRead), 목록(GSI1), 내 Claim 조회, 이어받기(Plan Update + Claim·ClaimLookup Put + 이전 Claim Update) |
 | `ClaimsFunction` | `HaruTable`에 `dynamodb:GetItem`, `PutItem`, `UpdateItem`, `ConditionCheckItem` | 포기·기록·완료 트랜잭션(Update, InboxItem Put, 기록 저장의 ConditionCheck)과 ConsistentRead |
 | `AiCardFunction`(6a) | `HaruTable`에 `dynamodb:GetItem`, `PutItem`, `UpdateItem`, 조건 `dynamodb:LeadingKeys` = `AISESSION#*`·`AIQUOTA#*`. `LlmApiKeyParam`이 있으면 그 파라미터 ARN 하나에 `ssm:GetParameter` | 세션 저장·조회, 하루 할당량 조건부 갱신. `Query`·`Scan`·트랜잭션·`index/*`·`kms:*` 없음(`aws/ssm` 관리형 키는 KMS 권한이 따로 필요 없다). Plan·User·Claim·Idem 키에는 쓰지 못한다(G6) |
 | `AiCardFunction`(6b 추가) | `HaruAgentCheckpoints`에만 `dynamodb:GetItem`, `PutItem`, `Query`, `BatchGetItem`, `BatchWriteItem`(조건 없음, `index/*` 없음) | 체크포인트 라이브러리(`langgraph-checkpoint-aws` 1.3.0)가 쓰는 연산 5개뿐이다(프로토타입 V9). `delete_thread`는 BatchWriteItem의 DeleteRequest를 쓴다. `DeleteItem`·`Scan`·`UpdateItem` 없음. 다른 함수에는 이 테이블 권한이 없다 |
+| `InboxFunction`(4단계) | `HaruTable`에 `dynamodb:GetItem`, `Query`, `UpdateItem`(`index/*` 없음) | 수신함 Query, 상세의 InboxItem·Plan·Record GetItem(ConsistentRead), 읽음·답장의 조건부 UpdateItem. InboxItem을 만들거나 지우지 않는다 |
 | `PreSignUpFunction` | 없음 | 이벤트만 바꾼다. Cognito 호출 권한은 `PreSignUpInvokePermission`(SourceArn은 순환 참조를 피하려고 `userpool/*`) |
 
 권한 오류(`AccessDeniedException`)가 나면 CloudWatch Logs의 예외 유형과 이 표를 대조한다. 로그에는 예외 유형만 남긴다(응답에는 500 `INTERNAL_ERROR`).
@@ -254,7 +299,8 @@ Docker 없이 확인한 대체 수단: moto 테스트(`tests/unit/test_plan_serv
 | BE-Q25 | 장소 이름은 토큰별 조사 제거 + 부분 문자열, 활동은 서술어 꼴 토큰(-기·-고·-서·-며)을 빼고 핵심 명사만 대조. 동의어는 `src/domain/normalization.json` |
 | BE-Q26 | `PERSON_NAME`은 탐지하지 않음 |
 | BE-Q29 | 헤더 누락 시 `details` 키 `Idempotency-Key` |
-| BE-Q30 | `unreadInboxCount` 0 고정 |
+| BE-Q1 | `GET /claims/{claimId}/record`를 실행자가 아닌 사람이 부르면 403 `FORBIDDEN`(BE-Q46 묶음) |
+| BE-Q30 | 앞부분(4단계 전 0 고정)은 **해소**: 4단계부터 BE-AUTH-05대로 센다. `nickname` 클레임이 없을 때는 BE-Q17로 넘겼다 |
 | BE-Q33 | `currentClaimId`는 응답에 내보내지 않음 |
 | BE-Q34 | 3단계 `PUT /record`에 `photo`가 오면 400(`details.photo`). 5단계에서 해제 |
 | BE-Q35 | `GET /me/claims`의 `status` 누락·잘못된 값은 400 |
@@ -264,10 +310,23 @@ Docker 없이 확인한 대체 수단: moto 테스트(`tests/unit/test_plan_serv
 | BE-Q39 | `COMPLETED` 계획 이어받기는 409 `ALREADY_CLAIMED` |
 | BE-Q40 | 완료 Record 조건에 방어 조건 2개 추가(`deliveredAt` 없음, 읽은 `photoStatus` 일치) |
 | BE-Q41 | `GET /me/claims`는 GSI2라 방금 이어받은 Claim이 잠깐 빠질 수 있음 |
+| BE-Q42 | `GET /inbox/{itemId}`의 `photoUrl`·`photoCaption`은 5단계 전까지 null |
+| BE-Q43 | InboxItem 응답에 `ownerId`를 내보내지 않음 |
+| BE-Q44 | 이미 읽은 항목의 읽음 재요청도 204 |
+| BE-Q45 | InboxItem `claimerNickname`은 null일 수 있다(프론트 타입은 `string`). 계약·프론트 타입은 바꾸지 않았고 팀이 정한다 |
+| BE-Q46 | `GET /claims/{claimId}/record`는 TransactGetItems 스냅샷 + 충돌 재시도 소진 시 503 `TRY_AGAIN`(권장안). docs/03 §3.4 명시는 **프론트엔드 담당 승인 대기**(8절) |
+| BE-Q47 | InboxItem은 있는데 Plan·Record가 없는 등 정상 경로에 없는 상태는 500 `INTERNAL_ERROR` |
+| BE-Q48 | botocore `Config`(연결·읽기 타임아웃, 재시도)와 Lambda 타임아웃 10초. 지정하지 않음(기존 상태 유지). 연결이 멈추거나 스로틀링이 길면 10초를 넘어 코드 없는 500이 될 수 있다 |
 
-### 4·5단계로 넘기는 것
+### S2(프론트 글 경로 실제 API 전환)에 넘기는 경로
 
-- 4단계: `GET /claims/{claimId}/record`(BE-Q1 403 포함), 수신함 API, `unreadInboxCount`. 3단계의 `put_record`를 이어받아 완성한다. 3단계는 수신함 항목을 만들기만 한다.
+- 지금 쓸 수 있는 것: `GET /me`(`unreadInboxCount` 계산), `GET /me/claims`, `PUT /claims/{claimId}/record`(글만), `POST /claims/{claimId}/complete`, `POST /claims/{claimId}/abandon`, `GET /inbox`, `GET /inbox/{itemId}`, `POST /inbox/{itemId}/read`, `POST /inbox/{itemId}/reply`.
+- 승인 대기: `GET /claims/{claimId}/record`(BE-Q46). 503 `TRY_AGAIN`이 나올 수 있어 프론트 처리 확인이 필요하다(8절).
+
+### 5단계로 넘기는 것
+
+- 4단계에서 끝낸 것: 수신함 API, `unreadInboxCount`. `GET /claims/{claimId}/record`는 BE-Q46 결정 뒤 반영한다.
+- `GET /inbox/{itemId}`의 `photoUrl`(15분 presigned GET)·`photoCaption`(BE-Q42 해제).
 - 5단계: `PUT /record`의 `photo`(BE-Q34 해제), 사진 교체, 사진 처리 Lambda는 `claim_service.complete_claim(claim_id, "WITH_PHOTO", key, processed_key)`를 부른다. 사진 키가 다르거나 `PROCESSING`이 아니면 `CLAIM_NOT_ACTIVE`가 오므로 "무시하고 처리본 삭제"로 처리한다(docs/02 §2.7).
 - 5단계 주의: 포기 트랜잭션 직전에 생긴 Record와 기한 지난 대체(`EXPIRED`)는 Record의 `photoStatus`를 `DISCARDED`로 바꾸지 않는다. 사진 처리는 Claim 상태를 확인하므로 전달되지는 않는다.
 
@@ -282,15 +341,41 @@ Docker 없이 확인한 대체 수단: moto 테스트(`tests/unit/test_plan_serv
 5. `fix/be-3-local-verify` → `fix/be-3-aws-verify`: 로컬 테스트 수정, `_cleanup` 보완(3.2절), 로컬 구동 기록(5절)
 6. (6a) `feat/be-6a-ai-pipeline` → `fix/be-3-local-verify`: **Draft PR #8**. 4단계(PR #1)·5단계(PR #7)와 독립 브랜치이고, 선행 PR이 병합되면 merge로 통합한다(10.8절)
 
+4단계 브랜치(`feat/be-4-inbox`)에 남긴 2026-11-25 기록:
+
+2026-11-25 아래 PR 6개를 열었다. **아직 병합하지 않았다.** 위에서부터 차례로 병합하고, 하나가 병합되면 다음 PR의 base를 병합된 쪽(결국 `main`)으로 바꾼다. 병합 전 리뷰와 승인은 docs/07 §7.2·§7.8을 따른다.
+
+| 순서 | PR | head → base | 내용 | 단위 테스트(head에서 2026-11-25 재실행) | AWS 판정 |
+|---|---|---|---|---|---|
+| 1 | [#2](https://github.com/creatingweb123/knu-aws-2026/pull/2) | `docs/monorepo-stage1-2-spec` → `main` | 문서·steering·1·2단계 spec | 해당 없음 | 해당 없음 |
+| 2 | [#3](https://github.com/creatingweb123/knu-aws-2026/pull/3) | `feat/be-1-2-foundation` → `docs/monorepo-stage1-2-spec` | 1·2단계 코드, SAM, 로컬 환경 | 225 passed | T1·T13 통과(2026-11-25) |
+| 3 | [#4](https://github.com/creatingweb123/knu-aws-2026/pull/4) | `feat/be-3-claim-transaction` → `feat/be-1-2-foundation` | 3단계 트랜잭션 G1–G4 | 284 passed | T3–T7·T14·T16 통과 |
+| 4 | [#5](https://github.com/creatingweb123/knu-aws-2026/pull/5) | `fix/be-3-aws-verify` → `feat/be-3-claim-transaction` | `token_use` 확인, 판정 기록(3.1절) | 289 passed | 수정 후 15건 통과 |
+| 5 | [#6](https://github.com/creatingweb123/knu-aws-2026/pull/6) | `fix/be-3-local-verify` → `fix/be-3-aws-verify` | 로컬 테스트 수정, `_cleanup` 보완(3.2절), 로컬 기록(5절) | 296 passed | `_cleanup` 보완은 미실행 |
+| 6 | [#1](https://github.com/creatingweb123/knu-aws-2026/pull/1) | `feat/be-4-inbox` → `fix/be-3-local-verify` | 4단계 수신함(묶음 A, 계약 변경 없음) | 385 passed | 미실행(3.3절) |
+
+- 묶음 B(`GET /claims/{claimId}/record`, `feat/be-4-record-inbox`의 `f3626c0`)는 PR을 열지 않았다. BE-Q46 승인과 docs/03 §3.4 수정 PR이 먼저다.
+- 모든 PR의 `cfn-lint`는 0건이다.
+
 비교 링크: `https://github.com/creatingweb123/knu-aws-2026/compare/<기준>...<브랜치>`
 
-3번 PR에는 3단계 spec(`.kiro/specs/backend-stage3-claim/`)과 docs/08 BE-Q34–BE-Q41 추가가 함께 들어 있다. spec은 리뷰 에이전트 검토를 한 번 거쳤다(지적 16건 반영, 반영 결과는 spec 미결 사항에 있다).
+3단계 PR(#4)에는 3단계 spec(`.kiro/specs/backend-stage3-claim/`)과 docs/08 BE-Q34–BE-Q41 추가가 함께 들어 있다. spec은 리뷰 에이전트 검토를 한 번 거쳤다(지적 16건 반영, 반영 결과는 spec 미결 사항에 있다).
 
 계약 변경(docs/07 §7.2, §7.8에 따라 다른 팀원 한 명이 리뷰):
 
-- 시간 형식을 밀리초 3자리로 고정(docs/03 공통 규칙에 반영)
-- API Gateway가 거부한 401은 본문 형식이 다르다(requirements 1.7, docs/03 §3.6 401 행에 반영)
+- 시간 형식을 밀리초 3자리로 고정(docs/03 공통 규칙에 반영, #3)
+- API Gateway가 거부한 401은 본문 형식이 다르다(requirements 1.7, docs/03 §3.6 401 행에 반영, #3). 액세스 토큰은 Lambda가 계약 형식 401로 거부한다(#5)
 - BE-Q23·BE-Q24·BE-Q29·BE-Q33의 임시 결정
+- **BE-Q46(프론트엔드 담당 승인 필요)** — 권장안: TransactGetItems 스냅샷과 503 `TRY_AGAIN`을 유지한다. docs/03 §3.4 `GET /claims/{claimId}/record`에 "Claim·Record를 한 시점으로 읽는 트랜잭션 조회가 충돌 재시도(최초 1회 + 재시도 최대 3회, 누적 대기 175–350ms)를 모두 쓰면 503 `TRY_AGAIN`"을 적는다. 503은 §3.6·§3.7에 이미 있는 코드와 처리 규칙("같은 요청 1회 재시도 후 토스트")이라 새 코드가 아니다. 스로틀링·섞인 사유는 지금처럼 500으로 둔다(재시도해도 같은 사유일 수 있고 원인이 가려진다). 거부하면 대안 A(GetItem 2회, 불일치 허용)로 설계를 바꾼다. 승인 전에는 docs/03을 고치지 않았다
+- **BE-Q45(프론트엔드 담당 결정)** — 권장안: 프론트 타입을 `claimerNickname: string | null`로 바꾸고, UI가 `null`이면 기본 표시명(예: "이어받은 사람")을 보여 준다. 백엔드는 지금처럼 저장값이 없으면 `null`을 내보낸다(빈 문자열 같은 가짜 값을 저장·응답하지 않는다). 같은 성격의 `Me.nickname`, `UserRef.nickname`, `PlanSummary.ownerNickname`도 같은 방식으로 맞춘다. 정해지면 docs/03 §3.5에 "null일 수 있음"을 적는 계약 문서 수정이 필요하다(프론트 승인 뒤)
+- **BE-Q48(별도 개선 과제)** — 4단계 PR의 범위가 아니다. 모든 Lambda가 공유하는 DynamoDB 클라이언트의 SDK 타임아웃·재시도 정책(`connect_timeout`·`read_timeout`·재시도 모드·최대 시도)과 함수 타임아웃을 공통 개선 사항으로 따로 다룬다. AWS 측정(함수 소요 시간, 런타임 내장 botocore 버전·재시도 모드)을 받은 뒤 별도 spec·PR로 진행한다. 그 전까지 지금 설정을 유지한다
+
+프론트엔드 담당에게 전달할 것(S2, 프론트 코드는 이 작업에서 바꾸지 않았다. 상세는 spec design.md "프론트엔드 연동 주의사항 (S2)")
+
+- `frontend/src/queryClient.ts`의 재시도 조건이 503을 빼지 않아 `GET /record` 조회 1번이 HTTP 최대 4번(client 2 × query 2)이 된다.
+- `RecordPage.tsx`가 `error`를 `data`보다 먼저 봐서 다시 가져오기가 503이면 작성 화면이 에러 화면으로 바뀐다. `DonePage.tsx`는 에러 분기 없이 "전송 결과를 확인하고 있어요"에 머문다.
+- 503을 `claimStatus` 종료로 판단하지 않는다(종료는 200의 `claimStatus`와 409 `CLAIM_NOT_ACTIVE`로만). 503 때 작성 중인 글과 기록·사진 상태를 비우지 않는다.
+- InboxItem `claimerNickname`이 null일 수 있다(BE-Q45).
 
 ## 9. 개발 메모
 

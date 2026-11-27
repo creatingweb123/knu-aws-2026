@@ -37,7 +37,7 @@
 | BE-Q27 | Cognito User Pool 비밀번호 정책. | Cognito 기본 정책을 쓴다. |
 | BE-Q28 | 로컬 시드 사용자(지연·수현·민준)의 이메일·비밀번호 값. | 로컬 전용 예시 값을 init 스크립트와 `.env.example`에 두고, 실제 계정 정보가 아님을 적는다. |
 | BE-Q29 | `Idempotency-Key` 헤더 누락 시 `VALIDATION_ERROR.details`의 키 표기. 계약의 `details` 키는 요청 본문 경로 표기만 정의한다. | 헤더 이름 그대로(`"Idempotency-Key"`). 확정되면 [§3.3](./03-api-contract.md)에 명시한다. |
-| BE-Q30 | 4단계 전 `GET /me`의 `unreadInboxCount` 값, 그리고 ID 토큰에 `nickname` 클레임이 없을 때의 응답. | 4단계 전까지 `0` 고정. 클레임이 없을 때는 BE-Q17 결과에 따른다. |
+| BE-Q30 | ID 토큰에 `nickname` 클레임이 없을 때 `GET /me`의 응답. (앞부분 "4단계 전 `unreadInboxCount` 값"은 4단계에서 [BE-AUTH-05](./06-requirements.md)대로 계산하므로 해소했다.) | BE-Q17 결과에 따른다. |
 | BE-Q31 | `authoring.durationMs`의 상한이 없다. | 0 이상 정수만 검증하고 상한은 두지 않는다. 시범 운영 지표에서 이상값이 보이면 정한다. |
 | BE-Q32 | `GET /plans`의 `limit`이 숫자가 아니거나 1 미만, 50 초과일 때의 동작. | 400으로 거부하지 않고 기본 20 / 최대 50으로 보정한다. 프론트는 `limit`을 보내지 않거나 20을 보낸다. |
 | BE-Q33 | `currentClaimId`를 Plan 응답에 내보낼지. BE-PLAN-08은 내부 속성을 걸러내라고 하고, [§2.5](./02-architecture.md) Plan 예시에는 `currentClaimId: null`이 있다. | 응답에 내보내지 않는다(BE-PLAN-08 우선). 확정되면 §2.5 예시를 고친다. 프론트 `types.ts`의 Plan 타입에도 넣지 않는다. |
@@ -49,7 +49,14 @@
 | BE-Q39 | `COMPLETED` Plan에 이어받기를 요청할 때의 코드. | 409 `ALREADY_CLAIMED`. 상세 조회는 남에게 404를 주므로 이 응답으로 완료된 계획의 존재가 드러난다(MVP 허용). |
 | BE-Q40 | 완료 트랜잭션의 Record 조건에 [§2.6](./02-architecture.md)보다 더한 방어 조건(`attribute_not_exists(deliveredAt)`, 읽은 `photoStatus` 일치). | 둔다. 5단계 사진 처리와 글로 완료의 경합에서 오래된 사진 상태로 계산하지 않기 위해서다. 실패하면 다시 읽어 판정하므로 응답은 문서와 같다. |
 | BE-Q41 | `GET /me/claims`는 GSI2(최종 일관성)를 읽어 방금 이어받은 Claim이 잠깐 빠질 수 있다. | MVP 허용. 프론트는 이어받기 응답의 `claim`으로 화면을 먼저 그린다(FE 확인 필요). |
-| BE-Q42–BE-Q72 | 4단계(BE-Q42–48)·5단계(BE-Q49–72) 질문은 그 단계 브랜치(4단계 PR #1, 5단계 PR #7)의 이 문서에 있다. 6a 브랜치는 1–3단계 기준이라 여기에 없고, 병합 때 합친다. | — |
+| BE-Q42 | 4단계 `GET /inbox/{itemId}`의 `photoUrl`·`photoCaption`. [§7.3](./07-development-plan.md)은 둘을 5단계 작업으로 두고, 4단계에는 사진과 함께 완료하는 경로가 없어 `hasPhoto = true` 항목이 생기지 않는다. | 4단계는 둘 다 `null`. 5단계에서 [§3.5](./03-api-contract.md)대로(15분 presigned GET, 마지막 장소 이름 + "에서") 구현한다. |
+| BE-Q43 | InboxItem 응답의 필드 목록. [§2.5](./02-architecture.md)는 저장 속성으로 `ownerId`를 적었고, 프론트 `types.ts`의 `InboxItem`에는 `ownerId`가 없다. | 응답에 `ownerId`를 내보내지 않는다(요청자 본인이고, BE-PLAN-08 허용 목록 원칙). 내보내기로 하면 §3.5에 필드를 적고 프론트 타입을 함께 고친다. |
+| BE-Q44 | 이미 읽은 항목에 `POST /inbox/{itemId}/read`가 다시 올 때. §3.5는 "204, `read = true`"만 적었다. | 204(멱등). 프론트는 `read === false`일 때만 보내지만 재전송·두 탭에서 409를 주지 않는다. |
+| BE-Q45 | InboxItem 응답의 `claimerNickname`이 `null`일 수 있는데 프론트 타입(`claimerNickname: string`)은 `null`을 허용하지 않는다. 완료 트랜잭션은 Claim에 `claimerNickname`이 있을 때만 InboxItem에 쓰고, Claim은 이어받을 때 ID 토큰 `nickname` 클레임이 있을 때만 저장한다. 같은 성격의 필드(`Me.nickname`, `UserRef.nickname`, `PlanSummary.ownerNickname`)도 프론트 타입은 `string`이다. | **권장안**: 프론트 타입을 `string \| null`로 바꾸고, UI가 `null`이면 기본 표시명(예: "이어받은 사람")을 보여 준다. 백엔드는 저장값이 없으면 `null`을 그대로 내보낸다(빈 문자열 같은 가짜 값을 쓰지 않는다). 같은 성격의 `Me.nickname`, `UserRef.nickname`, `PlanSummary.ownerNickname`도 같은 방식으로 맞춘다. 2026-11-25 AWS·Floci 실측에서는 ID 토큰에 `nickname`이 있어 정상 경로에서는 `null`이 나오지 않는다. 프론트엔드 담당이 정하면 [§3.5](./03-api-contract.md)에 "null일 수 있음"을 적는다. FE 쪽 질문 번호는 프론트엔드 담당과 정한다. |
+| BE-Q46 | `GET /claims/{claimId}/record`에서 Claim과 Record를 어떻게 읽을지. GetItem 두 번이면 그 사이에 끝난 완료·포기 트랜잭션 때문에 한 응답 안에서 `claimStatus`와 `delivered`가 서로 다른 시점의 값이 될 수 있다. 스냅샷으로 읽으면 충돌 재시도를 다 썼을 때의 503 `TRY_AGAIN`이 [§3.4](./03-api-contract.md) `GET /record` 절에 없다. | **권장안: TransactGetItems 스냅샷과 503 `TRY_AGAIN`을 유지한다.** 실패 사유가 `TransactionConflict`뿐일 때만 최초 1회 + 재시도 최대 3회(50·100·200ms 상한, equal jitter, 누적 대기 175–350ms) 하고, 다른 사유가 섞이거나 다른 사유만 있으면 500 `INTERNAL_ERROR`(BE-Q23). GetItem으로 폴백하지 않는다. 503은 §3.6·§3.7에 이미 있는 코드와 처리 규칙이다. §3.4에 503을 적는 계약 변경은 프론트엔드 담당 승인 뒤에 반영한다([§7.2](./07-development-plan.md)). 거부하면 대안 A(GetItem 두 번, 불일치 허용)로 설계를 바꾼다. 구현은 `feat/be-4-record-inbox`의 `f3626c0`에 있고 승인 전에는 PR에 넣지 않는다. 상세는 spec `backend-stage4-record-inbox` design.md. |
+| BE-Q47 | 수신함 상세·답장에서 "InboxItem은 있는데 Plan·Record가 없음"이나 "조건이 실패했는데 다시 읽어도 원인이 안 보임" 같은 정상 경로에 없는 상태의 코드. | 500 `INTERNAL_ERROR`(BE-Q23 임시 코드와 같다). 완료 트랜잭션이 넷을 함께 쓰므로 정상 경로에서는 생기지 않는다(G4). |
+| BE-Q48 | DynamoDB 클라이언트의 botocore 설정(`connect_timeout`·`read_timeout`·재시도 모드·최대 시도)과 Lambda 타임아웃(10초). 지정하지 않으면 기본값(연결·읽기 각 60초, standard 모드 DynamoDB 최대 4회 시도, 스로틀링 대기 최대 1+2+4초)이라 연결이 멈추거나 스로틀링이 길면 요청이 10초를 넘어 코드 없는 500이 될 수 있다. 모든 함수와 3단계 쓰기 경로에 같이 걸린다. Lambda 런타임 내장 boto3의 버전·재시도 모드는 확인하지 않았다. | **별도 공통 개선 과제로 관리한다**(4단계 범위 밖). 모든 Lambda의 DynamoDB 클라이언트 SDK 타임아웃·재시도 정책과 함수 타임아웃을 함께 정하는 별도 spec·PR로 진행한다. 판단 근거는 Dev_Stack 측정(함수 소요 시간, 런타임 내장 botocore 버전·재시도 모드)이다. 그 전까지 지금 설정(지정하지 않음)을 유지한다. |
+| BE-Q49–BE-Q72 | 5단계(BE-Q49–72) 질문은 5단계 브랜치(PR #7)의 이 문서에 있고, 병합 때 합친다. | — |
 | BE-Q73 | AiQuota의 "하루" 기준. docs/02는 `yyyymmdd`만 적었다. | **권장안(팀 리뷰 대상)**: Asia/Seoul 자정 기준. 시간대 데이터가 없으면 UTC+9 고정 오프셋으로 대신한다(결과 같음). 다른 저장 시각은 UTC 그대로다. |
 | BE-Q74 | 레벨 0 세션을 언제 저장하는지. | **결정**: 그래프가 끝난 뒤 최종 상태(`READY`·`FAILED`)로 `attribute_not_exists(PK)` PutItem 한 번. 강제 종료·저장 실패 시 세션이 남지 않고 할당량만 1 소모될 수 있다. |
 | BE-Q75 | 502일 때 세션 상태와 실패 원인이 섞일 때의 코드. | **결정**: 502·503 모두 세션 `FAILED`로 저장. 마지막 시도의 원인으로 정한다(LLM 오류면 503, 검증 실패면 502). |
@@ -153,9 +160,11 @@
 | 프론트 5단계(사진) | FE-Q23, FE-Q24 (임시 결정으로 구현) |
 | 프론트 6단계(AI 정리) | FE-Q25 (임시 결정으로 구현), FE-Q7(MSW 임시 필드), FE-Q6(공급자 문구는 아직 비워 둠) |
 | 프론트 7단계(로그인·Amplify) | FE-Q26 (임시 결정으로 구현), FE-Q8(로컬 Floci Cognito 연결은 백엔드 로컬 환경에서 확인) |
-| 백엔드 1단계(로컬 환경 구성) | BE-Q17·FE-Q8, BE-Q16, BE-Q27, BE-Q28, BE-Q30 |
+| 백엔드 1단계(로컬 환경 구성) | BE-Q17·FE-Q8, BE-Q16, BE-Q27, BE-Q28, BE-Q30(뒷부분) |
 | 백엔드 2단계(계획 API) | BE-Q22, BE-Q23, BE-Q24, BE-Q25, BE-Q29, BE-Q31, BE-Q32, BE-Q33 |
 | 백엔드 3단계(이어받기·포기·완료) | BE-Q34–BE-Q41 (임시 결정으로 구현. 2026-11-25 AWS 판정 T3–T7·T14·T16 통과, 임시 결정 자체의 확정은 남음) |
+| 백엔드 4단계(방문 기록·수신함) | BE-Q1, BE-Q42–BE-Q47 (임시 결정으로 구현. BE-Q46은 프론트엔드 담당의 계약 변경 승인 대기, BE-Q45는 프론트엔드 담당 결정. T1·T2·T17 AWS 판정 전) |
+| 공통 개선(단계 무관) | BE-Q48 (SDK 타임아웃·재시도 정책. AWS 측정 뒤 별도 spec·PR) |
 | 백엔드 6a(AI 레벨 0) 시작 전 | BE-Q6, BE-Q7·FE-Q6, BE-Q11, BE-Q8, BE-Q18, BE-Q21 |
 | 백엔드 6a(AI 레벨 0) 구현 | BE-Q73–BE-Q92 (결정·권장안·임시 구분은 8.1. 2026-11-26 개발 PC 검증까지, AWS 판정·T12 미검증. 공급자 관련 BE-Q6·BE-Q7·BE-Q9·BE-Q10·BE-Q12는 미결 유지) |
 | 백엔드 6b(에이전트 그래프) 시작 전 | BE-Q9, BE-Q19, BE-Q20, BE-Q10, BE-Q13·FE-Q7, BE-Q14, BE-Q26 |
@@ -176,6 +185,7 @@
 | Docker 운영 범위 | BE-Q15 | FE-Q9 | 양쪽 모두 "개발용으로만"으로 제안되어 있다 |
 | SPA 새로고침 | BE-INFRA-02 | FE-Q4 | 백엔드 SAM 템플릿 |
 | 계약 세부(500 코드, 멱등 재요청 상태 코드, 헤더 누락 `details`, `currentClaimId` 노출) | BE-Q23, BE-Q24, BE-Q29, BE-Q33 | — | 백엔드가 [§3](./03-api-contract.md) 수정 PR을 올리고 프론트엔드가 리뷰한다 |
+| `GET /record`의 503 `TRY_AGAIN`, InboxItem `claimerNickname` null | BE-Q46, BE-Q45 | — | 백엔드가 [§3.4](./03-api-contract.md) 수정 PR을 올리고 프론트엔드가 승인한다. 승인 전에는 §3.4를 고치지 않는다 |
 
 ## 8.5 문서 사이의 불일치
 
