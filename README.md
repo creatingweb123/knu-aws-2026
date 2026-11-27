@@ -40,7 +40,7 @@ React 모바일 웹과 AWS 서버리스 API로 이루어집니다. 구성도는 
 |---|---|
 | 프론트엔드 | React 18, TypeScript, Vite, React Router, TanStack Query, Amplify Auth, MSW(개발용 목업) |
 | 백엔드 | API Gateway(HTTP API) + Lambda(Python 3.12), DynamoDB 단일 테이블, Cognito, S3 + SQS(사진 처리) |
-| AI | LangGraph `StateGraph` 에이전트가 외부 OpenAI 호환 LLM API를 호출. 공급자는 설정으로 교체하고, 문제가 있으면 `AGENT_MODE=pipeline`(레벨 0)으로 낮춘다 |
+| AI | LangGraph `StateGraph` 에이전트가 LLM을 호출한다. 기본 공급자는 `bedrock`(Amazon Bedrock Converse, IAM 인증)이고 설정으로 `openai_compat`(외부 OpenAI 호환 API)·`fake`를 고를 수 있다. 문제가 있으면 `AGENT_MODE=pipeline`(레벨 0)으로 낮춘다 |
 | 개발 환경 | docker compose(AWS 호환 에뮬레이터, HTTP 어댑터, Fake LLM). 개발과 단위·로컬 통합 테스트용 |
 | 배포·검증 | AWS SAM, CloudFront + S3, CloudWatch. 데모와 T1–T22 검증은 실제 AWS 스택에서 한다 |
 
@@ -80,25 +80,31 @@ frontend/     # 프론트엔드 코드: React, TypeScript, Vite (구조는 §2.1
 | [`references/이어온 하루.pdf`](./references/이어온%20하루.pdf) | 이전 화면 시안 (레이아웃 참고용) |
 | [`references/AI_AGENT_PROPOSAL.md`](./references/AI_AGENT_PROPOSAL.md) | AI 에이전트 도입 권고안 (2026-11-21) |
 
-초안 PDF와 권고안은 작성 시점의 기록입니다. AI 구현 방식이 그 뒤에 바뀌었으므로(Amazon Bedrock → 외부 OpenAI 호환 API와 LangGraph) 현재 설계는 `docs/`를 따릅니다. `docs/images/architecture-ai-agent.png`도 이전 설계로 그려져 있어 다시 생성해야 합니다.
+초안 PDF와 권고안은 작성 시점의 기록입니다. AI 구현 방식은 그 뒤에 바뀌었습니다. 2026-11-21에 외부 OpenAI 호환 API(`openai_compat`)와 LangGraph로 바꿨고, 2026-11-27부터는 Amazon Bedrock Converse(`bedrock`)가 다시 기본 공급자입니다. 에이전트 루프는 계속 LangGraph가 맡습니다. 현재 설계는 `docs/`를 따릅니다. `docs/images/architecture-ai-agent.png`도 이전 설계로 그려져 있어 다시 생성해야 합니다.
 
 ## 문서 사이의 우선순위
 
 - **API 계약의 기준은 [`docs/03-api-contract.md`](./docs/03-api-contract.md)입니다.** 프론트엔드의 타입과 MSW 목업은 이 계약을 따릅니다. 계약을 바꿀 때는 이 문서를 먼저 고치고 프론트엔드 담당의 리뷰를 받은 뒤 코드에 반영합니다.
 - 요구사항 목록(6장)과 명세(2–5장)가 다르면 명세가 우선합니다.
 
-## 진행 현황 (2026-11-21)
+## 진행 현황 (2026-11-27)
+
+`main` HEAD `17486ed` 기준입니다.
 
 - 문서: 명세, 요구사항, 개발 계획 작성 완료.
-- 구현: 프론트엔드 1–7단계, 백엔드 1–7단계(6단계는 6a·6b) 모두 시작 전입니다.
+- 구현(백엔드, `main`에 병합됨): 1·2단계(인증, 계획), 3단계(이어받기·완료 트랜잭션), 4단계(수신함), 5단계(사진 파이프라인), 6a단계(AI 레벨 0), 6b단계(AI 에이전트)와 LLM 기본 공급자의 Bedrock 전환이 `main`에 병합되어 있습니다. 자세한 내용은 [`backend/README.md` §1](./backend/README.md#1-인계-상태-요약)에 있습니다.
+- 구현(백엔드, `main`에 없음): 7단계(웹 배포·관측·시연 준비)는 `main`에 없고 spec도 아직 없습니다. 4단계의 `GET /claims/{claimId}/record`는 계약 변경 승인 대기(BE-Q46)라 `main`에 없습니다. 자세한 내용은 [`backend/README.md` §1](./backend/README.md#1-인계-상태-요약)에 있습니다.
+- 백엔드 AWS 검증: 1–3단계는 2026-11-25 `haru-dev`에서 15건 모두 통과했습니다. 4단계, 5단계, 6a단계, 6b단계와 `bedrock` 경로는 AWS 배포·판정 전입니다. 자세한 내용은 [`backend/README.md` §1](./backend/README.md#1-인계-상태-요약)에 있습니다.
+- 구현(프론트엔드): 1–6단계 완료, 7단계는 로그인·Amplify 연동 코드까지입니다(`main` 병합 `33aea80`). 실제 Cognito 연동·실제 API 전환·배포는 남아 있습니다. 자세한 내용은 [`frontend/README.md` 상태](./frontend/README.md#상태)에 있습니다.
 - 일정: 담당자와 날짜는 아직 정해지지 않았습니다([`docs/07-development-plan.md`](./docs/07-development-plan.md)).
-- LLM 공급자와 모델: 아직 정해지지 않았습니다([`docs/08-open-questions.md`](./docs/08-open-questions.md)).
+- LLM 공급자와 모델: 기본 공급자는 `bedrock`(Amazon Bedrock Converse, IAM 인증)이고 `openai_compat`·`fake`는 선택 경로로 남아 있습니다. 운영 공급자·모델은 아직 정하지 않았습니다(BE-Q6, [`docs/08-open-questions.md`](./docs/08-open-questions.md)). 배포 전 확인은 [`backend/README.md` 10.2절](./backend/README.md#102-배포-전-주의-aws-담당)에 있습니다.
 - 데모 링크: 배포 후 기재합니다.
 
 ## 최근 변경
 
 | 날짜 | 내용 |
 |---|---|
+| 2026-11-27 | LLM 기본 공급자를 Amazon Bedrock(Converse, `bedrock`)으로 전환(`openai_compat`·`fake` 경로 유지). 프론트엔드 1–7단계(7단계는 인증 코드까지)와 백엔드 4단계(수신함), 5단계(사진 파이프라인), 6a단계(AI 레벨 0), 6b단계(AI 에이전트)를 `main`에 병합했다 |
 | 2026-11-21 | LLM을 Amazon Bedrock에서 외부 OpenAI 호환 API로, 에이전트를 직접 구현한 루프에서 LangGraph 그래프로, 개발 환경을 로컬 Docker(AWS 호환 에뮬레이터)로 전환. 데모와 검증은 계속 실제 AWS에서 한다 |
 | 2026-11-21 | AI 하루 카드를 단발 생성에서 세션형 정리 에이전트로 전환 |
 | 2026-11-20 | 명세, 요구사항, 개발 계획 작성 |

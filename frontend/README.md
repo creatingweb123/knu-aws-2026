@@ -1,14 +1,14 @@
 # 이어온 하루 프론트엔드
 
-모바일 웹(React 18 + TypeScript + Vite). 명세는 [docs/](../docs/)가 기준이고, 단계별 범위는 [docs/07 §7.4](../docs/07-development-plan.md), 이번 단계 spec은 `.kiro/specs/frontend-stage1-setup/`이다.
+모바일 웹(React 18 + TypeScript + Vite). 명세는 [docs/](../docs/)가 기준이고, 단계별 범위는 [docs/07 §7.4](../docs/07-development-plan.md), 단계별 spec은 `.kiro/specs/frontend-stage*/`(1–6단계는 `frontend-stage1-setup`부터 `frontend-stage6-ai-card`까지, 7단계는 `frontend-stage7a-auth`)이다.
 
 ## 상태
 
-| 항목   | 상태                                                                                                             |
-| ------ | ---------------------------------------------------------------------------------------------------------------- |
-| 단계   | 1–6단계 완료(MSW 목업으로 전 화면 동작). 7단계는 로그인·Amplify 연동 코드까지(실제 Cognito·배포는 AWS 계정 필요) |
-| 연동   | MSW 목업 모드에서 확인. 실제 API·Cognito 전환은 백엔드 dev 스택 배포 후(S1–S5)                                   |
-| 스타일 | CSS Modules(FE-Q3 결정). 토큰은 `src/styles/tokens.css`, 색은 추정값(FE-Q5, FE-Q14)                              |
+| 항목   | 상태                                                                                                                                                         |
+| ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 단계   | 1–7단계 `main` 병합(`33aea80`, 2026-11-27). 1–6단계 완료(MSW 목업으로 전 화면 동작). 7단계는 로그인·Amplify 연동 코드까지(실제 Cognito·배포는 AWS 계정 필요) |
+| 연동   | MSW 목업 모드에서 확인. 실제 API·Cognito 전환은 백엔드 dev 스택 배포 후(S1–S5)                                                                               |
+| 스타일 | CSS Modules(FE-Q3 결정). 토큰은 `src/styles/tokens.css`, 색은 추정값(FE-Q5, FE-Q14)                                                                          |
 
 ## 시작
 

@@ -2,7 +2,7 @@
 
 > 계약과 동작의 세부 규칙은 [§3.2](./03-api-contract.md), 테이블 설계는 [§2.6](./02-architecture.md), 화면 동작은 [§5.2.3](./05-screens.md)에 있다.
 >
-> 도입 배경: [`AI_AGENT_PROPOSAL.md`](../references/AI_AGENT_PROPOSAL.md) (2026-11-21 권고안). 권고안의 "왜 에이전트인가", 도구 설계, 가드레일, 평가 방법은 지금도 유효하다. 구현 수단(Bedrock Converse, Global CRIS, Guardrails)은 그 뒤에 바뀌었으므로 3.5절을 따른다.
+> 도입 배경: [`AI_AGENT_PROPOSAL.md`](../references/AI_AGENT_PROPOSAL.md) (2026-11-21 권고안). 권고안의 "왜 에이전트인가", 도구 설계, 가드레일, 평가 방법은 지금도 유효하다. 구현 수단은 그 뒤에 바뀌었다. 2026-11-27부터 Amazon Bedrock Converse가 다시 기본 공급자이지만, 에이전트 루프는 LangGraph가 맡고 Guardrails는 쓰지 않는다. 현재 구현은 4.5절을 따른다.
 
 ## 4.1 무엇을 하는가
 
@@ -21,9 +21,10 @@
 |---|---|---|
 | 초안 | 단발 호출로 초안을 만들고 플래그만 붙임 (`POST /ai/day-card`) | — |
 | 2026-11-21 권고안 | 세션형 에이전트. Bedrock Converse tool use 루프를 boto3로 직접 구현 | 작성 시간과 원문 충실도 지표를 직접 개선하기 위해 |
-| 현재 | 세션형 에이전트. LangGraph `StateGraph` + OpenAI 호환 Chat Completions API | Bedrock 의존을 없애 LLM 공급자를 설정만으로 바꿀 수 있게 하고, 일시정지·재개와 상태 저장을 라이브러리에 맡기기 위해 |
+| 2026-11-21 | 세션형 에이전트. LangGraph `StateGraph` + OpenAI 호환 Chat Completions API | Bedrock 의존을 없애 LLM 공급자를 설정만으로 바꿀 수 있게 하고, 일시정지·재개와 상태 저장을 라이브러리에 맡기기 위해 |
+| 현재(2026-11-27) | 세션형 에이전트. LangGraph `StateGraph` + Amazon Bedrock Converse(`bedrock`, 기본). `openai_compat`과 `fake`는 설정으로 유지 | AWS 안에서 IAM 권한으로 호출해 API 키 관리를 없애기 위해(`2b9af27`) |
 
-세션 API 계약(`/ai/card-sessions*`, `SessionView`)과 화면은 두 번째 단계에서 정해진 뒤 바뀌지 않았다. 세 번째 변경은 서버 내부만 바꾼다.
+세션 API 계약(`/ai/card-sessions*`, `SessionView`)과 화면은 두 번째 단계에서 정해진 뒤 바뀌지 않았다. 세 번째·네 번째 변경은 서버 내부만 바꾼다.
 
 ## 4.2 왜 이 자리에 에이전트를 두었나
 
@@ -144,17 +145,17 @@ AI 정리 중 새로고침해도 `sessionId`로 세션을 복구한다. 한도 �
 | 항목 | 선택 | 이유와 주의점 |
 |---|---|---|
 | 에이전트 프레임워크 | LangGraph `StateGraph` | `interrupt()`와 체크포인터로 HTTP 턴 사이의 일시정지·재개를 처리한다. 대안은 Chat Completions 도구 호출 루프를 직접 짜는 방식인데, 의존성은 줄지만 일시정지·재개와 상태 저장을 직접 만들어야 한다 |
-| 모델 연결 | `langchain-openai`의 `ChatOpenAI(base_url=…)` | 임의의 OpenAI 호환 Chat Completions API를 부른다. `use_responses_api=False`를 명시한다 |
-| 공급자 교체 | `LLM_BASE_URL`, API 키, `LLM_MODEL` 설정 | OpenAI, 상용 호환 API, 로컬 Ollama·vLLM 등. 공급자별 차이는 `LLM_TOOL_CHOICE`, `LLM_PARALLEL_TOOL_CALLS`, `LLM_EXTRA_BODY` 등으로 흡수한다 |
+| 모델 연결 | `bedrock`(기본): `langchain-aws`의 `ChatBedrockConverse`. `openai_compat`: `langchain-openai`의 `ChatOpenAI(base_url=…)` | `bedrock`은 Amazon Bedrock Converse API를 IAM 권한으로 부른다. `openai_compat`은 임의의 OpenAI 호환 Chat Completions API를 부르며 `use_responses_api=False`를 명시한다 |
+| 공급자 교체 | `LLM_PROVIDER`(`bedrock`, `openai_compat`, `fake`)로 경로를 고른다. `bedrock`은 `LLM_MODEL`(Bedrock 모델 ID 또는 추론 프로필 ID)과 `LLM_REGION`(빈 값이면 `AWS_REGION`)을 쓴다. `openai_compat`은 `LLM_BASE_URL`, API 키, `LLM_MODEL`을 쓴다 | OpenAI, 상용 호환 API, 로컬 Ollama·vLLM 등이 여기에 해당한다. 공급자별 차이는 `LLM_TOOL_CHOICE`, `LLM_PARALLEL_TOOL_CALLS`, `LLM_EXTRA_BODY` 등으로 흡수한다 |
 | 상태 저장 | `langgraph-checkpoint-aws`의 `DynamoDBSaver`, 테이블 `HaruAgentCheckpoints` | `thread_id = sessionId`. 다음 턴이 다른 실행 환경에서 바로 재개될 수 있으므로 `consistent_read=True`를 켠다. S3 오프로드는 끄고 체크포인트 크기를 지표로 남긴다(아이템 400KB 한도) |
-| API 키 | SSM Parameter Store SecureString | 콜드 스타트 때 한 번 읽어 캐시한다. 로컬은 gitignore된 `.env` |
+| API 키 | `openai_compat`: SSM Parameter Store SecureString | 콜드 스타트 때 한 번 읽어 캐시한다. 로컬은 gitignore된 `.env`. `bedrock`은 실행 역할의 IAM `bedrock:InvokeModel`로 인증하고 API 키와 SSM 파라미터를 쓰지 않는다 |
 | 네트워크 | Lambda를 VPC 밖에 둔다 | NAT 없이 외부 API로 나간다 |
 | 추적 | LangSmith를 끈다 | 사연 원문이 외부로 나가지 않게 `LANGSMITH_TRACING=false`와 `LANGCHAIN_TRACING_V2=false`를 SAM과 docker compose에 둘 다 명시한다 |
-| 로컬 개발 | Fake 채팅 모델(`LLM_PROVIDER=fake`)이 기본 | 미리 정한 응답을 차례로 돌려준다. 실모델 확인은 외부 호환 API의 개발 키나 로컬 Ollama로 한다 |
+| 로컬 개발 | Fake 채팅 모델(`LLM_PROVIDER=fake`)이 기본(로컬 `docker-compose.yml`의 기본값) | 미리 정한 응답을 차례로 돌려준다. 호스트에서 실모델을 확인할 때는 AWS 프로필을 켠 호스트에서 `bedrock`으로 `scripts/eval_agent.py --env-file .env`를 실행하며 합성 사연만 쓴다. 컨테이너 실모델은 `openai_compat`(외부 호환 API 개발 키, 로컬 Ollama)으로 한다. 컨테이너 안의 `bedrock`은 Floci용 고정 자격 증명 때문에 401로 끝난다 |
 
-**의존성.** 에이전트 함수의 빌드에만 넣고 버전을 `==`로 고정한다(`langgraph`, `langgraph-checkpoint`, `langchain-core`, `langchain-openai`, `langgraph-checkpoint-aws`). 압축 해제 크기는 약 90–170MB로 추정하며 네이티브 wheel이 있어 `sam build --use-container`로 빌드한다. 실제 패키지 크기와 콜드 스타트는 6a단계에서 측정한다.
+**의존성.** 에이전트 함수의 빌드에만 넣고 버전을 `==`로 고정한다(`langgraph==1.2.24`, `langgraph-checkpoint==4.3.2`, `langchain-core==1.8.4`, `langchain-openai==1.8.5`, `langgraph-checkpoint-aws==1.3.0`, `langchain-aws==1.10.0`). `boto3`는 `>=1.43.64`로 둔다. 압축 해제 크기는 약 90–170MB로 추정하며 네이티브 wheel이 있어 `sam build --use-container`로 빌드한다. 실제 패키지 크기와 콜드 스타트는 6a단계에서 측정한다.
 
-**모델.** 공급자와 모델은 아직 정하지 않았다. 조건은 Chat Completions에서 도구 호출이 되는 경량 모델이다. 입력을 제품 개선에 쓰는 무료 티어와, reasoning을 끌 수 없어 지연이 긴 모델은 후보에서 뺀다. 오프라인 평가 15건으로 최종 선택한다.
+**모델.** 기본 공급자는 `bedrock`이고 운영 모델 ID는 아직 정하지 않았다(BE-Q6). `openai_compat` 경로의 조건은 Chat Completions에서 도구 호출이 되는 경량 모델이다. 입력을 제품 개선에 쓰는 무료 티어와, reasoning을 끌 수 없어 지연이 긴 모델은 후보에서 뺀다. 오프라인 평가 15건으로 최종 선택한다.
 
 설정 키 전체와 노드·엣지의 세부 규칙은 [§3.2](./03-api-contract.md)에 있다.
 

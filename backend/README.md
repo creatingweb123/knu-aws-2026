@@ -6,24 +6,27 @@ AWS 계정 없이 개발한 백엔드를 AWS 담당이 배포·판정할 수 있
 
 | 항목 | 상태 |
 |---|---|
-| 범위 | 백엔드 1·2단계(인증, `GET /me`, 계획 생성·목록·상세, 멱등 키, 원문 충실도·개인정보 함수), **3단계**(이어받기·포기·완료 트랜잭션, 방문 기록 글 저장 최소 구현, `GET /me/claims`, EMF 지표 3종), **4단계**(수신함 4종, `GET /me`의 `unreadInboxCount`, `InboxFunction`), **5단계**(사진 업로드 URL·교체, 사진 처리 Lambda·큐·DLQ, 수신함 `photoUrl`·`photoCaption`, 운영자 복구 스크립트, 10절). 4단계의 `GET /claims/{claimId}/record`는 계약 변경 승인 대기(BE-Q46, 3.3절·8절) |
-| 브랜치 | 4단계 수신함: `feat/be-4-inbox`(`fix/be-3-local-verify` `8fcf239` 위, 이 PR). `GET /claims/{claimId}/record`는 이 브랜치에 없고 `feat/be-4-record-inbox`의 `f3626c0`에만 있다(BE-Q46 승인 전 PR 제외). 3단계까지: `feat/be-3-claim-transaction` ← `feat/be-1-2-foundation` ← `docs/monorepo-stage1-2-spec` |
-| 브랜치(5단계) | `feat/be-5-photo-pipeline`(`feat/be-4-inbox` `dc3af68` 위). 2026-11-26 원격에 push, **Draft PR [#7](https://github.com/creatingweb123/knu-aws-2026/pull/7)**(base `feat/be-4-inbox`, 병합 전). 묶음 B(`f3626c0`)는 들어 있지 않다. 작업 17(묶음 B 의존)·18(프론트 승인 의존) 보류 |
-| spec | `.kiro/specs/backend-stage1-2-foundation/`, `.kiro/specs/backend-stage3-claim/`, `.kiro/specs/backend-stage4-record-inbox/`, `.kiro/specs/backend-stage5-photo-pipeline/` |
-| 단위 테스트 | `pytest tests/unit` 전부 통과(2026-11-25 로컬 검증: 289건, `_cleanup` 회귀 테스트 추가 후 296건). moto(인프로세스 DynamoDB 흉내)로 실제 조건식·갱신식·GSI 조회·트랜잭션 취소 사유를 확인. 3단계는 상태 전이 속성 테스트 포함 |
-| 단위 테스트(4단계) | 2026-11-25 수신함 묶음까지 385건 통과(속성 기반 Property 18–23 포함) |
-| 단위 테스트(5단계) | 2026-11-26 `pytest tests/unit` **647건 통과**(복구 스크립트 안전 확인 강화 포함), `pytest -m slow tests/unit` 2건 통과(40MP 메모리 측정). 속성 기반 Property 25–28 각 100예시 통과(P27은 600예시로 한 번 더 통과) |
-| SAM | `cfn-lint` 0건, `sam validate --lint` 통과, `sam build` 성공. **2026-11-25 AWS 담당이 `haru-dev`에 배포**(3.1절). 4단계 템플릿은 2026-11-25 개발 담당이 SAM CLI 1.174.1로 `sam validate --lint`·`sam build`까지 확인했고 배포하지 않았다. 5단계 템플릿은 `cfn-lint` 0건, `sam validate --lint` 통과, **`sam build --use-container` 성공**(Pillow 레이어, 10.2절), 배포하지 않았다 |
-| 로컬 환경(Docker) | **2026-11-25 첫 구동 성공**, `pytest -m local tests/local` 16건 통과(5절). 4단계 수신함 추가 후 23건 통과(5.4절). 5단계 추가 후 28건 통과·8건 사유 skip(5.5절). 판정 근거는 아니다(BE-Q15) |
-| AWS 판정 | T1·T13·T3·T4·T5·T6·T7·T14·T16 **15건 모두 통과**(2026-11-25, `haru-dev`, AWS 담당). 첫 실행에서 T1 액세스 토큰 1건이 실패해 `common/auth.py`를 고친 뒤 다시 통과했다(3.1절) |
-| AWS 판정(4단계) | T1 확장·T2·T17 테스트 코드 작성, **미실행**(3.3절). 배포와 실행은 AWS 담당 |
-| AWS 판정(5단계) | T8·T9·T10·T11·T15, 재업로드, IAM·CORS, 주입 차단 테스트 코드 작성, 수집만 확인하고 **미실행**(3.4절) |
-| 다음 단계 조건 | T3–T7이 AWS에서 통과해야 4단계를 시작한다(docs/07 §7.2). **2026-11-25 충족**. 4단계 이후 PR마다 `tests/integration/test_concurrency.py`를 다시 돌린다(docs/07 §7.2) |
-| PR | 1–3단계 PR #2–#6, 4단계 PR #1, 5단계 Draft PR #7, 6a Draft PR #8이 열려 있다. 병합된 것은 없다(2026-11-26, 8절) |
-| **6a단계(AI 레벨 0)** | 브랜치 `feat/be-6a-ai-pipeline`(기준 `fix/be-3-local-verify`), **Draft PR #8**(https://github.com/creatingweb123/knu-aws-2026/pull/8, 2026-11-26 생성, 리뷰 전), spec `.kiro/specs/backend-stage6a-ai-pipeline/`. 개발 PC에서 구현·검증까지 마쳤고 **AWS 배포·판정은 아직 없다**(10절) |
-| **6b단계(AI 에이전트)** | 브랜치 `feat/be-6b-ai-agent`(기준 `feat/be-6a-ai-pipeline`), spec `.kiro/specs/backend-stage6b-ai-agent/`. 작업 1–19 구현·개발 PC 검증까지. **PR·AWS 배포·판정은 아직 없다**. 실제 공급자 검증(작업 20.2–20.4)은 2026-11-27에 GPT-6 Luna 게이트웨이로 끝냈다(11.12절, 출시 모드 제안 11.13절) |
+| 기준·브랜치 | 기준 브랜치 `main`, HEAD `17486ed`(2026-11-27). 병합 커밋: 4단계 `8f4c288`(`feat/be-4-inbox`), 5단계 `17486ed`(`feat/be-5-photo-pipeline`), Bedrock 전환 `bef1702`(전환 커밋 `2b9af27`, `feat/be-bedrock`), 프론트엔드 1–6단계와 7단계 인증 코드까지 `33aea80`. 1–3단계, 6a단계, 6b단계는 병합 커밋 없이 `main` 이력에 들어 있다 |
+| 범위(1·2단계) | 인증, `GET /me`, 계획 생성·목록·상세, 멱등 키, 원문 충실도·개인정보 함수 |
+| 범위(3단계) | 이어받기·포기·완료 트랜잭션, 방문 기록 글 저장 최소 구현, `GET /me/claims`, EMF 지표 3종 |
+| 범위(4단계) | 수신함 4종(`GET /inbox`, `GET /inbox/{itemId}`, 읽음, 답장), `GET /me`의 `unreadInboxCount`, `InboxFunction`. 판정 실행표는 3.3절 |
+| 범위(5단계) | 사진 업로드 URL·교체, 사진 처리 Lambda·`PhotoQueue`·DLQ, 수신함 `photoUrl`·`photoCaption`, 운영자 복구 스크립트. 상세는 12절 |
+| 범위(6a단계, AI 레벨 0) | `/ai/card-sessions*` 세 경로, `POST /plans`의 AI 세션 지표, `AiCardFunction`. 상세는 10절 |
+| 범위(6b단계, AI 에이전트) | `AGENT_MODE=agent`의 LangGraph 에이전트, 턴 잠금, 질문 `interrupt`·`Command(resume)`, 체크포인트 테이블 `HaruAgentCheckpoints`. 기본 모드는 `pipeline`. 2026-11-27 개발 PC에서 GPT-6 Luna 게이트웨이(`openai_compat`)로 전 단계를 실행했다. 개발용 실측이고 AWS 판정이 아니다. 상세는 11절, 실측 기록은 10.11·11.12절 |
+| 범위(Bedrock 전환) | 2026-11-27 `2b9af27`. `LLM_PROVIDER=bedrock`이 기본이고 `ChatBedrockConverse`를 쓴다. 인증은 IAM `bedrock:InvokeModel`이며 API 키와 SSM 파라미터를 쓰지 않는다. `LLM_REGION`은 빈 값이면 `AWS_REGION`을 쓴다. 별도 spec은 없다 |
+| `main`에 없는 것 | `GET /claims/{claimId}/record`: 계약 변경 승인 대기(BE-Q46, 8절). 백엔드 7단계(웹 배포·관측·시연 준비): `main`에 없고 spec도 아직 없다 |
+| spec | `.kiro/specs/backend-stage1-2-foundation/`, `.kiro/specs/backend-stage3-claim/`, `.kiro/specs/backend-stage4-record-inbox/`, `.kiro/specs/backend-stage5-photo-pipeline/`, `.kiro/specs/backend-stage6a-ai-pipeline/`, `.kiro/specs/backend-stage6b-ai-agent/` |
+| 단위 테스트 | `pytest tests/unit` **1505건 통과, 1건 skip, 2건 deselect**(2026-11-27, `17486ed`). skip 1건은 리눅스 전용 `/proc/self/fd` 검사(`tests/unit/test_ai_cancel.py`, macOS에서 skip된다). deselect 2건은 `slow` 표시 40MP 메모리 측정이며 `pytest -m slow tests/unit`로 따로 돈다. 병합 전 기록 1154건은 Bedrock 전환 커밋 `2b9af27`(4·5단계 병합 전) 기준 값이고 병합 뒤 건수가 아니다. 단계 브랜치 시점 건수(10.1·11.1·12.1절)는 그 브랜치 기준이라 이 값과 직접 비교하지 않는다 |
+| SAM | 1–3단계: `cfn-lint` 0건, `sam validate --lint`, `sam build` 성공. 2026-11-25 `haru-dev` 배포(3.1절). 4단계: `sam validate --lint`·`sam build` 확인(2026-11-25, 브랜치 미기록), 배포 안 함. 5단계: `cfn-lint` 0건, `sam validate --lint`, `sam build --use-container` 성공(Pillow 레이어, 12.1·12.2절), 배포 안 함. 6a·6b단계: `cfn-lint` 0건, `sam validate --lint`, `sam build --use-container` 성공(10.1·11.1절), 배포 안 함. Bedrock 전환: `cfn-lint` 통과(`2b9af27` 커밋 메시지). 병합 뒤 `17486ed` 템플릿의 검사·빌드 기록은 없다(병합 뒤 미확인) |
+| 로컬 환경(Docker) | 1–3단계 `pytest -m local tests/local` 16건 통과(2026-11-25, 5.1절). 4단계 23건 통과(5.4절, 기록 기준 브랜치 `feat/be-4-record-inbox`, 커밋 전 작업 트리). 5단계 28건 통과·8건 사유 skip(5.5절, `feat/be-5-photo-pipeline` `cfc65a7`). 6a 기존 16건과 새 7건 통과(10.1절). 6b 기본 `pipeline`에서 기존 23건, `agent` 모드에서 새 9건 통과(11.1절). 모두 `llmMode: fake`이고 판정 근거가 아니다(BE-Q15). 병합 뒤 `17486ed`에서 로컬 통합 테스트를 다시 돌린 기록은 없다(병합 뒤 미확인) |
+| AWS 판정(1–3단계) | T1·T13·T3·T4·T5·T6·T7·T14·T16과 가입 확인(1.5·14.4) **15건 모두 통과**(2026-11-25, `haru-dev`, AWS 담당). 첫 실행에서 T1 액세스 토큰 1건이 실패해 `common/auth.py`를 고친 뒤 다시 통과했다(3.1절). 기록 브랜치 `fix/be-3-aws-verify`(`e80b890`). `17486ed`에서는 병합 뒤 미확인 |
+| AWS 판정(4·5단계) | 4단계 T1 확장·T2·T17: 테스트 작성, 미실행(3.3절, 기준 브랜치 `feat/be-4-record-inbox`, 5.4절). 5단계 T8·T9·T10·T11·T15, 재업로드, IAM·CORS, 주입 차단: 테스트 작성과 수집만 하고 미실행(3.4절, `feat/be-5-photo-pipeline` `40a767f`, 12.1절). 둘 다 AWS 배포 전이다 |
+| AWS 판정(6a·6b·Bedrock) | 6a: `tests/integration/test_ai.py`를 `feat/be-6a-ai-pipeline` `7d518ed`에서 작성·수집만 했고 미실행(10.1·10.3절). 6b: T18–T22를 `feat/be-6b-ai-agent` `82275e7`에서 작성·수집만 했고 미실행(11.1·11.4절). `bedrock` 경로: `feat/be-bedrock` `2b9af27`은 AWS 통합 테스트를 바꾸지 않았고(단위 테스트 `test_ai_bedrock.py`만) 배포·판정은 미실행. 모두 AWS 배포 전이다 |
+| LLM 공급자 | 기본 `bedrock`(Amazon Bedrock Converse). `openai_compat`(AWS는 SSM SecureString 키, 로컬은 `.env`의 `LLM_API_KEY`)과 `fake`(AWS는 `Stage=dev`이고 스택 `haru-dev`일 때만, 로컬 `docker-compose.yml` 기본값)는 선택 경로로 유지한다. 운영 공급자·모델은 미결(BE-Q6)이다. 개발·검증용으로는 GPT-6 Luna 게이트웨이를 썼다(10.11절). 배포 전 확인은 10.2절 |
+| 다음 단계 조건 | T3–T7이 AWS에서 통과해야 4단계를 시작한다(docs/07 §7.2). **2026-11-25 충족**. 4단계 이후 PR마다 `tests/integration/test_concurrency.py`를 다시 돌린다(docs/07 §7.2). 4·5단계 병합(`8f4c288`, `17486ed`) 뒤 AWS 통합 회귀(`test_concurrency.py` 재실행, 10.8절 작업 22)는 미실행이다(아직 실행하지 않았다) |
+| PR | GitHub PR 상태(`gh pr list`, 2026-11-27 확인): #2 MERGED(`docs/monorepo-stage1-2-spec`), #1·#3–#8 CLOSED. CLOSED는 병합되지 않았다는 뜻이 아니다. 병합 여부는 `main`의 병합 커밋으로 본다: 4단계 `8f4c288`, 5단계 `17486ed`, Bedrock 전환 `bef1702`, 프론트엔드 `33aea80`. 1–3단계와 6a·6b단계는 병합 커밋 없이 이력에 있고, 6b단계 브랜치의 PR은 #1–#8 목록에 없다. 2026-11-26 기준 열림 상태는 8절에 있다 |
 
-AWS에서만 확인되는 것은 4절, 로컬 환경 구동 기록과 절차는 5절, 테스트 데이터 정리 보완은 3.2절에 있다.
+AWS에서만 확인되는 것은 4절, 로컬 환경 구동 기록과 절차는 5절, 테스트 데이터 정리 보완은 3.2절, 4·5단계 판정 실행표는 3.3·3.4절, 6a는 10절, 6b는 11절, 5단계는 12절, PR 순서는 8절에 있다. 8·10.8·11.1·12.1절은 각 작업 시점의 기록이라 이 표와 다를 수 있다.
 
 ## 2. 배포 런북 (AWS 담당)
 

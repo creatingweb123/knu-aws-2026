@@ -8,7 +8,7 @@
 
 > 그림은 [`scripts/draw_architecture.py`](../scripts/draw_architecture.py)로 생성한다(`python scripts/draw_architecture.py`).
 >
-> 이 그림의 AI 부분은 이전 설계(Amazon Bedrock Converse, Guardrails)로 그려져 있다. 현재 설계는 아래 텍스트 도식과 같이 LangGraph 에이전트가 외부 OpenAI 호환 LLM API를 호출하는 구조이므로, 그림은 다시 생성해야 한다.
+> 이 그림의 AI 부분은 이전 설계(Amazon Bedrock Converse, Guardrails)로 그려져 있다. 현재 기본 공급자도 Bedrock Converse(`bedrock`)이지만, 그림에는 LangGraph 에이전트와 체크포인트 테이블이 없고 백엔드 코드에는 Guardrails 호출이 없으므로 그림은 다시 생성해야 한다. 현재 구조는 아래 텍스트 도식을 따른다.
 
 ```
 브라우저(React) ──▶ CloudFront ──▶ S3 (비공개, 정적 파일, OAC)
@@ -18,8 +18,9 @@
      └─▶ API Gateway (HTTP API, JWT authorizer)
             └─▶ API Lambda들 ──▶ DynamoDB (단일 테이블 HaruTable)
                     ├─▶ 하루 카드 에이전트(LangGraph) ──▶ DynamoDB 체크포인트 테이블 HaruAgentCheckpoints
-                    │     └─▶ 외부 OpenAI 호환 LLM API (Chat Completions tools)
-                    │           └ API 키: SSM Parameter Store SecureString
+                    │     └─▶ Amazon Bedrock Converse (기본 bedrock, IAM bedrock:InvokeModel, 키 없음)
+                    │     └─▶ 선택: 외부 OpenAI 호환 LLM API (openai_compat, Chat Completions tools)
+                    │           └ API 키(openai_compat만): SSM Parameter Store SecureString
                     └─▶ S3 사진 버킷 presigned PUT/GET URL 발급
 
 사진: 브라우저 ──PUT──▶ S3 photos/original/ ──이벤트──▶ SQS ──▶ 사진 처리 Lambda
@@ -34,7 +35,7 @@ CloudWatch Logs/Metrics/Alarms, 배포: AWS SAM
 
 1. **정적 파일**: CloudFront가 비공개 S3의 React 빌드 산출물을 제공한다. 웹 버킷과 배포는 백엔드 SAM 스택이 만들고, `frontend/`의 빌드 결과를 sync한다.
 2. **API**: 브라우저가 Cognito ID 토큰으로 API Gateway를 직접 호출한다. Lambda가 계획별 작성자·실행자 권한을 검사한다.
-3. **AI 정리**: Lambda 안의 LangGraph 에이전트 그래프가 외부 OpenAI 호환 LLM API를 호출한다. HTTP 요청 1번이 에이전트 1턴이고, 턴 사이의 대화·그래프 상태는 체크포인트 테이블에 남는다.
+3. **AI 정리**: Lambda 안의 LangGraph 에이전트 그래프가 LLM을 호출한다. 기본은 Amazon Bedrock Converse(`bedrock`, IAM 인증)이고, 설정으로 외부 OpenAI 호환 API(`openai_compat`)를 쓸 수 있다. HTTP 요청 1번이 에이전트 1턴이고, 턴 사이의 대화·그래프 상태는 체크포인트 테이블에 남는다.
 4. **사진**: 브라우저가 presigned URL로 S3에 직접 올리면 SQS를 거쳐 사진 처리 Lambda가 비동기로 처리한다.
 
 ## 2.2 기술 스택
@@ -43,11 +44,14 @@ CloudWatch Logs/Metrics/Alarms, 배포: AWS SAM
 
 - 런타임: **Python 3.12** (boto3, Pillow 레이어, pydantic으로 입력/AI 응답 검증) — 팀 합의 시 Node.js 20(sharp)로 변경 가능
 - IaC: AWS SAM (`template.yaml`, `samconfig.toml`에 `dev`/`demo` 환경)
-- 리전: `ap-northeast-2`. LLM은 AWS 밖의 외부 공급자이므로 사연이 공급자 서버로 전송된다. 공급자에 따라 처리 국가와 보존 정책이 다르므로 시범 운영 동의 문구에 적는다(BE-Q7).
+- 리전: `ap-northeast-2`. LLM 호출 위치는 공급자에 따라 다르다. `bedrock`은 AWS 안에서 호출하며 리전은 `LLM_REGION`(빈 값이면 함수 리전)이다. 추론 프로필을 쓰면 요청이 다른 리전에서 처리될 수 있다. `openai_compat`은 AWS 밖의 외부 공급자 서버로 사연을 보낸다. 외부 공급자는 처리 국가와 보존 정책이 달라 시범 운영 동의 문구에 적는다(BE-Q7).
 - AI 에이전트: `AiCardFunction` 안에서 **LangGraph `StateGraph`로 노드를 명시적으로 연결**한다(`src/agent/graph.py`, `nodes.py`, `tools.py`). 범용 prebuilt 에이전트(`create_agent` 등)는 쓰지 않는다. 그래프 도식·노드·엣지는 [§3.2](./03-api-contract.md).
-  - 모델 연결: `langchain-openai`의 `ChatOpenAI(base_url=LLM_BASE_URL, api_key=…, model=LLM_MODEL)`로 임의의 OpenAI 호환 Chat Completions API를 부른다. 공급자는 `LLM_BASE_URL`·`LLM_API_KEY`(AWS에서는 `LLM_API_KEY_PARAM`)·`LLM_MODEL` 설정만 바꿔 교체한다(OpenAI, 상용 호환 API, 로컬 Ollama·vLLM 등). `use_responses_api=False`를 명시해 Chat Completions로만 보낸다.
+  - 모델 연결: 설정 `LLM_PROVIDER`로 세 경로 중 하나를 고른다.
+    - `bedrock`(기본): `langchain-aws`의 `ChatBedrockConverse`로 Amazon Bedrock Converse를 부른다. `LLM_MODEL`은 Bedrock 모델 ID 또는 추론 프로필 ID이고, 호출 리전은 `LLM_REGION`(빈 값이면 `AWS_REGION`)이다. 인증은 함수 실행 역할의 IAM `bedrock:InvokeModel`이며 API 키와 SSM 파라미터를 쓰지 않는다.
+    - `openai_compat`(선택): `langchain-openai`의 `ChatOpenAI(base_url=LLM_BASE_URL, api_key=…, model=LLM_MODEL)`로 임의의 OpenAI 호환 Chat Completions API를 부른다. 공급자는 `LLM_BASE_URL`·`LLM_API_KEY`(AWS에서는 `LLM_API_KEY_PARAM`)·`LLM_MODEL` 설정만 바꿔 교체한다(OpenAI, 상용 호환 API, 로컬 Ollama·vLLM 등). `use_responses_api=False`를 명시해 Chat Completions로만 보낸다.
+    - `fake`(선택, 로컬 compose 기본값): 시나리오별 Fake 채팅 모델. AWS에서는 `Stage=dev`이고 스택 이름이 `haru-dev`일 때만 쓴다.
   - 상태 저장: `langgraph-checkpoint-aws`의 `DynamoDBSaver` 체크포인터, `thread_id = sessionId`. 체크포인트는 별도 테이블 `HaruAgentCheckpoints`에 둔다(§2.6). Lambda는 상태가 없으므로 `InMemorySaver`는 쓸 수 없다. 커뮤니티 패키지 `langgraph-checkpoint-dynamodb`와 혼동하지 않는다.
-  - 의존성(에이전트 함수 전용, `==`로 고정): `langgraph==1.2.24`, `langgraph-checkpoint==4.3.2`, `langchain-core==1.8.4`, `langchain-openai==1.8.5`, `langgraph-checkpoint-aws==1.3.0`, `boto3>=1.43.64`(checkpoint-aws 요구 버전이라 런타임 내장본 대신 함께 묶는다). 릴리스 주기가 빨라 실제 고정값은 6a에서 의존성을 고정할 때 다시 확인한다. `langchain-core`·`langchain-openai`·`langgraph-checkpoint-aws`는 Python 3.11 이상을 요구하므로 3.12를 유지한다.
+  - 의존성(에이전트 함수 전용, `==`로 고정): `langgraph==1.2.24`, `langgraph-checkpoint==4.3.2`, `langchain-core==1.8.4`, `langchain-openai==1.8.5`, `langchain-aws==1.10.0`, `langgraph-checkpoint-aws==1.3.0`, `boto3>=1.43.64`(checkpoint-aws 요구 버전이라 런타임 내장본 대신 함께 묶는다). 릴리스 주기가 빨라 실제 고정값은 6a에서 의존성을 고정할 때 다시 확인한다. `langchain-core`·`langchain-openai`·`langgraph-checkpoint-aws`는 Python 3.11 이상을 요구하므로 3.12를 유지한다.
   - 패키지 크기·콜드 스타트: 의존성 wheel 합계 약 37MB(압축), 압축 해제 약 90~170MB로 추정한다(250MB 한도 안, Layer 불필요). 네이티브 wheel(pydantic-core, zstandard, tiktoken, xxhash, ormsgpack, jiter, orjson 등)이 있어 `sam build --use-container`로 Lambda 아키텍처에 맞춰 빌드한다. import로 콜드 스타트가 수백 ms~수 초 늘 수 있으므로 6a(레벨 0 첫 배포)에서 `du -sh .aws-sam/build/AiCardFunction`과 Init Duration을 기록한다(BE-Q18). 레벨 0도 같은 의존성 위에서 돌므로 이 문제는 `AGENT_MODE=pipeline` 전환으로 피할 수 없고, 그래서 6a에서 먼저 드러낸다.
   - LangSmith 추적은 사연 원문을 외부로 보내므로 끈다. SAM `Globals.Function.Environment`와 docker compose에 `LANGSMITH_TRACING=false`, `LANGCHAIN_TRACING_V2=false`를 **둘 다** 명시하고(`LANGCHAIN_TRACING_V2=true`가 남아 있으면 우선 적용돼 켜진다), `LANGSMITH_API_KEY`는 두지 않는다. 핸들러는 그래프 실행을 `langsmith.tracing_context(enabled=False)`로 감싼다.
   - 대안(채택 안 함): LangGraph 없이 Chat Completions tool calling 루프를 직접 짜는 방식. 의존성은 줄지만 일시정지·재개와 상태 저장을 직접 만들어야 한다.
@@ -94,7 +98,7 @@ VITE_USE_MOCK=false
 |---|---|---|
 | `MeFunction` | `GET /me`, `GET /me/claims`, `GET /me/plans`(P1) | 내 정보, 내 하루 |
 | `PlansFunction` | `/plans*` | 계획 생성·조회·목록, 이어받기 |
-| `AiCardFunction` | `/ai/card-sessions*` | 하루 카드 에이전트 그래프(LangGraph `StateGraph` + `ChatOpenAI`)·레벨 0, 세션·체크포인트 저장 (메모리 1024MB부터 시작해 측정으로 조정, 타임아웃 27s, VPC 밖. LangGraph 의존성은 이 함수 빌드에만 넣는다) |
+| `AiCardFunction` | `/ai/card-sessions*` | 하루 카드 에이전트 그래프(LangGraph `StateGraph` + `ChatBedrockConverse`(기본) / `ChatOpenAI`)·레벨 0, 세션·체크포인트 저장 (메모리 1024MB부터 시작해 측정으로 조정, 타임아웃 27s, VPC 밖. LangGraph 의존성은 이 함수 빌드에만 넣는다) |
 | `ClaimsFunction` | `/claims/*` | 포기, 방문 기록 저장, 업로드 URL, 완료 |
 | `InboxFunction` | `/inbox*` | 수신함, 읽음, 답장 |
 | `PhotoProcessorFunction` | SQS | 사진 검사·축소·메타데이터 제거, 완료 트랜잭션 |
@@ -108,7 +112,7 @@ VITE_USE_MOCK=false
      │                          ├ HTTP → API Gateway v2(payload 2.0) 이벤트로 변환해 같은 Lambda 핸들러 호출
      │                          ├ ID 토큰(Floci User Pool 또는 dev JWT)을 JWKS로 검증 → requestContext.authorizer.jwt.claims 주입
      │                          ├ SQS 폴러 → Lambda SQS 이벤트 형태로 사진 처리 핸들러 호출
-     │                          └─▶ LLM: Fake 채팅 모델(기본) / 외부 OpenAI 호환 API / 로컬 Ollama
+     │                          └─▶ LLM: Fake 채팅 모델(`fake`, 기본) / 외부 OpenAI 호환 API·로컬 Ollama(`openai_compat`) / 호스트 실모델 Bedrock(`bedrock`, 컨테이너 안은 401)
      ├─ 로그인 ──▶ Floci Cognito (:4566)
      └─ 사진 PUT ─▶ Floci S3 (:4566) ──ObjectCreated──▶ Floci SQS(+DLQ) ──▶ 어댑터 폴러
                     Floci DynamoDB (:4566): HaruTable, HaruAgentCheckpoints
@@ -121,7 +125,7 @@ VITE_USE_MOCK=false
 | API Gateway HTTP API + JWT authorizer, Lambda | 얇은 Python HTTP 어댑터 + SQS 폴러(자체 빌드) | 실제 authorizer·IAM·콜드 스타트는 AWS에서만 확인 |
 | CloudWatch EMF | stdout 로그(`AWS_EMF_ENVIRONMENT=Local`) | 메트릭 추출·대시보드·알람은 AWS에서만 |
 | CloudFront + 웹 버킷 | 호스트의 Vite dev 서버(5173) | OAC·SPA 대체 응답·캐시는 AWS에서만 |
-| LLM | Fake 채팅 모델(`LLM_PROVIDER=fake`, 기본), 외부 OpenAI 호환 API, 선택 `ollama` 프로필 | Ollama `/v1`은 `tool_choice`를 지원하지 않는다 |
+| LLM | Fake 채팅 모델(`LLM_PROVIDER=fake`, 기본), 외부 OpenAI 호환 API(`openai_compat`), 선택 `ollama` 프로필(`openai_compat`). 호스트 실모델은 `bedrock`(컨테이너 안은 401) | Ollama `/v1`은 `tool_choice`를 지원하지 않는다 |
 
 - 같은 핸들러 코드를 쓰고 엔드포인트만 환경 변수로 바꾼다(`AWS_ENDPOINT_URL`, presign 전용 `PUBLIC_S3_ENDPOINT`, 체크포인터용 `CHECKPOINT_DDB_ENDPOINT`, `LLM_BASE_URL` 등). AWS 배포에서는 SDK 표준 변수(`AWS_ENDPOINT_URL`, `AWS_EMF_ENVIRONMENT`)를 SAM 환경 변수에 아예 정의하지 않고, 앱 전용 변수(`PUBLIC_S3_ENDPOINT`, `CHECKPOINT_DDB_ENDPOINT`)는 빈 값이면 코드가 `None`으로 처리해 실제 엔드포인트를 쓴다.
 - LocalStack(2026-03-23부터 계정·인증 토큰 필요, 무료 Hobby 플랜에 HTTP API v2·Cognito 없음)과 MinIO(무료 이미지 배포 중단, SQS 알림 없음)는 쓰지 않는다. `sam local start-api`는 HTTP API JWT authorizer를 실행하지 않아(Lambda authorizer만 지원) 기본 경로로 쓰지 않는다.
@@ -139,8 +143,8 @@ VITE_USE_MOCK=false
 | API Gateway HTTP API(JWT authorizer) + Lambda | 자체 빌드 Python 3.12 HTTP 어댑터(`local/adapter`) | 실제 authorizer·IAM·콜드 스타트·레이어 호환은 AWS에서 확인 |
 | CloudWatch EMF | stdout 로그(`AWS_EMF_ENVIRONMENT=Local`) | 지표 이름·차원 오타만 잡는다 |
 | CloudFront + 웹 버킷 | 호스트의 Vite dev 서버(5173) | OAC·SPA 대체 응답·캐시는 AWS에서만 |
-| LLM | Fake 채팅 모델(기본), 외부 OpenAI 호환 API(개발 키), 선택 `ollama` 프로필 | §2.4.5 |
-| SSM Parameter Store(LLM 키) | `.env`의 `LLM_API_KEY` | |
+| LLM | Fake 채팅 모델(`fake`, 기본), 외부 OpenAI 호환 API(`openai_compat`, 개발 키), 선택 `ollama` 프로필(`openai_compat`). 호스트 실모델은 `bedrock` | §2.4.5 |
+| SSM Parameter Store(LLM 키) | `.env`의 `LLM_API_KEY` | `openai_compat` 전용. `bedrock`은 키 없이 IAM |
 
 어댑터(`local/adapter`)가 하는 일
 1. HTTP 요청을 API Gateway v2(payload 2.0) 이벤트로 바꿔 같은 Lambda 핸들러를 호출한다. 핸들러에 넘기는 context는 `get_remaining_time_in_millis()`를 제공한다(기본 27초, 12초 규칙 확인용).
@@ -184,6 +188,7 @@ services:
       LLM_BASE_URL: ${LLM_BASE_URL:-}     # OpenAI / 호환 API / 맥 네이티브 Ollama http://host.docker.internal:11434/v1
                                           # / llm-local 프로필 컨테이너 http://ollama:11434/v1
       LLM_MODEL: ${LLM_MODEL:-}
+      LLM_REGION: ${LLM_REGION:-}
     depends_on: [aws]
   ollama:         # 선택(Linux + NVIDIA, NVIDIA Container Toolkit 필요): docker compose --profile llm-local up
     image: ollama/ollama:0.40.17
@@ -220,9 +225,10 @@ volumes: { floci-data: {}, ollama-models: {} }
 | `CHECKPOINT_DDB_ENDPOINT` | `http://aws:4566` | 빈 값(코드가 `None`으로 바꿔 `DynamoDBSaver`에 넘김) |
 | `LOCAL_JWT_ISSUER` / `LOCAL_JWKS_URL` | init 스크립트가 출력한 Floci User Pool 값 | 정의하지 않음(어댑터 전용) |
 | `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | 더미 `test` | Lambda 실행 역할 |
-| `LLM_PROVIDER` | `fake`(기본) / `openai_compat` | `openai_compat` |
-| `LLM_BASE_URL` / `LLM_MODEL` | 개발 키 공급자 또는 Ollama | `samconfig.toml` 파라미터(BE-Q6) |
-| `LLM_API_KEY` / `LLM_API_KEY_PARAM` | `.env`의 `LLM_API_KEY` | SSM SecureString 이름 |
+| `LLM_PROVIDER` | 허용 값 `bedrock`·`openai_compat`·`fake`. 컨테이너 기본 `fake`(`docker-compose.yml`), 호스트 실모델은 `bedrock`(§2.4.5) | 기본 `bedrock`(`template.yaml` `LlmProvider`). `openai_compat`도 고를 수 있다. `fake`는 `Stage=dev`이고 스택 이름이 `haru-dev`일 때만 쓰며, 그 밖에서는 `bedrock`으로 바뀐다 |
+| `LLM_BASE_URL` / `LLM_MODEL` | `openai_compat`이면 개발 키 공급자 또는 Ollama(`LLM_BASE_URL`). 호스트 `bedrock`이면 `.env`의 `LLM_MODEL`(Bedrock 모델 ID 또는 추론 프로필 ID) | `samconfig.toml` 파라미터(BE-Q6). `bedrock`이면 Bedrock 모델 ID 또는 추론 프로필 ID, `openai_compat`이면 공급자 모델명. `LLM_BASE_URL`은 `openai_compat` 전용 |
+| `LLM_REGION` | 호스트 `bedrock`이면 `.env`에 지정. 컨테이너 기본은 빈 값(`docker-compose.yml`) | `LlmRegion` 파라미터, 빈 값이면 함수 리전(`AWS_REGION`) |
+| `LLM_API_KEY` / `LLM_API_KEY_PARAM` | `.env`의 `LLM_API_KEY` | SSM SecureString 이름. `openai_compat` 전용. `bedrock`은 키 없이 IAM |
 | `LLM_READ_TIMEOUT_S` | `8`(네이티브 Ollama는 `30`~`60`, 어댑터 context 시간도 함께 늘린다) | `8` |
 | `AWS_EMF_ENVIRONMENT` | `Local` | 정의하지 않음(SDK 표준 변수) |
 | `LANGSMITH_TRACING` / `LANGCHAIN_TRACING_V2` | `false` / `false` | `false` / `false` |
@@ -244,7 +250,8 @@ volumes: { floci-data: {}, ollama-models: {} }
 
 ### 2.4.5 로컬 LLM
 
-- 기본은 Fake 채팅 모델(`LLM_PROVIDER=fake`, `FAKE_LLM_SCENARIO`)이다. 실모델 확인은 외부 OpenAI 호환 API(개발 키)나 로컬 Ollama로 한다(BE-Q16).
+- 기본은 Fake 채팅 모델(`LLM_PROVIDER=fake`, `FAKE_LLM_SCENARIO`)이다. 호스트 실모델 확인은 `LLM_PROVIDER=bedrock`으로 AWS 프로필을 켠 호스트에서 `scripts/eval_agent.py --env-file .env`를 실행한다(합성 사연만). `LLM_MODEL`과 `LLM_REGION`은 `.env`에 둔다. 컨테이너 안에서 실모델을 쓰면 `openai_compat`(외부 OpenAI 호환 API 개발 키, 로컬 Ollama)을 쓴다(BE-Q16).
+- 컨테이너 안의 `bedrock`은 AWS 자격 증명이 Floci용 고정 `test` 값이라 호출이 401로 끝난다(`docker-compose.yml` 63–64행 주석, `.env.example` 36–37행). `.env`는 compose 서비스의 `env_file`과 변수 치환(`${LLM_PROVIDER:-fake}`)에도 읽히므로, `.env`에 `LLM_PROVIDER=bedrock`을 두면 컨테이너도 401이 된다. 이 충돌을 피하는 방법은 아직 정하지 않았다.
 - Ollama `/v1`은 `tools`는 지원하지만 `tool_choice`는 지원하지 않는다. `LLM_TOOL_CHOICE`는 비워 두고, 도구 호출 없는 응답은 재촉 1회 → 결정적 폴백 경로로 처리된다. `max_completion_tokens`가 무시될 수 있으므로 `LLM_EXTRA_BODY={"max_tokens":800}`을 함께 보낸다(BE-Q9). 키가 필요 없지만 `LLM_API_KEY`에는 더미 값(`ollama`)을 넣는다.
 - macOS Docker Desktop에서는 GPU를 쓸 수 없다. 맥에서는 Ollama를 네이티브로 설치(Metal)하고 컨테이너에서 `http://host.docker.internal:11434/v1`로 붙는다. Linux + NVIDIA는 NVIDIA Container Toolkit을 설치하고 `llm-local` 프로필 컨테이너(GPU 예약 포함)로 GPU를 쓸 수 있다. 이때 `LLM_BASE_URL`은 `http://ollama:11434/v1`이다. CPU만으로는 호출 1회가 read 8초와 Lambda 27초를 넘기기 쉬우므로(추정) 전체 세션 확인에 쓰지 않는다.
 - 기본 컨텍스트가 4k(VRAM 24GiB 미만)라 시스템 프롬프트·도구 3개 스키마·사연·히스토리를 넣으면 넘칠 수 있다. 서버를 `OLLAMA_CONTEXT_LENGTH=16384` 정도로 띄운다.
@@ -494,11 +501,12 @@ SAM 주의: 버킷 알림(QueueConfiguration)은 SQS 큐 정책이 먼저 있어
 
 모든 판단은 Lambda에서 JWT `sub`와 저장된 `ownerId`/`claimerId` 비교로 한다. 클라이언트가 보낸 사용자 ID는 신뢰하지 않는다.
 
-`AiCardFunction`의 IAM 권한은 세 가지로 한정한다. 프롬프트 인젝션이 성공해도 피해는 자기 세션 초안에 그치고, 그 초안도 게이트와 계획자 확인을 거친다.
+`AiCardFunction`의 IAM 권한은 네 가지로 한정한다. 프롬프트 인젝션이 성공해도 피해는 자기 세션 초안에 그치고, 그 초안도 게이트와 계획자 확인을 거친다.
 - HaruTable: DynamoDB `GetItem`/`PutItem`/`UpdateItem` + `dynamodb:LeadingKeys` 조건 `AISESSION#*`, `AIQUOTA#*`. Plan·Claim·Inbox에는 IAM 수준에서 쓸 수 없다.
 - `HaruAgentCheckpoints`: `GetItem`/`PutItem`/`Query`/`BatchGetItem`/`BatchWriteItem`(이 테이블만, `delete_thread` 포함).
-- `ssm:GetParameter`: LLM API 키 파라미터 ARN 하나만.
-- LLM 호출은 AWS IAM 밖의 외부 HTTPS 호출이다. 키 노출에 대비해 공급자가 사용량 한도 설정을 지원하면 월 한도를 건다.
+- `bedrock:InvokeModel`: Bedrock 기반 모델, 추론 프로필, 애플리케이션 추론 프로필 ARN으로 한정한다. 리전은 와일드카드다(교차 리전 추론 프로필에 맞춘다). API 키가 없다.
+- `ssm:GetParameter`: `openai_compat`일 때만, LLM API 키 파라미터 ARN 하나만(`LlmApiKeyParam`이 있을 때 정책에 들어간다).
+- `openai_compat` 호출은 AWS IAM 밖의 외부 HTTPS 호출이다. 키 노출에 대비해 공급자가 사용량 한도 설정을 지원하면 월 한도를 건다.
 
 ## 2.9 관측과 측정
 
@@ -558,7 +566,7 @@ src/
   common/                   # auth.py, ddb.py(트랜잭션·재시도 헬퍼), errors.py, responses.py, validation.py, metrics.py
   handlers/                 # me.py, plans.py, ai_card.py(/ai/card-sessions*), claims.py, inbox.py, pre_signup.py
   agent/                    # graph.py(StateGraph·조건부 엣지·체크포인터·레벨 0), nodes.py(draft, decide, check_draft, ask_planner, gate, fallback, pause),
-                            # tools.py(도구 스키마·게이트 판정), state.py(AgentState), llm.py(ChatOpenAI 생성·Fake 채팅 모델)
+                            # tools.py(도구 스키마·게이트 판정), state.py(AgentState), llm.py(ChatBedrockConverse·ChatOpenAI 생성·Fake 채팅 모델)
   domain/                   # claim_service.py, plan_service.py, inbox_service.py,
                             # fidelity.py(find_not_in_source(sources, targets)), privacy.py(scan_privacy)
   workers/photo_processor.py
@@ -584,7 +592,7 @@ scripts/
 - `validation.py`: pydantic 모델(PlanCreate, RecordPut, PhotoRequest, Reply, AiCard, AiSessionCreate, AiTurn, SessionView). 검증 오류를 `details`의 `places[0].name` 형식 경로로 바꾼다. `check_draft`의 스키마 검증도 같은 경로 표기를 쓴다.
 - `agent/graph.py`·`nodes.py`: LangGraph `StateGraph`로 노드를 명시적으로 연결한다([§3.2](./03-api-contract.md) 도식). LLM 노드는 `draft`, `decide`뿐이고, 예산·시간 가드(`pause`)·`finish`는 조건부 엣지로 처리한다. 체크포인터는 `DynamoDBSaver`(`HaruAgentCheckpoints`, `consistent_read=True`).
 - `agent/tools.py`: 도구 3개와 서버 게이트 판정은 DynamoDB를 직접 부르지 않는 순수 함수다. 단위 테스트는 Fake 채팅 모델로 돌린다.
-- `agent/llm.py`: `LLM_*` 설정으로 `ChatOpenAI`를 만들고(`timeout`·`max_retries=0` 명시), AWS에서는 SSM SecureString 키를 콜드 스타트 때 1회 읽어 캐시한다. `LLM_PROVIDER=fake`면 시나리오별 Fake 채팅 모델을 돌려준다.
+- `agent/llm.py`: `LLM_PROVIDER`로 모델을 고른다. `bedrock`(기본)은 `ChatBedrockConverse`를 만든다(호출 리전 `LLM_REGION`, 빈 값이면 `AWS_REGION`. 재시도 없는 bedrock-runtime 클라이언트에 connect/read 타임아웃을 명시한다). `openai_compat`은 `ChatOpenAI`를 만들고(`timeout`·`max_retries=0` 명시), AWS에서는 SSM SecureString 키를 콜드 스타트 때 1회 읽어 캐시한다. `LLM_PROVIDER=fake`면 시나리오별 Fake 채팅 모델을 돌려준다.
 - `handlers/ai_card.py`: 턴 잠금, `AiQuota`, 그래프 실행(`thread_id = sessionId`, `durability="sync"`, `tracing_context(enabled=False)`), 그래프 상태 → `SessionView` 변환, trace 생성.
 - `responses.py`: Plan·Claim·Record·InboxItem 직렬화. 허용 목록 방식으로 내부 속성을 걸러낸다(BE-PLAN-08).
 
