@@ -1,0 +1,21 @@
+.params {
+  margin: 0;
+  padding: var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  font-size: var(--font-size-sm);
+}
+
+.row {
+  display: flex;
+  gap: var(--space-3);
+}
+
+.row dt {
+  color: var(--color-text-sub);
+}
+
+.row dd {
+  margin: 0;
+  word-break: break-all;
+}

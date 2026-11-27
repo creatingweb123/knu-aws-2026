@@ -1,0 +1,57 @@
+/*
+ * 디자인 토큰 (docs/05 §5.3). 색은 시안에서 추정한 값이다(FE-Q5).
+ * 글꼴·크기·간격·모서리·그림자는 문서에 없어 임시로 정한 추정값이다(FE-Q14).
+ * 디자인이 확정되면 값만 바꾼다. 컴포넌트는 색을 이 변수로만 쓴다.
+ */
+:root {
+  /* 색 (docs/05 §5.3, 추정) */
+  --color-primary: #234d3a;
+  --color-bg: #faf8f3;
+  --color-surface: #ffffff;
+  --color-plan: #f4ecdd;
+  --color-record: #e4ede5;
+  --color-accent: #f0b86e;
+  --color-danger-bg: #f8e8e4;
+
+  /* 보조 색 (FE-Q14, 추정) */
+  --color-text: #1f2a24;
+  --color-text-sub: #6f746f;
+  --color-border: #e6e2d8;
+  --color-on-primary: #ffffff;
+  --color-danger: #b4432f;
+  --color-disabled: #c9ccc6;
+
+  /* 글꼴 (FE-Q14, 추정) */
+  --font-family:
+    -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Pretendard', 'Noto Sans KR', 'Malgun Gothic',
+    sans-serif;
+  --font-size-xs: 12px;
+  --font-size-sm: 14px;
+  --font-size-md: 16px;
+  --font-size-lg: 18px;
+  --font-size-title: 24px;
+  --line-height-body: 1.5;
+  --line-height-title: 1.35;
+
+  /* 간격: 4px 단위 (FE-Q14, 추정) */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+
+  /* 모서리: 시안 12–16px (docs/05 §5.3) */
+  --radius-sm: 8px;
+  --radius-md: 14px;
+  --radius-pill: 999px;
+
+  --shadow-card: 0 1px 3px rgb(0 0 0 / 6%);
+
+  /* 레이아웃 (FE-NFR-01) */
+  --layout-max-width: 480px;
+  --header-height: 56px;
+  --tab-height: 60px;
+  --bottom-button-area: 88px;
+}

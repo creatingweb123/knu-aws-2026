@@ -1,0 +1,20 @@
+.app {
+  width: 100%;
+  max-width: var(--layout-max-width);
+  min-height: 100dvh;
+  margin: 0 auto;
+  background: var(--color-bg);
+}
+
+.main {
+  padding: 0 var(--space-4);
+}
+
+/* 하단 탭이나 하단 고정 버튼에 본문이 가리지 않게 한다 */
+.with-tab {
+  padding-bottom: calc(var(--tab-height) + var(--space-6));
+}
+
+.with-button {
+  padding-bottom: calc(var(--bottom-button-area) + var(--space-6));
+}

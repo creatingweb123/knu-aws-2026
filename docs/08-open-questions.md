@@ -114,13 +114,30 @@
 |---|---|---|
 | FE-Q1 | 둘러보기 페이지네이션(`nextCursor`) 처리가 정해지지 않았다. | MVP는 첫 페이지만 표시. 백엔드는 `nextCursor: null` 고정(BE-Q3). |
 | FE-Q2 | 공개 완료 화면(3-4) 경로가 `/plans/:planId/published`이므로 공개 직후 작성 상태를 지워도 이 화면이 렌더링되는지. | 공개 응답의 `plan`을 라우터 state로 넘기고, 새로고침 시 `GET /plans/{planId}`로 다시 읽는다. |
-| FE-Q3 | CSS Modules / Tailwind 선택. | 1단계 시작 전에 팀 합의. |
+| FE-Q3 | CSS Modules / Tailwind 선택. | **결정: CSS Modules**(프론트 1단계 시작 전 개발 담당 합의). Vite 내장이라 추가 설정이 없고, 토큰은 `src/styles/tokens.css` CSS 변수를 그대로 쓴다. |
 | FE-Q4 | SPA 직접 접근(예: `/inbox/abc` 새로고침) 시 CloudFront가 `index.html`을 돌려줘야 한다. | 백엔드 SAM에서 403/404 → `/index.html` 설정(백엔드 BE-INFRA-02). |
 | FE-Q5 | 시안 색상은 추정값이다. | 디자인 확정 시 토큰 값만 교체. |
 | FE-Q6 | 외부 AI 전송 안내 문구와 위치. LLM은 AWS 밖의 외부 공급자(OpenAI 호환 API)이고, 공급자에 따라 국외 전송·보존 정책이 다르다(BE-Q6·FE-Q7). | 사연 입력 화면(3)의 개인 정보 안내 아래에 둔다. 문구는 백엔드 시범 운영 동의 문구("AI 정리 요청 시 사연이 외부 AI 서비스(<공급자명>, <처리 국가>)로 전송되고 공급자 정책에 따라 최대 N일 보관될 수 있음")와 맞추고, 공급자가 정해지면 백엔드 `LLM_PROVIDER_LABEL`과 같은 값으로 채운다. |
-| FE-Q7 | "다시 넣기"로 복원할 원래 값과 경고 유형. `SessionView.notes`에는 `path`·`action`·`reason`·`source`만 있고 뺀 항목의 원래 값과 뺀 이유의 유형(`PRIVACY`/`NOT_IN_SOURCE`)이 없다. 또 뺀 장소는 `places`에서 빠지므로 `notes[].path`의 인덱스 기준이 정해지지 않았다(BE-Q13). | [§3.2](./03-api-contract.md) `notes`에 원래 값과 유형을 담는 필드를 추가하도록 계약 변경을 요청한다. `REMOVED` 메모의 `path`는 제거 전 인덱스 기준, 복원은 `places` 끝에 추가하는 안으로 맞춘다. 확정 전까지 FE-CRT-14는 MSW로만 구현한다. |
+| FE-Q7 | "다시 넣기"로 복원할 원래 값과 경고 유형. `SessionView.notes`에는 `path`·`action`·`reason`·`source`만 있고 뺀 항목의 원래 값과 뺀 이유의 유형(`PRIVACY`/`NOT_IN_SOURCE`)이 없다. 또 뺀 장소는 `places`에서 빠지므로 `notes[].path`의 인덱스 기준이 정해지지 않았다(BE-Q13). | [§3.2](./03-api-contract.md) `notes`에 원래 값과 유형을 담는 필드를 추가하도록 계약 변경을 요청한다. `REMOVED` 메모의 `path`는 제거 전 인덱스 기준, 복원은 `places` 끝에 추가하는 안으로 맞춘다. 확정 전까지 FE-CRT-14는 MSW로만 구현한다. 프론트 6단계는 MSW만 보내는 임시 필드 `notes[].restore = { value: { name, activity, whyChosen }, type: 'PRIVACY' \| 'NOT_IN_SOURCE' }`를 쓴다(계약 미반영). 이 필드가 없는 메모에는 "다시 넣기"를 보여 주지 않으므로 실제 API에서는 버튼이 나오지 않는다. |
 | FE-Q8 | 로컬 백엔드 모드에서 Amplify가 사용자 지정 Cognito 엔드포인트(Amplify v6 `userPoolEndpoint` 등)로 Floci Cognito(`http://localhost:4566`)에 로그인할 수 있는지. Floci Cognito ID 토큰에 `nickname` 클레임이 들어가는지도 확인하지 못했다(BE-Q17). | 1단계에서 백엔드 로컬 환경이 뜨면 시드 사용자로 로그인과 `GET /me` 닉네임을 확인한다. 안 되면 로컬 백엔드 모드는 `VITE_AUTH_MODE=dev-jwt`(어댑터의 dev JWT, `STAGE=local` 전용)로 쓰고, 로그인 화면 확인은 `dev` 스택에서 한다. **백엔드 쪽 확인(2026-11-25)**: 시드 사용자 로그인과 `GET /me` 닉네임은 확인했다. Floci ID 토큰에 `nickname`이 있다(BE-Q17, boto3 `USER_PASSWORD_AUTH` 기준). Amplify가 `http://localhost:4566`으로 로그인할 수 있는지는 아직 확인하지 않았다(프론트엔드에서 확인). |
 | FE-Q9 | 데모와 시범 운영까지 Docker(백엔드 에뮬레이터)로 운영할지(BE-Q15). | 아니다. 데모·시범 운영은 실제 AWS에 SAM으로 배포한 `demo` 스택과 CloudFront에서 한다. 로컬 백엔드 모드는 개발용이다. Docker로 운영하기로 하면 공개 HTTPS 호스트가 따로 필요하고, 웹 배포(FE-TECH-07)·CloudFront 인수 기준과 API·사진 버킷 CORS Origin을 다시 정해야 한다. |
+| FE-Q10 | MSW 목업 모드에서 사용자(지연·수현·민준)를 어떻게 고르고, 두 탭 경합(§7.4 2단계)을 어떻게 재현할지. | 개발 빌드에서만 보이는 사용자 전환 바를 둔다. 선택은 탭별 sessionStorage `haru.mock.user`(새 탭 기본값은 localStorage 같은 키), 목업 데이터는 localStorage `haru.mock.db`에 저장해 탭끼리 공유한다. 그래서 탭 A는 수현, 탭 B는 민준으로 같은 데이터에서 경합을 재현한다. 목업 모드에서는 고른 사용자로 로그인된 상태로 본다. |
+| FE-Q11 | `?mock=` 시나리오 값을 어떻게 유지할지. | 진입 URL의 `?mock=` 값을 sessionStorage `haru.mock.scenario`에 저장해 탭을 닫을 때까지 유지한다. `?mock=`(빈 값)이면 지운다. |
+| FE-Q12 | 하단 탭이 보이는 "목록형 화면"(FE-COM-01)의 범위. | 둘러보기(`/`), 내 하루(`/me`), 수신함(`/inbox`) 세 화면. |
+| FE-Q13 | 보호 경로 범위(FE-AUTH-03). | `/login`을 뺀 모든 경로. 실제 로그인은 7단계이고, 그 전까지 목업 모드는 FE-Q10의 목업 사용자로 통과한다. |
+| FE-Q14 | 글꼴·글자 크기·간격·그림자 토큰이 문서에 없다(색과 모서리 12–16px만 있음). | 시스템 글꼴, 4px 단위 간격, 모서리 14px로 두고 `tokens.css`에 추정값으로 표시한다(FE-Q5처럼 값만 교체). |
+| FE-Q15 | 목업 시드 계획의 예시 장소 이름(§5.6 3번). | 명세(§2.5)의 "출근길 빵집"·"하천 산책로 벤치"를 쓴다. |
+| FE-Q16 | 프론트 도구 버전(문서에 없음). | Node 22 LTS, React 18, Vite·React Router·TanStack Query·MSW·Vitest는 1단계 시점의 안정판을 `package-lock.json`으로 고정한다. |
+| FE-Q17 | 2단계(둘러보기·이어받기) 분기를 한 탭에서 확인할 목업 시나리오 이름(§2.10은 AI·사진 경로만 정했다). | `?mock=claim-conflict`: `POST /plans/{planId}/claims`가 판정 없이 409 `ALREADY_CLAIMED`. `?mock=browse-empty`: `GET /plans?status=OPEN`이 빈 `items`. 두 탭 경합은 시나리오 없이 FE-Q10의 탭별 사용자로 재현한다. |
+| FE-Q18 | 공개 `Idempotency-Key` 재사용 판단(FE-CRT-10)의 "같은 본문"에 `authoring.durationMs`가 들어가는지. `durationMs`는 누를 때마다 달라져 본문 전체로 비교하면 재전송도 새 키가 되고 Plan이 두 번 생길 수 있다. | 본문에서 `authoring.durationMs`를 뺀 값의 해시로 비교한다. 같으면 저장해 둔 키와 처음 계산한 `durationMs`로 같은 본문을 다시 보내고, 다르면 새 키와 새 `durationMs`를 만든다. 서버(BE-PLAN-03)는 바꾸지 않는다. |
+| FE-Q19 | 폼 입력의 앞뒤 공백 처리(백엔드는 공백을 자르지 않고 길이만 본다). | 프론트가 검증·전송 모두 앞뒤 공백을 뺀 값을 쓴다. 공백만 입력하면 길이 오류다. 글자 수는 코드 포인트로 센다(백엔드 pydantic과 같음). 하루 남기기 폼(3단계)과 방문 기록 글·한 줄 답장(4단계)에 같게 적용한다. |
+| FE-Q20 | 폼(3-2)에서 이미 넣은 장소를 고치거나 빼는 방법(문서는 3-3 장소 추가만 정했다). | 장소마다 "고치기"(같은 3-3 화면, `/plans/new/place?index=n`)와 "빼기" 버튼을 둔다. 6단계 AI 카드의 장소(`flags`가 붙은 장소 포함)도 같은 방법으로 고친다. |
+| FE-Q21 | 내 하루(4)에 `ACTIVE` 이어받기가 여러 개일 때의 표시(FE-ME-01은 "이어받은 하루"만 정했다. 서버는 한 사람이 여러 하루를 이어받는 것을 막지 않는다). | `GET /me/claims?status=ACTIVE` 항목을 응답 순서(이어받은 시각 최신순)대로 모두 카드로 보여 준다. 카드마다 기한·동선·"다녀온 이야기 쓰기"·"이어받기 포기"가 있다. |
+| FE-Q22 | "다녀온 이야기 쓰기" 이동 규칙(FE-ME-03)에 없는 `photoStatus`(`READY`이지만 아직 미전달, `DISCARDED`). | 작성 화면(5)으로 간다. 보내는 중(5-1)은 `UPLOAD_PENDING`·`PROCESSING`·`FAILED`일 때만 간다. |
+| FE-Q23 | 보내는 중(5-1)의 60초 강조·`UPLOAD_PENDING` 30초 기준 시각, 새로고침 뒤 기준, 브라우저 업로드 실패를 서버 상태(`UPLOAD_PENDING` 그대로)와 어떻게 구분할지. 판정 순서(FE-REC-06)에 없는 `NONE`·`DISCARDED`(보낼 사진이 없음)일 때. | 업로드를 시작할 때(작성 5·교체 5-3) sessionStorage `haru.sending.{claimId}`에 `{ startedAt, uploadFailed }`를 저장하고 두 기준 모두 `startedAt`부터 잰다. 값이 없으면(다른 탭·새 탭) `record.updatedAt`을 기준으로 쓴다. 브라우저 업로드가 실패하면 `uploadFailed = true`로 두고 바로 실패 화면(5-2)을 보여 준다. 미전달인데 `NONE`·`DISCARDED`이면 실패 화면과 같게 "사진 바꾸기"·"글로 완료하기"를 보여 준다. |
+| FE-Q24 | 사진 경로 MSW 목업 시나리오(§2.10은 `?mock=photo-fail`만 예로 들었다)와 처리 지연. | 업로드 URL `https://mock-upload.haru.local/...`의 PUT을 MSW가 받는다. 처리는 업로드 후 3초 뒤 첫 조회에서 끝난다(시각 기준으로 계산, 탭끼리 공유). `?mock=photo-fail`: 처리 결과 `FAILED`. `?mock=photo-slow`: 처리 90초(60초 강조 확인). `?mock=photo-upload-fail`: 업로드 PUT이 500. 돌아온 하루의 `photoUrl`은 고정 그림(data URL)이다. |
+| FE-Q25 | AI 정리(3-1)에서 문서에 없는 세부 동작: AI 실패 뒤 폼의 `summary` 기본값, "폼에서 다듬기"를 다시 누를 때, 폼 `flags` 안내를 언제 지울지, 요청 중 "이대로 카드 받기"의 표시, AI 요청의 클라이언트 타임아웃 값, MSW 기본(시나리오 없음) 카드 내용. | AI 실패면 폼은 빈칸(사연은 참고 박스에만)이고 "AI 카드를 만들지 못했어요. 직접 정리해 주세요" 안내를 폼 위에 둔다. READY 카드는 처음 "폼에서 다듬기"를 누를 때 한 번만 폼에 넣고, 다시 들어오면 폼 값을 유지한다. `flags` 안내는 그 경로의 입력을 고치면 지운다. 요청 중에 누른 "이대로 카드 받기"는 예약으로 바뀌어 "카드를 받을게요"(비활성)로 보인다. AI 요청 타임아웃은 35초. MSW 기본은 레벨 0처럼 생성 응답이 바로 `READY`이고, 데모 카드(§3.2 예시)에서 `estimatedMinutes`만 `null`(`MISSING`)이다. |
+| FE-Q26 | 로그인·회원가입(0)의 입력 규칙과 dev JWT 사용자. 문서는 "이메일·비밀번호·닉네임(필수)"만 정했고 비밀번호 정책·닉네임 길이는 백엔드 User Pool 설정(SAM)에 달려 있다. 로그아웃은 화면 목록(§5.1)에 없다. | 프론트는 이메일 형식, 비밀번호 8자 이상, 닉네임 1–20자(앞뒤 공백 제외)만 먼저 검사하고 나머지는 Cognito 오류를 문구로 바꿔 보여 준다(`InvalidPasswordException` → 정책 안내). 백엔드가 정책을 정하면 맞춘다. `VITE_AUTH_MODE=dev-jwt`(개발 빌드 전용) 로그인 화면은 시드 인물 버튼(지연 `dev-jiyeon`·수현 `dev-suhyun`·민준 `dev-minjun`)으로 어댑터 `POST /dev/token {userId, nickname}`을 부르고, 토큰은 메모리에만 둔다(새로고침하면 다시 로그인). 로그아웃은 만들지 않는다. |
 
 ## 8.3 결정 시점
 
@@ -128,7 +145,14 @@
 
 | 시점 | 질문 |
 |---|---|
-| 구현을 시작하기 전 | FE-Q3, BE-Q15·FE-Q9, 단계별 담당자와 날짜 |
+| 구현을 시작하기 전 | FE-Q3(결정: CSS Modules), BE-Q15·FE-Q9, 단계별 담당자와 날짜 |
+| 프론트 1단계(세팅·공통 레이아웃) | FE-Q10–FE-Q16 (임시 결정으로 구현) |
+| 프론트 2단계(둘러보기·이어받기) | FE-Q17 (임시 결정으로 구현) |
+| 프론트 3단계(하루 남기기 직접 작성) | FE-Q18–FE-Q20 (임시 결정으로 구현), FE-Q6(외부 AI 전송 안내의 공급자명·국가·보관 기간은 비워 둠) |
+| 프론트 4단계(내 하루·방문 기록·수신함) | FE-Q21, FE-Q22 (임시 결정으로 구현), FE-Q19 적용 범위 확장 |
+| 프론트 5단계(사진) | FE-Q23, FE-Q24 (임시 결정으로 구현) |
+| 프론트 6단계(AI 정리) | FE-Q25 (임시 결정으로 구현), FE-Q7(MSW 임시 필드), FE-Q6(공급자 문구는 아직 비워 둠) |
+| 프론트 7단계(로그인·Amplify) | FE-Q26 (임시 결정으로 구현), FE-Q8(로컬 Floci Cognito 연결은 백엔드 로컬 환경에서 확인) |
 | 백엔드 1단계(로컬 환경 구성) | BE-Q17·FE-Q8, BE-Q16, BE-Q27, BE-Q28, BE-Q30 |
 | 백엔드 2단계(계획 API) | BE-Q22, BE-Q23, BE-Q24, BE-Q25, BE-Q29, BE-Q31, BE-Q32, BE-Q33 |
 | 백엔드 3단계(이어받기·포기·완료) | BE-Q34–BE-Q41 (임시 결정으로 구현. 2026-11-25 AWS 판정 T3–T7·T14·T16 통과, 임시 결정 자체의 확정은 남음) |
