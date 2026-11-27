@@ -9,6 +9,7 @@ import { RouteTimeline } from '../../components/RouteTimeline';
 import { claimStep, dDayText, dueText, recordPath } from '../../utils/claim';
 import { planMetaText } from '../../utils/plan';
 import styles from './Me.module.css';
+import { OWNER_FALLBACK_NAME, displayNickname } from '../../utils/nickname';
 
 /**
  * 4. 내 하루(FE-ME-01–03). 진행 중인 이어받기를 모두 카드로 보여 준다(FE-Q21).
@@ -72,7 +73,8 @@ function ClaimCard({ item }: { item: MyClaimItem }) {
         <div>
           <h3 className={styles.title}>{plan.title}</h3>
           <p className={styles.meta}>
-            {plan.owner.nickname} · {planMetaText(plan.estimatedMinutes, plan.places.length)}
+            {displayNickname(plan.owner.nickname, OWNER_FALLBACK_NAME)} ·{' '}
+            {planMetaText(plan.estimatedMinutes, plan.places.length)}
           </p>
         </div>
         <ol className={styles.steps} aria-label="진행 단계">

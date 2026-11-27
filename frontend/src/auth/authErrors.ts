@@ -16,6 +16,8 @@ const BY_NAME: { [name: string]: string } = {
   InvalidPasswordException:
     '비밀번호 규칙에 맞지 않아요. 8자 이상으로 대문자·소문자·숫자·특수문자를 섞어 주세요.',
   InvalidParameterException: '입력값을 확인해 주세요.',
+  // PreSignUp 트리거가 닉네임 길이 등을 거절할 때(BE-AUTH-02). 원문 메시지는 쓰지 않는다
+  UserLambdaValidationException: '입력값을 확인해 주세요.',
   UserNotConfirmedException: '가입 확인이 끝나지 않은 계정이에요.',
   LimitExceededException: '요청이 많아요. 잠시 후 다시 시도해 주세요.',
   TooManyRequestsException: '요청이 많아요. 잠시 후 다시 시도해 주세요.',

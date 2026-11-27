@@ -19,6 +19,7 @@ import { charCount } from '../../utils/validation';
 import { EndedNotice } from './EndedNotice';
 import { PhotoPicker } from './PhotoPicker';
 import styles from './Record.module.css';
+import { OWNER_FALLBACK_NAME, displayNickname } from '../../utils/nickname';
 
 const LETTER_MAX = 1000;
 const LETTER_ERROR = '1–1000자로 입력해 주세요.';
@@ -139,7 +140,9 @@ function RecordEditor({ claimId }: { claimId: string }) {
     <>
       <div className={`${styles.form} ${photo ? styles.twoButtons : ''}`}>
         {item ? <p className={styles.planTitle}>{item.plan.title}</p> : null}
-        <p className={styles.to}>{item ? `${item.plan.owner.nickname}에게` : '계획자에게'}</p>
+        <p className={styles.to}>
+          {item ? `${displayNickname(item.plan.owner.nickname, OWNER_FALLBACK_NAME)}에게` : '계획자에게'}
+        </p>
         {item ? (
           <div className={styles.question}>
             <p className={styles.questionLabel}>

@@ -38,6 +38,20 @@ AWS 계정 없이 개발한 백엔드를 AWS 담당이 배포·판정할 수 있
 | AI 프롬프트·Fake LLM·평가 픽스처 | 활동 유형(산책, 카페, 전시회, 서점, 공원)에 치우치지 않는 일반 정책, 비산책 사연 추가(docs/04). 아래 절의 측정 수치는 변경 전 프롬프트로 잰 값이라 새로 잰 것이 아니다. 프롬프트 해시는 `day_card.md` `ca6ada9ac3ef` → `c4fc8de1db3d`, `day_card_agent.md` `3db437c63971` → `d1c20c140400`으로 바뀌었고, 위 절들의 해시와 측정값은 이전 프롬프트의 기록이다 |
 | 변경하지 않는 것 | API 스키마, 카테고리 필드·테이블, `areaId` 예약 필드, 지도·결제·예약 등(범위 밖) |
 
+### 정합성 점검(2026-11-27, 최신 프론트엔드와 맞춤)
+
+최신 프론트엔드(`cf0220e`)와 실제 API를 맞춘 점검이다. 상세와 승인 대기는 [`.kiro/specs/backend-frontend-alignment/`](../.kiro/specs/backend-frontend-alignment/tasks.md)에 있다.
+
+| 항목 | 내용 |
+|---|---|
+| 바꾼 백엔드 코드 | `handlers/pre_signup.py`: 가입 닉네임을 앞뒤 공백을 뺀 1–20자(코드 포인트)로 검사한다(BE-Q139). 나머지 응답 형태는 그대로다 |
+| 바꾸지 않은 것 | 닉네임이 없으면 `null`을 낸다(BE-Q45). 계약 필드와 API 경로는 같다 |
+| 단위 테스트 | `pytest tests/unit`: 1670 passed, 2 deselected(2026-11-27). 이전 1505건 기록은 과거 값이다 |
+| 로컬 테스트 | `pytest -m local tests/local`: 41 passed, 23 skipped(파이프라인 기본). Agent 모드(`AGENT_MODE=agent FAKE_LLM_SCENARIO=ask_once`, `LOCAL_AGENT_MODE=agent`): 6 passed, 5 skipped. 새 회귀는 `tests/local/test_local_alignment.py`(닉네임 `null`, 기한 경과 양도와 EXPIRED 차단) |
+| 로컬 실행 주의 | 이 PC의 `backend/.env`는 외부 게이트웨이(`openai_compat`)를 가리킨다. 검증은 `LLM_PROVIDER=fake LLM_BASE_URL= LLM_API_KEY= LLM_MODEL= LLM_EXTRA_BODY=`를 셸에서 주고 `docker compose up -d`로 띄웠다. 외부 호출을 막으려면 같은 방식을 쓴다 |
+| 로컬 한계 | 브라우저의 Cognito 로그인은 Floci CORS 사전 요청 405로 막힌다(ALIGN-8). 프론트 로컬 검증은 dev-jwt로 한다 |
+| 미확인 | PreSignUp 닉네임 거절의 AWS 확인, 503 `TRY_AGAIN` 실제 경합 재현, 실제 LLM 품질(유료 호출 없음) |
+
 ## 1. 인계 상태 요약
 
 | 항목 | 상태 |

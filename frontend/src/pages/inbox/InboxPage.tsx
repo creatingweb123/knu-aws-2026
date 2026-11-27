@@ -9,6 +9,7 @@ import { PrimaryButton } from '../../components/PrimaryButton';
 import { StatusBadge } from '../../components/StatusBadge';
 import { formatDateTime } from '../../utils/date';
 import styles from './Inbox.module.css';
+import { CLAIMER_FALLBACK_NAME, displayNickname } from '../../utils/nickname';
 
 /** 6. 수신함(FE-INB-01). 서버가 준 최신순 그대로 보여 준다 */
 export function InboxPage() {
@@ -49,7 +50,7 @@ export function InboxPage() {
 }
 
 function sentLine(item: Pick<InboxItem, 'claimerNickname' | 'hasPhoto'>): string {
-  return `${item.claimerNickname}님이 ${item.hasPhoto ? '사진과 경험 기록을' : '경험 기록을'} 보냈어요`;
+  return `${displayNickname(item.claimerNickname, CLAIMER_FALLBACK_NAME)}님이 ${item.hasPhoto ? '사진과 경험 기록을' : '경험 기록을'} 보냈어요`;
 }
 
 function InboxRow({ item }: { item: InboxItem }) {

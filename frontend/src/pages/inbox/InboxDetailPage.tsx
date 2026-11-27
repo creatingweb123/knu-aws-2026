@@ -14,6 +14,7 @@ import { TextField } from '../../components/TextField';
 import { useToast } from '../../components/useToast';
 import { charCount } from '../../utils/validation';
 import styles from './Inbox.module.css';
+import { CLAIMER_FALLBACK_NAME, displayNickname } from '../../utils/nickname';
 
 const REPLY_MAX = 100;
 const REPLY_ERROR = '1–100자로 입력해 주세요.';
@@ -96,7 +97,7 @@ function Story({ data, onPhotoError }: { data: InboxDetailResponse; onPhotoError
           <img
             className={styles.photo}
             src={record.photoUrl}
-            alt={`${item.claimerNickname}님이 보낸 사진`}
+            alt={`${displayNickname(item.claimerNickname, CLAIMER_FALLBACK_NAME)}님이 보낸 사진`}
             onError={() => {
               // presigned URL이 만료됐으면 상세를 한 번 다시 읽는다(FE-INB-04)
               if (!retried.current) {
@@ -116,7 +117,9 @@ function Story({ data, onPhotoError }: { data: InboxDetailResponse; onPhotoError
           <p className={styles.cardText}>{plan.summary}</p>
         </div>
         <div className={`${styles.card} ${styles.record}`}>
-          <p className={styles.cardLabel}>{item.claimerNickname}의 경험 기록</p>
+          <p className={styles.cardLabel}>
+            {displayNickname(item.claimerNickname, CLAIMER_FALLBACK_NAME)}의 경험 기록
+          </p>
           <p className={`${styles.cardText} ${styles.letter}`}>{record.letter}</p>
         </div>
       </div>

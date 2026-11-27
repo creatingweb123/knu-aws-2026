@@ -34,16 +34,17 @@ export interface ErrorBody {
   error: { code: ErrorCode; message: string; details?: { [path: string]: string } };
 }
 
+/** `nickname`은 저장된 값이 없으면 `null`이다(BE-Q45). 화면은 기본 표시명으로 바꿔 보여 준다 */
 export interface UserRef {
   userId: string;
-  nickname: string;
+  nickname: string | null;
 }
 
 // ---------------------------------------------------------------- 내 정보 §3.1
 
 export interface Me {
   userId: string;
-  nickname: string;
+  nickname: string | null;
   unreadInboxCount: number;
 }
 
@@ -90,7 +91,7 @@ export interface PlanSummary {
   estimatedMinutes: number;
   placeCount: number;
   status: PlanStatus;
-  ownerNickname: string;
+  ownerNickname: string | null;
   createdAt: IsoDateTime;
 }
 
@@ -235,7 +236,7 @@ export interface InboxItem {
   itemId: string;
   planId: string;
   planTitle: string;
-  claimerNickname: string;
+  claimerNickname: string | null;
   hasPhoto: boolean;
   read: boolean;
   createdAt: IsoDateTime;

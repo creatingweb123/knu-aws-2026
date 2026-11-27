@@ -87,3 +87,7 @@
 1. THE 테스트 SHALL `decideDetailView`의 7가지 분기, Mock_Claim_Handler의 판정(201/200/409 두 종/404, 두 사용자 순차 경합, 기한 지난 대체), Browse_Page의 카드·빈 상태, Detail_Page의 이어받기 성공 이동·`ALREADY_CLAIMED` 안내·`CANNOT_CLAIM_OWN_PLAN` 토스트를 확인한다.
 2. THE Frontend SHALL `npm run lint`, `npm run test`, `npm run build`, `npm run format:check`를 오류 없이 통과한다.
 3. 두 브라우저 탭(수현/민준) 경합의 실제 브라우저 확인은 개발 담당이 한다. 자동 테스트는 같은 DB에 두 사용자가 차례로 요청하는 것으로 대신한다.
+
+## 정합성 갱신(2026-11-27, spec backend-frontend-alignment)
+
+- 계획자·실행자 닉네임은 `null`일 수 있다(BE-Q45). 상세 "{계획자 닉네임} · 취소한 이유"와 둘러보기 "{계획자 닉네임}의 하루"는 `utils/nickname.ts`의 기본 표시명("계획을 남긴 사람")을 쓴다. 빈 문자열이나 "null"을 보이지 않는다.

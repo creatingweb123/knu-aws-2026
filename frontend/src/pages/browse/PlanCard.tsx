@@ -5,6 +5,7 @@ import { Icon } from '../../components/Icon';
 import { StatusBadge } from '../../components/StatusBadge';
 import { planMetaText } from '../../utils/plan';
 import styles from './PlanCard.module.css';
+import { OWNER_FALLBACK_NAME, displayNickname } from '../../utils/nickname';
 
 /**
  * 둘러보기 카드(FE-BRW-01). 목록의 항목은 모두 이어받기 가능으로 내려온다(기한 지난 CLAIMED도 OPEN).
@@ -23,7 +24,9 @@ export function PlanCard({ plan, index = 0 }: { plan: PlanSummary; index?: numbe
         <div className={`${styles.stub} ${tone}`}>
           <div className={styles.stubRow}>
             <StatusBadge kind="claimable" />
-            <span className={styles.owner}>{plan.ownerNickname}의 하루</span>
+            <span className={styles.owner}>
+              {displayNickname(plan.ownerNickname, OWNER_FALLBACK_NAME)}의 하루
+            </span>
           </div>
           <div className={styles.numbers} aria-hidden="true">
             {numbers.map((n) => (

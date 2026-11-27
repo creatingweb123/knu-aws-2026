@@ -534,3 +534,11 @@ AWS 계정은 AWS 담당이 등록한다. 계정 등록 전까지 개발 담당�
 | 로컬 Cognito에 Amplify가 붙지 않음(FE-Q8) | 로컬 백엔드 모드에서 로그인 불가 | `VITE_AUTH_MODE=dev-jwt`로 전환, 로그인 화면은 MSW와 `dev` 스택에서 확인 |
 | SPA 새로고침 시 CloudFront 404 | 배포 환경에서 하위 경로 접근 실패 | 백엔드에 403/404 → `/index.html` 설정 요청(백엔드 BE-INFRA-02) |
 | 시안 색상 미확정 | 막바지 디자인 수정 | 토큰으로만 색을 쓰고 값만 교체 |
+
+## 7.11 정합성 점검(2026-11-27)
+
+최신 프론트엔드(`cf0220e`)와 서비스 정의 일반화(`ad58f3f`)에 맞춰 백엔드와 프론트를 실제 API로 점검했다. 기존 단계 계획(§7.1–7.10)은 바꾸지 않는다. 결과와 승인 대기 항목은 [정합성 spec](../.kiro/specs/backend-frontend-alignment/tasks.md)에 있다.
+
+- 고친 것: 닉네임 `null` 화면 오류(BE-Q45), PreSignUp 닉네임 길이 검사(BE-Q139), 가입 거절 문구.
+- 계약 승인 대기: 닉네임 `null` 확정, `notes[].restore` 복원 방식(FE-Q7·BE-Q13), `GET /record`의 503 `TRY_AGAIN`(BE-Q46).
+- 검증 범위: 로컬 compose·Floci·dev-jwt. AWS 배포와 유료 LLM 호출은 하지 않았다. 완료 기준(§7.7)과 T1–T22 판정은 바뀌지 않는다.
