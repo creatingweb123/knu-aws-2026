@@ -97,7 +97,7 @@ export function PlanFormPage() {
     <section data-testid="screen-3-2">
       <PageTitle
         title={'이어받을 수 있게\n하루를 정리해 주세요'}
-        description="다른 사람이 보고 따라 걸을 수 있게 적어 주세요."
+        description="다른 사람이 보고 그대로 이어받을 수 있게 적어 주세요."
       />
 
       <div className={styles.form}>
@@ -147,7 +147,7 @@ export function PlanFormPage() {
         />
 
         <div>
-          <h3 className={styles.sectionTitle}>산책 동선</h3>
+          <h3 className={styles.sectionTitle}>방문할 장소</h3>
           {errors.places ? (
             <p className={styles.errorText} role="alert">
               {errors.places}
@@ -158,7 +158,7 @@ export function PlanFormPage() {
           {form.places.length === 0 ? (
             <p className={styles.emptyPlaces}>장소를 1곳 이상 추가해 주세요(최대 3곳).</p>
           ) : (
-            <ol className={styles.places} aria-label="산책 동선">
+            <ol className={styles.places} aria-label="방문할 장소">
               {form.places.map((p, i) => {
                 const errs = placeErrors(i);
                 return (

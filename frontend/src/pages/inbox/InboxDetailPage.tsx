@@ -110,7 +110,7 @@ function Story({ data, onPhotoError }: { data: InboxDetailResponse; onPhotoError
           <p className={styles.cardText}>{plan.summary}</p>
         </div>
         <div className={`${styles.card} ${styles.record}`}>
-          <p className={styles.cardLabel}>{item.claimerNickname}의 방문 기록</p>
+          <p className={styles.cardLabel}>{item.claimerNickname}의 경험 기록</p>
           <p className={styles.cardText}>{record.letter}</p>
         </div>
       </div>

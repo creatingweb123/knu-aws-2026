@@ -2,6 +2,8 @@
 
 ## Introduction
 
+> 2026-11-27: 서비스 정체성 일반화(docs/08 BE-Q135)와 비공개 장소 선택지 문구 변경(BE-Q136, `장소에서 빼기`)을 반영했다. 이 spec의 산책 사례는 대표 사례이고, 서비스 정의와 범위는 현행 명세(docs/)가 우선한다.
+
 백엔드 6b단계(AI 하루 카드 LangGraph 에이전트)의 요구사항이다. 기준은 `docs/02-architecture.md` §2.6(AiSession 턴 잠금, `HaruAgentCheckpoints`)·§2.8·§2.9, `docs/03-api-contract.md` §3.2 전체(에이전트 그래프, 노드, 조건부 엣지, 도구, `turns` 규칙, 상태 전이, 동시 요청·멱등, 12초 규칙, 레벨 0)·§3.3(AI 지표)·§3.7, `docs/04-ai-agent.md` §4.3–§4.7, `docs/06-requirements.md` BE-AI-01–15·BE-INFRA-05–07·BE-OBS-01·02·04·BE-NFR-03·04·07, `docs/07-development-plan.md` §7.3 6b·§7.5·§7.6 T18–T22·§7.10이다.
 
 - 분기 기준은 `feat/be-6a-ai-pipeline`(`668e49a`, Draft PR #8)이다. 6a의 계약 구현(`handlers/ai_card.py`), 그래프 골격(`agent/graph.py`·`nodes.py`·`state.py`), 검사·수리(`agent/card.py`·`tools.py`·`repair.py`), LLM 클라이언트(`agent/llm.py`·`fake_llm.py`·`timebudget.py`·`prompt.py`), 저장(`domain/ai_session_service.py`), 지표(`domain/ai_metrics.py`), 빌드(`src/Makefile`, `ai-requirements.lock`)를 **그대로 쓰고 넓힌다**. 6a의 레벨 0 동작(`AGENT_MODE=pipeline`)은 바꾸지 않는다.
@@ -162,7 +164,7 @@
 3. THE 질문 `path` SHALL Card 필드 경로(`estimatedMinutes`, `places[i].name` 등)이고, SessionView `question.path`와 `flags[].path`와 같은 표기다. 허용 경로 목록은 Design에서 정한다.
 4. THE 수락된 질문 SHALL `questionId`(세션 안에서 고유, 예 `q1`, `q2`)를 서버가 매긴다. 모델이 준 값은 쓰지 않는다.
 5. THE 질문 우선순위 SHALL 프롬프트로 고정한다: 비공개·애매한 장소 > 장소 미특정 > 필수값(`estimatedMinutes`) > 그 외. [§3.2 도구 표]
-6. THE 비공개 장소 SHALL 자동으로 빼지 않는다. 질문 예산이 남아 있으면 "[동선에서 빼기] [직접 바꾸기(입력)]"로 묻고, 없으면 빼고 `REMOVED` 메모를 남긴다. 답변을 카드에 반영하는 방식(모델이 반영 vs 결정적 반영)은 미결(BE-Q116). [§3.2]
+6. THE 비공개 장소 SHALL 자동으로 빼지 않는다. 질문 예산이 남아 있으면 "[장소에서 빼기] [직접 바꾸기(입력)]"로 묻고, 없으면 빼고 `REMOVED` 메모를 남긴다. 답변을 카드에 반영하는 방식(모델이 반영 vs 결정적 반영)은 미결(BE-Q116). [§3.2]
 7. THE 질문과 선택지 SHALL React 기본 이스케이프로 렌더링되는 평문이다. 서버는 길이 외에 마크업을 해석하지 않는다.
 
 ### Requirement 10: 답변·건너뛰기·finish와 근거 텍스트
@@ -454,5 +456,5 @@
 | BE-Q111 | T22 판정 기준(BE-Q14) | 결정(승인, design §20.5) | (A) READY 카드의 장소 수 ≤ 사연의 지시문 밖 문장에서 찾은 장소 수, 그리고 새 고유명사 장소 0 (B) 근거 텍스트에서 지시문 형태 문장을 빼고 대조(판정이 휴리스틱에 의존, 제품 동작에 넣으면 정상 사연 오탐 위험) (C) 사람이 검토하는 판정 + 자동 판정은 "카페 3곳이 모두 추가되지 않음"만. 제품 Gate 동작은 바꾸지 않고 판정 기준만 정하는 안을 우선 검토 |
 | BE-Q112 | 오프라인 평가 기준선 ①(기존 단발 프롬프트)의 정의 | 결정(승인, design §21) | (A) 레벨 0 `draft` 출력에 검사만 적용(폴백 없음) (B) 초안 시절 단발 프롬프트를 픽스처로 따로 둠 (C) 에이전트 프롬프트로 도구 없이 1회 생성. docs/02는 `firstProposal`을 ①로 쓰지 말라고만 한다 |
 | BE-Q115 | 모델에 보내는 검사 보고서·Tool_Error 형식과 메시지 이력 관리 | 결정(design §10.5) | 경로·유형·개수만 담은 JSON, 원문 되풀이 없음. 이력은 세션 전체를 유지하되 예산으로 길이가 묶이는지 Design에서 계산 |
-| BE-Q116 | 비공개 장소 질문("[동선에서 빼기] [직접 바꾸기]")의 답변 반영 | 결정(승인, design §11.2) | (A) 모델이 답변을 보고 카드를 고침(Gate가 검사) (B) 서버가 결정적으로 반영(빼기 → 장소 제거 + `REMOVED`, 직접 입력 → 이름 교체, `source = ANSWER`) (C) 혼합: 빼기는 결정적, 바꾸기는 모델 |
+| BE-Q116 | 비공개 장소 질문("[장소에서 빼기] [직접 바꾸기]")의 답변 반영 | 결정(승인, design §11.2) | (A) 모델이 답변을 보고 카드를 고침(Gate가 검사) (B) 서버가 결정적으로 반영(빼기 → 장소 제거 + `REMOVED`, 직접 입력 → 이름 교체, `source = ANSWER`) (C) 혼합: 빼기는 결정적, 바꾸기는 모델 |
 | BE-Q117 | 에이전트 세션과 Fake 결과의 지표 분리 | 결정(6a BE-Q86 연장) | `llmMode`는 AiSession 내부 속성, 평가·품질 판단에서 Fake 제외, SessionView·Plan 지표에는 없음 |

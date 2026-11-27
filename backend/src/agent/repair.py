@@ -15,7 +15,7 @@ from common.validation import CARD_LIMITS
 from domain.privacy import mask, scan_privacy
 
 REMOVED, KEPT_FLAGGED, STORY = "REMOVED", "KEPT_FLAGGED", "STORY"
-REASON_PRIVATE = "비공개 장소라 동선에서 뺐어요."
+REASON_PRIVATE = "비공개 장소라 뺐어요."
 REASON_NOT_IN_SOURCE = "사연에 없는 장소라 뺐어요."
 REASON_ACTIVITY = "사연에서 확인하지 못한 활동이에요. 확인해 주세요."
 

@@ -23,7 +23,7 @@ const LETTER_MAX = 1000;
 const LETTER_ERROR = '1–1000자로 입력해 주세요.';
 
 /**
- * 5. 그날의 이야기(방문 기록 작성, FE-REC-01–03, 05, 11). 4단계는 글만 보낸다(사진은 5단계).
+ * 5. 그날의 이야기(경험 기록 작성, FE-REC-01–03, 05, 11). 4단계는 글만 보낸다(사진은 5단계).
  * 글 초기값: 서버 `record.letter` → localStorage 임시 글 → 빈 칸(FE-REC-02).
  */
 export function RecordPage() {
@@ -114,7 +114,7 @@ function RecordEditor({ claimId }: { claimId: string }) {
     } else toast(errorMessage(e));
   };
 
-  /** 사진과 방문 기록 보내기(FE-REC-04): 업로드 성공·실패 모두 보내는 중으로 간다(실패는 5-2) */
+  /** 사진과 경험 기록 보내기(FE-REC-04): 업로드 성공·실패 모두 보내는 중으로 간다(실패는 5-2) */
   const onSendWithPhoto = () => {
     const text = letter.trim();
     const n = charCount(text);
@@ -151,7 +151,7 @@ function RecordEditor({ claimId }: { claimId: string }) {
           value={letter}
           maxLength={LETTER_MAX}
           error={error}
-          hint="다녀온 곳에서 본 것, 들은 것, 느낀 것을 적어 주세요."
+          hint="직접 해 보고 본 것, 들은 것, 느낀 것을 적어 주세요."
           onChange={(e) => onChange(e.target.value)}
         />
         <PhotoPicker
@@ -171,7 +171,7 @@ function RecordEditor({ claimId }: { claimId: string }) {
             loading={sendWithPhoto.isPending}
             disabled={busy}
           >
-            사진과 방문 기록 보내기
+            사진과 경험 기록 보내기
           </PrimaryButton>
           <PrimaryButton
             fixed={false}

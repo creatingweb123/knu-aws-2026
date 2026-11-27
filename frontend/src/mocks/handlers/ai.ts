@@ -31,6 +31,8 @@ const MESSAGES: Partial<{ [code in ErrorCode]: string }> = {
 };
 
 // ---------------------------------------------------------------- 데모 데이터(§3.2 예시)
+// 아래 빵집·하천 벤치 카드는 동네 산책이라는 '대표 사례'의 예시일 뿐이다. 서비스는 산책 전용이 아니며,
+// 사연이 전시 이야기면 아래 EXHIBIT 카드(장소 1곳, 비도보 활동)를 돌려준다. 그 밖의 사연은 기존대로 데모 카드다.
 
 const QUESTION: AiQuestion = {
   questionId: 'q1',
@@ -66,6 +68,22 @@ function demoCard(minutes: number | null): AiCard {
       { name: '하천 산책로 벤치', activity: '벤치에 앉아 쉬기', whyChosen: '저녁마다 걷던 길이에요.' },
     ],
     question: '하천 벤치에 앉았을 때 어떤 풍경이 보였나요?',
+  };
+}
+
+/** 산책이 아닌 사연(전시 한 곳) 예시. 빵집 데모와 겹치지 않을 때만 쓴다 */
+export function isExhibitStory(story: string): boolean {
+  return story.includes('전시') && !story.includes('빵집');
+}
+
+function exhibitCard(): AiCard {
+  return {
+    title: '끝나기 전에 보고 싶던 전시',
+    summary: '시립 미술관 작은 전시실에서 사진 전시를 둘러보고 싶었어요.',
+    reason: '갑자기 몸이 안 좋아 전시 마지막 주를 놓쳤어요.',
+    estimatedMinutes: null,
+    places: [{ name: '시립 미술관 작은 전시실', activity: '사진 전시 둘러보기', whyChosen: '' }],
+    question: '가장 오래 서서 본 작품은 무엇이었나요?',
   };
 }
 
@@ -194,7 +212,7 @@ export function createSession(db: MockDb, ownerId: string, body: unknown, scenar
           {
             path: 'places[2].name',
             action: 'REMOVED',
-            reason: "'민지네 집 앞'은 비공개 장소라 동선에서 뺐어요.",
+            reason: "'민지네 집 앞'은 비공개 장소라 뺐어요.",
             source: 'STORY',
             restore: {
               value: { name: '민지네 집 앞', activity: '잠깐 인사하기', whyChosen: '' },
@@ -215,7 +233,13 @@ export function createSession(db: MockDb, ownerId: string, body: unknown, scenar
       );
       break;
     default:
-      // 레벨 0: 질문 없이 바로 READY
+      if (isExhibitStory(story)) {
+        // 산책이 아닌 사연: 질문 없이 바로 READY, 장소 1곳
+        s.trace = [{ step: 1, tool: 'check_draft', summary: '개인정보 확인 통과' }];
+        setReady(s, exhibitCard(), [missingMinutes], [], [submitStep(2)]);
+        break;
+      }
+      // 레벨 0: 질문 없이 바로 READY. 전시 외 사연은 모두 이 대표 사례(산책) 카드로 돌아온다. 목업은 활동 일반성의 증거가 아니다
       s.trace = [...TRACE_CHECK];
       setReady(s, demoCard(null), [missingMinutes], [NOTE_REWRITTEN], [submitStep(3)]);
   }

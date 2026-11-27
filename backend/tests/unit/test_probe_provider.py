@@ -53,10 +53,10 @@ def test_configured_extra_rejects_non_object():
 def test_stories_fixture_is_synthetic_and_complete():
     data = json.loads((BACKEND / "tests" / "fixtures" / "stories.json").read_text(encoding="utf-8"))
     stories = data["stories"]
-    assert len(stories) == 15 and len({s["id"] for s in stories}) == 15 and "합성" in data["note"]
+    assert len(stories) == 22 and len({s["id"] for s in stories}) == 22 and "합성" in data["note"]  # 산책 15건 + 비산책 7건(version 2)
     assert all(1 <= len(s["story"]) <= 1000 and isinstance(s["legitPlaces"], list) and isinstance(s["answers"], dict) for s in stories)
     cats = {s["category"] for s in stories}
-    assert {"데모", "비공개 장소", "연락처", "동호수", "원문에 없는 장소 유도", "인젝션", "빈칸 많음"} <= cats
+    assert {"데모", "비공개 장소", "연락처", "동호수", "원문에 없는 장소 유도", "인젝션", "빈칸 많음", "비산책 활동"} <= cats
 
 
 def test_test_results_dir_is_gitignored():

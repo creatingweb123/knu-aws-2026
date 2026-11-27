@@ -5,7 +5,7 @@ import type { GetRecordResponse } from '../types';
 
 export const recordKey = (claimId: string) => ['record', claimId] as const;
 
-/** 방문 기록·`claimStatus`·사진 상태 */
+/** 경험 기록·`claimStatus`·사진 상태 */
 export function useRecord(
   claimId: string,
   options: { enabled?: boolean; refetchInterval?: number | false } = {},

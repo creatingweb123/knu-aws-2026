@@ -37,7 +37,7 @@ async function fillForm() {
   type('방문 질문', '빵집에서 무엇을 샀나요?');
   fireEvent.click(screen.getByRole('button', { name: '+ 장소 추가' }));
   await fillPlace('출근길 빵집', '들러서 빵 사기', '출근길에 지나치던 곳이에요.');
-  fireEvent.click(screen.getByRole('button', { name: '동선에 추가하기' }));
+  fireEvent.click(screen.getByRole('button', { name: '장소 추가하기' }));
   await screen.findByTestId('screen-3-2');
 }
 
@@ -103,7 +103,7 @@ describe('폼·장소(FE-CRT-06, FE-CRT-07, FE-Q20)', () => {
     for (const name of ['빵집', '하천 벤치', '공원']) {
       fireEvent.click(screen.getByRole('button', { name: '+ 장소 추가' }));
       await fillPlace(name, '들르기');
-      fireEvent.click(screen.getByRole('button', { name: '동선에 추가하기' }));
+      fireEvent.click(screen.getByRole('button', { name: '장소 추가하기' }));
       await screen.findByTestId('screen-3-2');
     }
     expect(screen.queryByRole('button', { name: '+ 장소 추가' })).not.toBeInTheDocument();
@@ -125,7 +125,7 @@ describe('폼·장소(FE-CRT-06, FE-CRT-07, FE-Q20)', () => {
     await startManual();
     fireEvent.click(screen.getByRole('button', { name: '+ 장소 추가' }));
     await screen.findByTestId('screen-3-3');
-    fireEvent.click(screen.getByRole('button', { name: '동선에 추가하기' }));
+    fireEvent.click(screen.getByRole('button', { name: '장소 추가하기' }));
     expect(await screen.findByText('1–30자로 입력해 주세요.')).toBeInTheDocument();
     expect(screen.getByText('1–60자로 입력해 주세요.')).toBeInTheDocument();
   });

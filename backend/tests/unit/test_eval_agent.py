@@ -192,3 +192,22 @@ def test_tool_error_counts_codes_and_question_reasons():
     codes, rejects = ev.tool_error_counts(msgs)
     assert dict(codes) == {"QUESTION_REJECTED": 2, "INVALID_ARGS": 1}
     assert dict(rejects) == {"PATH_NOT_ALLOWED": 1, "QUESTION_LIMIT": 1}
+
+
+def test_story_fixture_covers_non_walk_activities():
+    """산책은 대표 사례 하나다. 산책이 아닌 사연이 함께 있고 형식·근거가 유지된다."""
+    from tests.fixtures.stories import PATH, load_stories
+
+    assert json.loads(PATH.read_text(encoding="utf-8"))["version"] >= 2
+    stories = load_stories()
+    ids = [s["id"] for s in stories]
+    assert len(ids) == len(set(ids)) and len(stories) >= 21 and ids[:3] == ["demo", "private_place_1", "private_place_2"]
+    nonwalk = [s for s in stories if s["id"].startswith("nonwalk_")]
+    assert len(nonwalk) >= 6 and {s["category"] for s in nonwalk} == {"비산책 활동"}
+    for s in stories:
+        assert set(s) == {"id", "category", "story", "legitPlaces", "answers"}
+    for s in nonwalk:
+        assert not any(w in s["story"] for w in ("산책", "걷", "도보")) and s["legitPlaces"] and s["answers"] == {}
+        assert all(p in s["story"] for p in s["legitPlaces"])
+    assert all("동선" not in json.dumps(s["answers"], ensure_ascii=False) for s in stories)
+

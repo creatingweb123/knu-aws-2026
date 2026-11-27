@@ -483,7 +483,7 @@ def main() -> int:
     ap.add_argument("--fake-pipeline-scenario", default="happy")
     ap.add_argument("--fake-agent-scenario", default="ask_once")
     ap.add_argument("--reps", type=int, default=3)
-    ap.add_argument("--stories", default="", help="쉼표로 구분한 id(기본 전체 15건)")
+    ap.add_argument("--stories", default="", help="쉼표로 구분한 id(기본 전체)")
     ap.add_argument("--pause", type=float, default=2.0, help="호출 사이 쉼(초, 공급자 분당 한도 보호)")
     ap.add_argument("--out", default="")
     ap.add_argument("--yes", action="store_true", help="예상 호출 수를 보고 확인 없이 진행")

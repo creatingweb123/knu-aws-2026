@@ -142,7 +142,7 @@ const MINJUN = 'u-minjun';
 const HOUR_MS = 60 * 60 * 1000;
 
 /**
- * 시드: 지연의 데모 계획(OPEN), 민준의 계획(OPEN), 지연의 계획을 민준이 이어받은 것(CLAIMED),
+ * 시드: 지연의 데모 계획(OPEN, 동네 산책 '대표 사례'), 민준의 계획(OPEN), 지연의 계획을 민준이 이어받은 것(CLAIMED),
  * 지연의 계획을 수현이 완료해 지연 수신함에 안 읽은 편지 1건(COMPLETED).
  * 시각은 `now` 기준 상대값이라 언제 초기화해도 기한이 미래에 있다.
  */
@@ -200,6 +200,81 @@ export function createSeed(now: number = Date.now()): MockDb {
       createdAt: iso(now - 26 * HOUR_MS),
       completedAt: null,
       metrics: { authoringMode: 'MANUAL', durationMs: 240000 },
+    },
+    // 아래 네 건은 산책이 아닌 일상 활동 예시다(서비스의 본질은 취소된 하루의 양도와 반환이고 산책은 대표 사례 중 하나).
+    // 목록 맨 뒤(가장 오래된 createdAt)에 두어 기존 목록 순서(pln_demo, pln_library)는 그대로다.
+    {
+      planId: 'pln_cafe',
+      areaId: 'default',
+      ownerId: MINJUN,
+      ownerNickname: nick(MINJUN),
+      title: '친구와 가려던 골목 카페',
+      summary: '새로 생긴 골목 카페에서 시그니처 라떼를 마셔 보고 싶었어요.',
+      reason: '친구 일정이 바뀌어 같이 가지 못했어요.',
+      estimatedMinutes: 40,
+      places: [
+        { order: 1, name: '골목 카페', activity: '시그니처 라떼 마시기', whyChosen: '후기가 좋아요.' },
+      ],
+      question: '카페 분위기와 라떼 맛은 어땠나요?',
+      status: 'OPEN',
+      createdAt: iso(now - 28 * HOUR_MS),
+      completedAt: null,
+      metrics: { authoringMode: 'MANUAL', durationMs: 130000 },
+    },
+    {
+      planId: 'pln_exhibit',
+      areaId: 'default',
+      ownerId: JIYEON,
+      ownerNickname: nick(JIYEON),
+      title: '끝나기 전에 보고 싶던 전시',
+      summary: '시립 미술관 작은 전시실의 사진 전시를 보고 싶었어요.',
+      reason: '갑자기 몸이 안 좋아 전시 마지막 주를 놓쳤어요.',
+      estimatedMinutes: 60,
+      places: [
+        { order: 1, name: '시립 미술관 작은 전시실', activity: '사진 전시 둘러보기', whyChosen: '' },
+      ],
+      question: '가장 오래 서서 본 작품은 무엇이었나요?',
+      status: 'OPEN',
+      createdAt: iso(now - 30 * HOUR_MS),
+      completedAt: null,
+      metrics: { authoringMode: 'MANUAL', durationMs: 170000 },
+    },
+    {
+      planId: 'pln_bookshop',
+      areaId: 'default',
+      ownerId: MINJUN,
+      ownerNickname: nick(MINJUN),
+      title: '이사 전에 들르려던 동네 서점',
+      summary: '동네 서점에서 책 한 권을 고르고, 옆 소품점도 구경하고 싶었어요.',
+      reason: '이사 일정이 바뀌어 가 보지 못했어요.',
+      estimatedMinutes: 50,
+      places: [
+        { order: 1, name: '동네 서점', activity: '책 한 권 고르기', whyChosen: '자주 지나치던 곳이에요.' },
+        { order: 2, name: '골목 소품점', activity: '소품 구경하기', whyChosen: '' },
+      ],
+      question: '고른 책과 고른 이유를 알려 주세요.',
+      status: 'OPEN',
+      createdAt: iso(now - 32 * HOUR_MS),
+      completedAt: null,
+      metrics: { authoringMode: 'MANUAL', durationMs: 160000 },
+    },
+    {
+      planId: 'pln_parkphoto',
+      areaId: 'default',
+      ownerId: JIYEON,
+      ownerNickname: nick(JIYEON),
+      title: '벚나무 아래 공원 사진',
+      summary: '공원 벚나무 아래에서 사진을 찍고 잠깐 쉬고 싶었어요.',
+      reason: '비가 와서 꽃이 지기 전에 가지 못했어요.',
+      estimatedMinutes: 30,
+      places: [
+        { order: 1, name: '중앙 공원 벚나무길', activity: '사진 찍고 쉬기', whyChosen: '' },
+      ],
+      question: '그곳 벚나무는 지금 어떤 모습인가요?',
+      status: 'OPEN',
+      createdAt: iso(now - 34 * HOUR_MS),
+      completedAt: null,
+      metrics: { authoringMode: 'MANUAL', durationMs: 110000 },
     },
     {
       planId: 'pln_market',

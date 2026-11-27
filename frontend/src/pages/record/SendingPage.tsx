@@ -91,7 +91,7 @@ function Sending({ claimId }: { claimId: string }) {
       <div className={styles.sending} role="status" aria-live="polite">
         <span className={styles.spinner} aria-hidden="true" />
         <p className={styles.sendingTitle}>보내는 중이에요</p>
-        <p className={styles.sendingText}>사진을 정리해서 방문 기록과 함께 보내고 있어요.</p>
+        <p className={styles.sendingText}>사진을 정리해서 경험 기록과 함께 보내고 있어요.</p>
         {emphasize ? (
           <p className={styles.slow} data-testid="sending-slow">
             사진 처리가 늦어지고 있어요. 글로 먼저 완료할 수 있어요.

@@ -613,11 +613,11 @@ guard_draft: 12초 미만 → pause(route=draft)(첫 시도와 재시도 모두)
 
 ### 11.2 비공개 장소 질문 (BE-Q116)
 
-`path = places[i].name`이고 현재 Check_Report에 그 경로의 `PRIVATE_PLACE`가 있으면 서버가 선택지를 `["동선에서 빼기"]`, `allowFreeText = true`로 바꾼다(docs/03 "[동선에서 빼기] [직접 바꾸기(입력)]"). 답변 반영은 서버가 결정적으로 한다(혼합안 중 결정적 부분, 권장안):
+`path = places[i].name`이고 현재 Check_Report에 그 경로의 `PRIVATE_PLACE`가 있으면 서버가 선택지를 `["장소에서 빼기"]`, `allowFreeText = true`로 바꾼다(docs/03 "[장소에서 빼기] [직접 바꾸기(입력)]"). 답변 반영은 서버가 결정적으로 한다(혼합안 중 결정적 부분, 권장안):
 
 | 답 | 반영 | 메모 |
 |---|---|---|
-| `choice = "동선에서 빼기"` | 그 장소 제거 | `REMOVED`, `source = ANSWER` |
+| `choice = "장소에서 빼기"` | 그 장소 제거 | `REMOVED`, `source = ANSWER` |
 | `text` | 장소 이름을 답으로 교체(개인정보 없을 때만, 30자 이하) | `REWRITTEN`, `source = ANSWER` |
 | `skipped` | 그대로 둔다 | Gate가 막고 폴백이 뺀다(`REMOVED`) |
 

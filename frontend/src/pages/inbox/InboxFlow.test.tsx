@@ -16,7 +16,7 @@ describe('수신함(FE-INB-01)', () => {
     expect(row).toHaveAttribute('href', `/inbox/${ITEM}`);
     expect(row).toHaveTextContent('새 편지');
     expect(row).toHaveTextContent('해 질 녘 다리 위에서');
-    expect(row).toHaveTextContent('수현님이 방문 기록을 보냈어요');
+    expect(row).toHaveTextContent('수현님이 경험 기록을 보냈어요');
     expect(within(row).getByTestId('item-unread-dot')).toBeInTheDocument();
   });
 
@@ -30,7 +30,7 @@ describe('돌아온 하루·답장(FE-INB-02–05)', () => {
   it('들어오면 읽음 처리, 헤더 점이 사라진다', async () => {
     renderApp(`/inbox/${ITEM}`, 'u-jiyeon');
     expect(await screen.findByText('내가 남긴 계획')).toBeInTheDocument();
-    expect(screen.getByText('수현의 방문 기록')).toBeInTheDocument();
+    expect(screen.getByText('수현의 경험 기록')).toBeInTheDocument();
     expect(screen.getByText(/주황색에서 보라색으로/)).toBeInTheDocument();
     await waitFor(() => expect(loadDb().inbox[0].read).toBe(true));
     await waitFor(() => expect(screen.queryByTestId('unread-dot')).not.toBeInTheDocument());

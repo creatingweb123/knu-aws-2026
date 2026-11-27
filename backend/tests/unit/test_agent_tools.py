@@ -55,6 +55,7 @@ def test_private_place_question_and_answers():
     assert q["questionId"] == "q1" and q["options"] == [at.PRIVATE_OPTION] and q["allowFreeText"] is True
     card, note = at.apply_private_place_answer(PRIVATE_CARD, q, {"questionId": "q1", "choice": at.PRIVATE_OPTION})
     assert [p["name"] for p in card["places"]] == ["출근길 빵집"] and note["action"] == "REMOVED" and note["source"] == "ANSWER"
+    assert note["reason"] == "계획자가 장소에서 뺐어요."
     card, note = at.apply_private_place_answer(PRIVATE_CARD, q, {"questionId": "q1", "text": "동네 공원"})
     assert card["places"][0]["name"] == "동네 공원" and note["action"] == "REWRITTEN"
     card, note = at.apply_private_place_answer(PRIVATE_CARD, q, {"questionId": "q1", "skipped": True})

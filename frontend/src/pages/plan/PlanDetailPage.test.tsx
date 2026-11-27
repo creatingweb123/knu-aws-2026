@@ -10,7 +10,7 @@ import { renderApp } from '../../test/renderApp';
 const claimButton = () => screen.findByRole('button', { name: '이 하루 이어받기' });
 
 describe('하루 상세 내용(FE-PLN-01)', () => {
-  it('계획자·취소한 이유·동선(장소·하고 싶었던 일·고른 이유)', async () => {
+  it('계획자·취소한 이유·방문할 장소(장소·하고 싶었던 일·고른 이유)', async () => {
     renderApp('/plans/pln_demo', 'u-suhyun');
     expect(await screen.findByText('지연 · 취소한 이유')).toBeInTheDocument();
     expect(screen.getByText(/이삿짐 정리가 길어져/)).toBeInTheDocument();

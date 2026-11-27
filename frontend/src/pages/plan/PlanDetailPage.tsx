@@ -119,7 +119,7 @@ function PlanDetail({ planId }: { planId: string }) {
       </div>
 
       <div className={styles.section}>
-        <h3 className={styles.sectionTitle}>산책 동선</h3>
+        <h3 className={styles.sectionTitle}>방문할 장소</h3>
         <RouteTimeline places={plan.places} />
       </div>
 

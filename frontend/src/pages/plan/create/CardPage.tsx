@@ -245,7 +245,7 @@ function CardPreview({ card, flags }: { card: AiCard; flags: Flag[] }) {
       <Field label="예상 소요 시간">
         {card.estimatedMinutes === null ? EMPTY : `약 ${card.estimatedMinutes}분`}
       </Field>
-      <Field label="산책 동선">
+      <Field label="방문할 장소">
         {card.places && card.places.length > 0 ? (
           <ol className={styles.places}>
             {card.places.map((p, i) => (

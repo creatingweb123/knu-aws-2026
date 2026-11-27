@@ -48,7 +48,7 @@ export function InboxPage() {
 }
 
 function sentLine(item: Pick<InboxItem, 'claimerNickname' | 'hasPhoto'>): string {
-  return `${item.claimerNickname}님이 ${item.hasPhoto ? '사진과 방문 기록을' : '방문 기록을'} 보냈어요`;
+  return `${item.claimerNickname}님이 ${item.hasPhoto ? '사진과 경험 기록을' : '경험 기록을'} 보냈어요`;
 }
 
 function InboxRow({ item }: { item: InboxItem }) {

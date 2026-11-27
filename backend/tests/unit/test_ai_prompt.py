@@ -76,7 +76,7 @@ def test_places_retry_adds_rule_only_for_places_schema():
 def test_prompt_version_pinned_for_be_q127():
     from agent.prompt import prompt_version
 
-    assert prompt_version() == "ca6ada9ac3ef"  # day_card.md를 바꾸면 이 값을 갱신하고 README에 적는다
+    assert prompt_version() == "c4fc8de1db3d"  # day_card.md를 바꾸면 이 값을 갱신하고 README에 적는다
 
 
 # ---------------------------------------------------------------- 6b 에이전트 프롬프트

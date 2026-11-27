@@ -193,7 +193,7 @@ class AiCardDraft(BaseModel):        # strict=True, extra="ignore"
   "question": null,
   "card": { "title": …, "summary": …, "reason": …, "estimatedMinutes": …, "places": [ { "name": …, "activity": …, "whyChosen": … } ], "question": … },
   "flags": [ { "path": "estimatedMinutes", "type": "MISSING" } ],
-  "notes": [ { "path": "places[1].name", "action": "REMOVED", "reason": "비공개 장소라 동선에서 뺐어요.", "source": "STORY" } ],
+  "notes": [ { "path": "places[1].name", "action": "REMOVED", "reason": "비공개 장소라 뺐어요.", "source": "STORY" } ],
   "degraded": false }
 ```
 
@@ -438,12 +438,14 @@ Report = { schemaErrors: [path], notInSource: [path], privacy: [{path, kind, sev
 
 ### 9.1 `rules` (레벨 0)
 
+> 2026-11-27 용어 변경: 메모 문구에서 '동선'을 뺐다(docs/08 BE-Q136). 이 spec의 예시 문구보다 현행 명세(docs/)가 우선한다.
+
 ```
 for place in card.places (앞에서부터):
     kinds = scan_privacy({name, activity}) 의 kind
     if "PRIVATE_PLACE" in kinds:
         remove place; notes.append(REMOVED, path=f"places[{place._src}].{name|activity 중 걸린 필드}", source=STORY,
-                                   reason="비공개 장소라 동선에서 뺐어요.")
+                                   reason="비공개 장소라 뺐어요.")
 ```
 - 비공개 장소가 `whyChosen`·`title` 등 다른 필드에만 있으면 빼지 않는다(`MEDIUM`, `PRIVACY` 플래그로 남음, BE-Q22).
 - 그 밖에는 카드를 바꾸지 않는다.

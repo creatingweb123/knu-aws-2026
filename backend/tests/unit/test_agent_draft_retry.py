@@ -83,7 +83,7 @@ def test_feedback_follows_the_story_and_no_answer_is_replayed():
 def test_prompt_rule_and_version():
     text = agent_system_prompt()
     assert "스키마 위반은 계획자에게 질문할 문제가 아니다" in text and "배열 개수 위반은 직접 수정한다" in text
-    assert agent_prompt_version() == "3db437c63971"
+    assert agent_prompt_version() == "d1c20c140400"
 
 
 def test_retry_text_is_only_in_the_agent_path():

@@ -58,7 +58,7 @@ export function StoryPage() {
           maxLength={LIMITS.story}
           error={error}
           hint="집 주소나 개인 정보는 적지 말아주세요."
-          placeholder="예: 이사 전에 5년 살던 동네를 마지막으로 걷고 싶었어요."
+          placeholder="예: 이사 전에 가 보려던 동네 서점에 일정이 바뀌어 못 갔어요."
           onChange={(e) => {
             const value = e.target.value;
             update((d) => ({ ...d, story: value }));

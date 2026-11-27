@@ -6,7 +6,7 @@ export interface TimelinePlace {
   whyChosen?: string;
 }
 
-/** 산책 동선: 번호 원 + 세로 연결선, 마지막 장소 원은 채운 primary(docs/05 §5.3) */
+/** 방문할 장소(활동 공통): 번호 원 + 세로 연결선, 마지막 장소 원은 채운 primary(docs/05 §5.3) */
 export function RouteTimeline({ places }: { places: TimelinePlace[] }) {
   return (
     <ol className={styles.timeline}>

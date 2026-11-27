@@ -20,7 +20,7 @@ export function BrowsePage() {
     <section data-testid="screen-1">
       <PageTitle
         title={'이어받을 수 있는\n하루를 둘러보세요'}
-        description="누군가 하지 못한 동네 산책을 이어받아요."
+        description="누군가 하지 못한 하루를 이어받아요."
       />
       <div className={styles.create}>
         <PrimaryButton fixed={false} variant="secondary" onClick={() => navigate('/plans/new')}>
@@ -42,7 +42,7 @@ export function BrowsePage() {
       {data && data.items.length === 0 ? (
         <div className={styles.empty} data-testid="browse-empty">
           <p className={styles.emptyTitle}>아직 남겨진 하루가 없어요</p>
-          <p className={styles.emptyText}>하지 못한 산책이 있다면 첫 하루를 남겨 보세요.</p>
+          <p className={styles.emptyText}>하지 못한 하루가 있다면 첫 하루를 남겨 보세요.</p>
         </div>
       ) : null}
 

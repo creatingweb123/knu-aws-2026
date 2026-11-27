@@ -41,7 +41,7 @@
 
 1. THE Detail_Page SHALL 제목, `summary`, `약 {n}분 · 장소 {k}곳`을 보여 준다.
 2. THE Detail_Page SHALL 계획자 박스("{계획자 닉네임} · 취소한 이유" + `reason`)를 `--color-plan` 배경으로 보여 준다.
-3. THE Detail_Page SHALL 산책 동선을 RouteTimeline(장소 이름·하고 싶었던 일·고른 이유)으로 보여 준다. `whyChosen`이 빈 문자열이면 그 줄을 생략한다.
+3. THE Detail_Page SHALL 방문할 장소를 RouteTimeline(장소 이름·하고 싶었던 일·고른 이유)으로 보여 준다. `whyChosen`이 빈 문자열이면 그 줄을 생략한다.
 4. THE Detail_Page SHALL 대표 사진 자리에 장식용 플레이스홀더를 둔다(docs/05 §5.6 4번, 스크린 리더에는 숨김).
 
 ### Requirement 4: 상세 상태 분기 [FE-PLN-02]
@@ -56,7 +56,7 @@
 4. WHEN `claimable`이면 THE Detail_Page SHALL "이어받기 가능" 배지와 "이 하루 이어받기" 버튼을 보여 준다.
 5. WHEN `plan.status === 'CLAIMED'`이면 THE Detail_Page SHALL "이어받음" 배지와 Claimed_Notice를 보여 준다.
 6. WHEN `plan.status === 'COMPLETED'`이면 THE Detail_Page SHALL "완료" 배지만 보여 주고 버튼을 두지 않는다(읽기 전용).
-7. OTHERWISE THE Detail_Page SHALL 동선과 "다른 하루 둘러보기"(`/`) 버튼을 보여 준다(방어용).
+7. OTHERWISE THE Detail_Page SHALL 방문할 장소와 "다른 하루 둘러보기"(`/`) 버튼을 보여 준다(방어용).
 8. IF 404 외의 오류이면 THE Detail_Page SHALL 공통 오류 문구와 "다시 시도" 버튼을 보여 준다.
 
 ### Requirement 5: 이어받기 [FE-PLN-03, FE-PLN-04, FE-PLN-05]

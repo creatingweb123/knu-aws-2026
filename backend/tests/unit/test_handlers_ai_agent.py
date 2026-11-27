@@ -84,8 +84,8 @@ def test_state_based_validation(agent_env, monkeypatch, body, path):
 def test_free_text_not_allowed(agent_env, monkeypatch):
     set_scenario(monkeypatch, "private_place_ask")
     v = body_of(create())
-    assert v["question"]["options"] == ["동선에서 빼기"] and v["question"]["allowFreeText"] is True
-    r = turns(v["sessionId"], {"expectedTurn": 1, "answer": {"questionId": "q1", "choice": "동선에서 빼기"}})
+    assert v["question"]["options"] == ["장소에서 빼기"] and v["question"]["allowFreeText"] is True
+    r = turns(v["sessionId"], {"expectedTurn": 1, "answer": {"questionId": "q1", "choice": "장소에서 빼기"}})
     assert body_of(r)["status"] == "READY" and [p["name"] for p in body_of(r)["card"]["places"]] == ["출근길 빵집"]
 
 

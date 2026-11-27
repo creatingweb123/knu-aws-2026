@@ -25,7 +25,7 @@ export function LoginPage() {
     <section data-testid="screen-0">
       <PageTitle
         title={'이어온 하루에\n오신 걸 환영해요'}
-        description="취소된 동네 산책을 이어받고, 그날의 이야기를 돌려줘요."
+        description="취소된 하루를 이어받고, 그날의 이야기를 돌려줘요."
       />
       {kind === 'mock' ? (
         <p className={styles.note}>

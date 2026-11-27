@@ -11,7 +11,7 @@
 ### Requirement 1: 내 하루 [FE-ME-01–03, FE-COM-06, FE-Q21]
 
 1. THE 내 하루 SHALL `GET /me/claims?status=ACTIVE`의 항목을 응답 순서(이어받은 시각 최신순)대로 모두 카드로 보여 준다(FE-Q21).
-2. THE 카드 SHALL 제목, `{계획자} · 약 n분 · 장소 k곳`, 기한 문구, 동선 타임라인, "다녀온 이야기 쓰기", "이어받기 포기"를 보여 준다.
+2. THE 카드 SHALL 제목, `{계획자} · 약 n분 · 장소 k곳`, 기한 문구, 방문할 장소 타임라인, "다녀온 이야기 쓰기", "이어받기 포기"를 보여 준다.
 3. THE 기한 문구 SHALL `dueAt`이 지금보다 뒤면 "{M}월 {D}일까지 다녀온 이야기를 보내주세요."(KST), 지났으면 "기한이 지났어요. 다른 사람이 이어받기 전까지는 보낼 수 있어요."다.
 4. WHEN "다녀온 이야기 쓰기"를 누르면 THE 내 하루 SHALL `record.photoStatus`가 `UPLOAD_PENDING`·`PROCESSING`·`FAILED`이면 `/claims/{claimId}/sending`, 그 외(기록 없음, `NONE`, 문서에 없는 `READY`·`DISCARDED` 포함, FE-Q22)는 `/claims/{claimId}/record`로 간다.
 5. WHEN 항목이 없으면 THE 내 하루 SHALL "아직 이어받은 하루가 없어요"와 "하루 둘러보기" 버튼을 보여 준다.

@@ -11,7 +11,7 @@ from agent.agent_nodes import initial_agent_state
 from agent.budget import NoopBudget
 from tests.unit.agent_util import STORY, Ctx, caller, config, run_session
 
-ANS = {"estimatedMinutes": {"choice": "45분"}, "places[0].name": {"choice": "동선에서 빼기"}}
+ANS = {"estimatedMinutes": {"choice": "45분"}, "places[0].name": {"choice": "장소에서 빼기"}}
 
 
 def run(sc, **kw):
@@ -89,7 +89,7 @@ def test_private_place_answer_removes_place():
     s = run("private_place_ask")["state"]
     assert s["outcome"] == "READY" and [p["name"] for p in s["final_card"]["places"]] == ["출근길 빵집"]
     assert any(n["action"] == "REMOVED" and n["source"] == "ANSWER" for n in s["notes"])
-    assert s["questions"][0]["options"] == ["동선에서 빼기"]
+    assert s["questions"][0]["options"] == ["장소에서 빼기"]
 
 
 def test_finish_requested_drops_ask_planner():
@@ -147,3 +147,82 @@ def test_no_prebuilt_and_level0_unchanged():
     assert "prebuilt" not in src and "create_react_agent" not in src
     assert g.build_pipeline_graph().checkpointer is None
     assert set(g.build_agent_graph(InMemorySaver()).get_graph().nodes) >= set(g.AGENT_NODES)
+
+
+# ---------------------------------------------------------------- 산책이 아닌 활동, 레벨 0과 같은 정책
+# Fake는 사연을 읽지 않고 시나리오 이름으로 응답한다. 짝인 사연은 tests/fixtures/stories.json의 nonwalk_* 이다.
+
+NONWALK = [("exhibition", "nonwalk_exhibition", "일정이 바뀌어"), ("cafe", "nonwalk_cafe", "감기"),
+           ("bookstore", "nonwalk_bookstore", "회사 일"), ("park_photo", "nonwalk_park_photo", "비가 와서")]
+WALK_WORDS = ("산책", "걷", "도보", "경로", "동선")
+FIXTURE_STORY = {"exhibition": "nonwalk_exhibition", "exhibition_extra_place": "nonwalk_exhibition"}
+FIXTURE_STORY |= {sc: sid for sc, sid, _ in NONWALK}
+
+
+def fixture_text(scenario):
+    from tests.fixtures.stories import story as fixture_story
+
+    return fixture_story(FIXTURE_STORY[scenario])["story"]
+
+
+def card_text(card):
+    return " ".join(str(v) for k, v in card.items() if k != "places" and v) + " " + " ".join(
+        str(v) for p in card["places"] for v in p.values() if v)
+
+
+def run_pipeline(scenario, story):
+    from agent import llm
+    from agent.timebudget import AgentDeadline, TimeBudget
+    from tests.unit.agent_util import FAKE_ENV
+
+    env = {**FAKE_ENV, "FAKE_LLM_SCENARIO": scenario}
+    c = llm.LlmCaller(llm.load_settings(env), env=env)  # 레벨 0 Fake 표
+    cfg = {"configurable": {"llm": c, "deadline": TimeBudget(Ctx(25_000), None), "finish_requested": False}}
+    return asyncio.run(g.pipeline_graph().ainvoke(g.initial_state(story), config=cfg))
+
+
+@pytest.mark.parametrize(("scenario", "sid", "reason_word"), NONWALK)
+def test_agent_nonwalk_story_stays_its_own_activity(scenario, sid, reason_word):
+    story = fixture_text(scenario)
+    s = run_session(scenario, story=story)["state"]
+    assert s["outcome"] == "READY" and not s["degraded"] and s["blocked"] == []
+    card = s["final_card"]
+    assert len(card["places"]) == 1 and card["places"][0]["name"] in story  # 장소 한 곳, 이동 없음
+    assert reason_word in story and reason_word in card["reason"]
+    blob = card_text(card)
+    for w in WALK_WORDS:
+        assert w in story or w not in blob, w
+
+
+def test_agent_nonwalk_extra_nearby_place_is_gate_rejected_then_fixed():
+    s = run_session("exhibition_extra_place", story=fixture_text("exhibition_extra_place"))["state"]
+    assert "places[1].name" in s["first_report"]["notInSource"]
+    assert s["outcome"] == "READY" and [p["name"] for p in s["final_card"]["places"]] == ["시립미술관"]
+    assert any(t["tool"] == "submit_card" and "서버 검사에서 걸림" in t["summary"] for t in s["trace"])
+
+
+@pytest.mark.parametrize("scenario", [sc for sc, _, _ in NONWALK] + ["exhibition_extra_place"])
+def test_pipeline_and_agent_apply_the_same_domain_policy(scenario):
+    """같은 사연·같은 모델 카드에 레벨 0과 에이전트가 같은 첫 보고서와 같은 최종 카드를 낸다."""
+    story = fixture_text(scenario)
+    p = run_pipeline(scenario, story)
+    a = run_session(scenario, story=story)["state"]
+    assert p["first_report"]["notInSource"] == a["first_report"]["notInSource"]
+    assert p["first_report"]["privacy"] == a["first_report"]["privacy"]
+    assert p["blocked"] == a["blocked"] == [] and p["final_card"] == a["final_card"]
+    assert {(f["path"], f["type"]) for f in p["flags"]} == {(f["path"], f["type"]) for f in a["flags"]}
+
+
+def test_nonwalk_question_stays_within_limit_and_fits_the_activity():
+    r = run_session("exhibition_ask_time", story=fixture_text("exhibition"), answers={"estimatedMinutes": {"choice": "90분"}})
+    s = r["state"]
+    assert r["turns"] == ["ASKING", "READY"] and len(s["questions"]) == 1 <= 2
+    assert "전시" in s["questions"][0]["text"] and "산책" not in s["questions"][0]["text"]
+    assert s["answers"][0]["choice"] == "90분" and s["final_card"]["estimatedMinutes"] == 90
+
+
+def test_private_option_wording():
+    from agent import agent_tools as at
+
+    assert at.PRIVATE_OPTION == "장소에서 빼기" and "동선" not in at.PRIVATE_OPTION
+

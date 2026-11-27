@@ -1,5 +1,7 @@
 # 이어온 하루 프론트엔드
 
+실현하지 못한 일상 계획을 다른 사람에게 양도하고 그 경험과 이야기를 돌려받는 서비스의 모바일 웹이다. 산책은 대표 활용 사례이고, 이 README의 데모 시나리오(지연·수현·민준, 빵집·하천 벤치 산책)는 대표 사례다. 화면 문구는 산책에 한정하지 않는다('방문할 장소', '하루 완료', '경험 기록').
+
 모바일 웹(React 18 + TypeScript + Vite). 명세는 [docs/](../docs/)가 기준이고, 단계별 범위는 [docs/07 §7.4](../docs/07-development-plan.md), 단계별 spec은 `.kiro/specs/frontend-stage*/`(1–6단계는 `frontend-stage1-setup`부터 `frontend-stage6-ai-card`까지, 7단계는 `frontend-stage7a-auth`)이다.
 
 ## 상태
@@ -66,14 +68,16 @@ PowerShell에서 `npm.ps1` 실행이 막혀 있으면 `npm.cmd`로 실행한다.
 
 두 탭 경합 확인: 목업 바에서 **초기화** → 탭 A 수현, 탭 B 민준으로 `/plans/pln_demo`를 연다 → A에서 이어받기(내 하루로 이동) → B에서 이어받기(같은 화면에 "이미 다른 사람이 이어받았어요").
 
-시드 데이터(`src/mocks/db.ts`, FE-Q15)
+시드 데이터(`src/mocks/db.ts`, FE-Q15). 아래 표는 대표 사례(데모)와 기존 시나리오용 항목이다. 목업에는 산책이 아닌 일상 활동 사례(카페, 전시회, 서점, 공원 등)도 함께 들어가며, 전체 목록과 세부 제목은 `db.ts`를 본다(BE-Q135, FE-Q27).
 
 | 계획                                      | 계획자 | 상태            | 확인할 수 있는 것                            |
 | ----------------------------------------- | ------ | --------------- | -------------------------------------------- |
-| 이사 전, 마지막 동네 산책 (`pln_demo`)    | 지연   | OPEN            | 데모 계획(출근길 빵집·하천 산책로 벤치)      |
+| 이사 전, 마지막 동네 산책 (`pln_demo`)    | 지연   | OPEN            | 데모 계획(대표 사례: 출근길 빵집·하천 산책로 벤치) |
 | 비 오는 날 도서관 가는 길 (`pln_library`) | 민준   | OPEN            | 민준 기준 "내가 남긴 하루"                   |
 | 시장 골목 아침 장보기 (`pln_market`)      | 지연   | CLAIMED(민준)   | 수현 기준 2-1, 민준 기준 내가 이어받은 하루  |
 | 해 질 녘 다리 위에서 (`pln_bridge`)       | 지연   | COMPLETED(수현) | 지연 수신함의 안 읽은 편지 1건(헤더 주황 점) |
+
+목업 시드에는 위 표 외에 산책이 아닌 OPEN 계획(카페·전시·서점과 소품점·공원 사진)이 더 있다(`src/mocks/db.ts`). 목업 AI는 '전시'가 들어간 사연만 전시 카드로 바꾸고 나머지는 대표 사례(산책) 카드를 돌려준다. 활동 일반성은 목업이 아니라 백엔드 Fake LLM 시나리오와 평가 사연으로 확인한다.
 
 ## 구조
 
@@ -86,8 +90,8 @@ src/
   components/ Header, BottomTab, PrimaryButton, StatusBadge, RouteTimeline, TextField/TextArea,
               Toast, ResultScreen, PageTitle, Layout, DevMockBar(개발 전용)
   pages/      login/ browse/ plan/(상세·이어받기, create/ 하루 남기기) me/(내 하루·포기)
-              record/(방문 기록·사진·보내는 중·실패·교체·전송 완료·종료 안내) inbox/(수신함·돌아온 하루)
-  state/      planDraft.ts(하루 남기기 작성 상태, sessionStorage), letterDraft.ts(방문 기록 임시 글, localStorage),
+              record/(경험 기록·사진·보내는 중·실패·교체·전송 완료·종료 안내) inbox/(수신함·돌아온 하루)
+  state/      planDraft.ts(하루 남기기 작성 상태, sessionStorage), letterDraft.ts(경험 기록 임시 글, localStorage),
               sendingClock.ts(보내는 중 기준 시각·업로드 실패, sessionStorage)
   mocks/      db.ts, session.ts, handlers/, browser.ts
   styles/     tokens.css, global.css

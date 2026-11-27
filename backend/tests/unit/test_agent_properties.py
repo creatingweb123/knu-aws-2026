@@ -235,7 +235,7 @@ from agent.fake_llm import AGENT_SCENARIOS  # noqa: E402
 
 scenario_st = st.sampled_from(sorted(AGENT_SCENARIOS))
 answer_st = st.sampled_from([{"choice": "45분"}, {"skipped": True}, {"text": "동네 공원"}, {"text": "010-1234-5678"},
-                             {"choice": "동선에서 빼기"}])
+                             {"choice": "장소에서 빼기"}])
 
 
 def _run_graph(scenario, max_calls, finish, answer, story):

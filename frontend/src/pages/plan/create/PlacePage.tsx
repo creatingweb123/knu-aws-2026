@@ -75,7 +75,7 @@ export function PlacePage() {
   return (
     <section data-testid="screen-3-3">
       <PageTitle
-        title={editing ? `${index + 1}번 장소를\n고쳐 주세요` : '산책 동선에\n장소를 더해 주세요'}
+        title={editing ? `${index + 1}번 장소를\n고쳐 주세요` : '방문할 장소를\n더해 주세요'}
         description="공개된 장소만 적어 주세요. 집이나 개인 공간은 빼 주세요."
       />
       <div className={styles.form}>
@@ -103,7 +103,7 @@ export function PlacePage() {
           onChange={(e) => setField('whyChosen', e.target.value)}
         />
       </div>
-      <PrimaryButton onClick={onSave}>{editing ? '저장하기' : '동선에 추가하기'}</PrimaryButton>
+      <PrimaryButton onClick={onSave}>{editing ? '저장하기' : '장소 추가하기'}</PrimaryButton>
     </section>
   );
 }

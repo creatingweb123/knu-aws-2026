@@ -41,7 +41,7 @@ describe('사진 선택(FE-REC-03)', () => {
     expect(screen.getByRole('button', { name: '글로 완료하기' })).toBeInTheDocument();
 
     pick(jpeg());
-    expect(await screen.findByRole('button', { name: '사진과 방문 기록 보내기' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: '사진과 경험 기록 보내기' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '사진 없이 글로 완료' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '사진 빼기' }));
     expect(await screen.findByRole('button', { name: '글로 완료하기' })).toBeInTheDocument();
@@ -52,9 +52,9 @@ describe('사진과 함께 보내기(FE-REC-04, 06, 10)', () => {
   it('보내기 → 보내는 중 → 사진 포함 완료 문구, 수신함에 사진', async () => {
     const claimId = suhyunClaims();
     const { router } = await writeWithPhoto(claimId);
-    fireEvent.click(screen.getByRole('button', { name: '사진과 방문 기록 보내기' }));
+    fireEvent.click(screen.getByRole('button', { name: '사진과 경험 기록 보내기' }));
     expect(
-      await screen.findByText('사진과 방문 기록을 보냈어요', {}, { timeout: 15_000 }),
+      await screen.findByText('사진과 경험 기록을 보냈어요', {}, { timeout: 15_000 }),
     ).toBeInTheDocument();
     expect(router.state.location.pathname).toBe(`/claims/${claimId}/done`);
     const db = loadDb();
@@ -70,19 +70,19 @@ describe('사진과 함께 보내기(FE-REC-04, 06, 10)', () => {
     const claimId = suhyunClaims();
     await writeWithPhoto(claimId);
     fireEvent.click(screen.getByRole('button', { name: '사진 없이 글로 완료' }));
-    expect(await screen.findByText('방문 기록을 보냈어요')).toBeInTheDocument();
+    expect(await screen.findByText('경험 기록을 보냈어요')).toBeInTheDocument();
   });
 
   it('처리 실패(photo-fail) → 5-2 → 글로 완료', async () => {
     sessionStorage.setItem('haru.mock.scenario', 'photo-fail');
     const claimId = suhyunClaims();
     await writeWithPhoto(claimId);
-    fireEvent.click(screen.getByRole('button', { name: '사진과 방문 기록 보내기' }));
+    fireEvent.click(screen.getByRole('button', { name: '사진과 경험 기록 보내기' }));
     expect(await screen.findByTestId('screen-5-2', {}, { timeout: 15_000 })).toHaveTextContent(
       '사진을 보내지 못했어요',
     );
     fireEvent.click(screen.getByRole('button', { name: '글로 완료하기' }));
-    expect(await screen.findByText('방문 기록을 보냈어요')).toBeInTheDocument();
+    expect(await screen.findByText('경험 기록을 보냈어요')).toBeInTheDocument();
     expect(loadDb().records.find((r) => r.claimId === claimId)?.photoStatus).toBe('DISCARDED');
   });
 
@@ -90,7 +90,7 @@ describe('사진과 함께 보내기(FE-REC-04, 06, 10)', () => {
     sessionStorage.setItem('haru.mock.scenario', 'photo-upload-fail');
     const claimId = suhyunClaims();
     const { router } = await writeWithPhoto(claimId);
-    fireEvent.click(screen.getByRole('button', { name: '사진과 방문 기록 보내기' }));
+    fireEvent.click(screen.getByRole('button', { name: '사진과 경험 기록 보내기' }));
     expect(await screen.findByTestId('screen-5-2', {}, { timeout: 15_000 })).toBeInTheDocument();
     expect(loadSending(claimId)?.uploadFailed).toBe(true);
 
@@ -102,7 +102,7 @@ describe('사진과 함께 보내기(FE-REC-04, 06, 10)', () => {
     await screen.findByText('river.png');
     fireEvent.click(screen.getByRole('button', { name: '이 사진으로 보내기' }));
     expect(
-      await screen.findByText('사진과 방문 기록을 보냈어요', {}, { timeout: 15_000 }),
+      await screen.findByText('사진과 경험 기록을 보냈어요', {}, { timeout: 15_000 }),
     ).toBeInTheDocument();
     expect(
       loadDb()
@@ -115,13 +115,13 @@ describe('사진과 함께 보내기(FE-REC-04, 06, 10)', () => {
     sessionStorage.setItem('haru.mock.scenario', 'photo-slow');
     const claimId = suhyunClaims();
     await writeWithPhoto(claimId);
-    fireEvent.click(screen.getByRole('button', { name: '사진과 방문 기록 보내기' }));
+    fireEvent.click(screen.getByRole('button', { name: '사진과 경험 기록 보내기' }));
     expect(await screen.findByText('보내는 중이에요', {}, { timeout: 15_000 })).toBeInTheDocument();
     await waitFor(() =>
       expect(loadDb().records.find((r) => r.claimId === claimId)?.photoStatus).toBe('PROCESSING'),
     );
     fireEvent.click(screen.getByRole('button', { name: '글로 완료하기' }));
-    expect(await screen.findByText('방문 기록을 보냈어요')).toBeInTheDocument();
+    expect(await screen.findByText('경험 기록을 보냈어요')).toBeInTheDocument();
   });
 });
 

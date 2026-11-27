@@ -45,10 +45,10 @@ def caller(scenario, **env):
     return llm.LlmCaller(llm.load_settings(e), env=e)
 
 
-def run(scenario, ctx=None, c=None):
+def run(scenario, ctx=None, c=None, story=STORY):
     c = c or caller(scenario)
     budget = TimeBudget(ctx or Ctx(25_000), None)
-    state = asyncio.run(g.pipeline_graph().ainvoke(g.initial_state(STORY), config={"configurable": {"llm": c, "deadline": budget, "finish_requested": False}}))
+    state = asyncio.run(g.pipeline_graph().ainvoke(g.initial_state(story), config={"configurable": {"llm": c, "deadline": budget, "finish_requested": False}}))
     return state, c
 
 
@@ -189,3 +189,54 @@ def test_blocked_final_check_is_502(monkeypatch):
     monkeypatch.setattr(nodes.tools, "final_check", lambda *a, **k: ([], ["SCHEMA"]))
     s, _ = run("happy")
     assert s["final_card"] is None and g.decide_outcome(s) == ("FAILED", 502, "FALLBACK_INVARIANT")
+
+
+# ---------------------------------------------------------------- 산책이 아닌 활동(대표 활용 사례 밖)
+# 시나리오 이름과 짝인 사연은 tests/fixtures/stories.json의 nonwalk_* 이다. Fake는 사연을 읽지 않는다.
+
+NONWALK = [("exhibition", "nonwalk_exhibition", "일정이 바뀌어"), ("cafe", "nonwalk_cafe", "감기"),
+           ("bookstore", "nonwalk_bookstore", "회사 일"), ("park_photo", "nonwalk_park_photo", "비가 와서")]
+WALK_WORDS = ("산책", "걷", "도보", "경로", "동선")
+
+
+def card_text(card):
+    return " ".join(str(v) for k, v in card.items() if k != "places" and v) + " " + " ".join(
+        str(v) for p in card["places"] for v in p.values() if v)
+
+
+@pytest.mark.parametrize(("scenario", "sid", "reason_word"), NONWALK)
+def test_nonwalk_story_stays_its_own_activity(scenario, sid, reason_word):
+    """전시회·카페·서점·공원 사진 사연은 산책 카드로 바뀌지 않고, 장소 한 곳이어도 정상이며 이유가 남는다."""
+    from tests.fixtures.stories import story as fixture_story
+
+    story = fixture_story(sid)["story"]
+    s, _ = run(scenario, story=story)
+    assert g.decide_outcome(s)[0] == "READY" and s["degraded"] is False and s["blocked"] == [] and s["notes"] == []
+    card = s["final_card"]
+    assert len(card["places"]) == 1 and card["places"][0]["name"] in story
+    assert s["first_report"]["notInSource"] == []
+    assert reason_word in story and reason_word in card["reason"]
+    blob = card_text(card)
+    for w in WALK_WORDS:
+        assert w in story or w not in blob, w
+    assert not any(f["type"] == "NOT_IN_SOURCE" for f in s["flags"])
+
+
+def test_nonwalk_extra_nearby_place_is_not_in_source():
+    """사연에 없는 주변 장소(공원·산책)를 덧붙이면 NOT_IN_SOURCE로 걸려 빠진다. 원래 계획 장소는 남는다."""
+    from tests.fixtures.stories import story as fixture_story
+
+    s, _ = run("exhibition_extra_place", story=fixture_story("nonwalk_exhibition")["story"])
+    assert g.decide_outcome(s)[0] == "READY" and s["degraded"] is True
+    assert "places[1].name" in s["first_report"]["notInSource"]
+    assert [p["name"] for p in s["final_card"]["places"]] == ["시립미술관"]
+    assert s["notes"][0]["action"] == "REMOVED" and s["notes"][0]["reason"] == "사연에 없는 장소라 뺐어요."
+
+
+def test_private_place_note_has_no_route_wording():
+    from agent import repair
+
+    assert repair.REASON_PRIVATE == "비공개 장소라 뺐어요."
+    s, _ = run("private_place")
+    assert s["notes"][0]["reason"] == repair.REASON_PRIVATE and "동선" not in repair.REASON_PRIVATE
+
