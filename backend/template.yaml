@@ -298,6 +298,9 @@ Resources:
         AbandonClaim:
           Type: HttpApi
           Properties: { ApiId: !Ref HttpApi, Path: "/claims/{claimId}/abandon", Method: POST }
+        GetRecord: # TransactGetItems는 GetItem 권한으로 실행된다(BE-Q46 권장안, 계약 변경 승인 대기)
+          Type: HttpApi
+          Properties: { ApiId: !Ref HttpApi, Path: "/claims/{claimId}/record", Method: GET }
         PutRecord:
           Type: HttpApi
           Properties: { ApiId: !Ref HttpApi, Path: "/claims/{claimId}/record", Method: PUT }

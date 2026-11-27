@@ -1,7 +1,7 @@
 """POST /claims/{claimId}/abandon, PUT /claims/{claimId}/record, POST /claims/{claimId}/record/photo,
 POST /claims/{claimId}/complete.
 
-BE-CLAIM-06, BE-REC-01–04·06–10 (3·5단계). `GET /claims/{claimId}/record`는 4단계 묶음 B(BE-Q46)에 있다.
+BE-CLAIM-06, BE-REC-01–10 (3·4·5단계). `GET /record`의 스냅샷 읽기·503은 BE-Q46(계약 변경 승인 대기, 권장안 구현).
 """
 
 from __future__ import annotations
@@ -9,7 +9,7 @@ from __future__ import annotations
 from typing import Any
 
 from common.auth import get_user
-from common.responses import api_handler, ok, serialize_claim, serialize_record
+from common.responses import api_handler, ok, serialize_claim, serialize_record, serialize_record_view
 from common.validation import CompleteIn, PhotoRequest, RecordPut
 from domain import claim_service
 from handlers._http import dispatch, json_body, path_param
@@ -31,6 +31,12 @@ def _put_record(event: dict[str, Any]) -> dict[str, Any]:
     return ok(200, {"record": serialize_record(record), "upload": upload})
 
 
+def _get_record(event: dict[str, Any]) -> dict[str, Any]:
+    user = get_user(event)
+    claim, record = claim_service.get_record(path_param(event, "claimId"), user)
+    return ok(200, serialize_record_view(claim, record))
+
+
 def _replace_photo(event: dict[str, Any]) -> dict[str, Any]:
     user = get_user(event)
     claim_id = path_param(event, "claimId")
@@ -48,6 +54,7 @@ def _complete(event: dict[str, Any]) -> dict[str, Any]:
 
 ROUTES = {
     "POST /claims/{claimId}/abandon": _abandon,
+    "GET /claims/{claimId}/record": _get_record,
     "PUT /claims/{claimId}/record": _put_record,
     "POST /claims/{claimId}/record/photo": _replace_photo,
     "POST /claims/{claimId}/complete": _complete,

@@ -170,6 +170,16 @@ def serialize_record(item: dict[str, Any] | None) -> dict[str, Any] | None:
     }
 
 
+def serialize_record_view(claim: dict[str, Any], record: dict[str, Any] | None) -> dict[str, Any]:
+    """GET /claims/{claimId}/record 본문. claimStatus는 Claim에서만, 나머지는 Record에서만 읽는다(BE-REC-05)."""
+    return {
+        "record": serialize_record(record),
+        "claimStatus": claim.get("status"),
+        "delivered": record is not None and bool(record.get("deliveredAt")),
+        "photoStatus": (record.get("photoStatus") or "NONE") if record else "NONE",
+    }
+
+
 INBOX_FIELDS = ("itemId", "planId", "planTitle", "claimerNickname", "hasPhoto", "read", "createdAt", "reply")
 
 
