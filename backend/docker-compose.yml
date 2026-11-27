@@ -74,8 +74,6 @@ services:
       # 로컬 전용 테스트 훅(강제 종료 주입). STAGE=local에서만 동작한다.
       AGENT_TEST_HOOKS: ${AGENT_TEST_HOOKS:-false}
       AGENT_CRASH_AT: ${AGENT_CRASH_AT:-}
-      FAULT_INJECT: ${FAULT_INJECT:-}
-      FAULT_INJECT_ALLOWED: "true"
       LLM_BASE_URL: ${LLM_BASE_URL:-}
       LLM_MODEL: ${LLM_MODEL:-}
       LLM_REGION: ${LLM_REGION:-}

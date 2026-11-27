@@ -195,6 +195,21 @@
 
 - **프론트 연동 S5**: `WebBucketName`, `DistributionId`, `DistributionDomain` 전달 → 프론트가 빌드 산출물을 sync하고 캐시를 무효화한다.
 
+#### 7단계 구현 현황 (2026-11-27, 브랜치 `feat/be-7-completion`, `main` `17486ed` 기준)
+
+| 작업 | 구현 | 단위 | 로컬 통합 | cfn-lint | 상태 |
+|---|---|---|---|---|---|
+| 웹 버킷 + CloudFront(OAC, SPA 403/404), CORS에 배포 도메인 | 완료 | 완료(`test_web_infra.py`) | 해당 없음 | 통과 | **실제 AWS 배포 대기** |
+| 알람(API 5xx, Lambda Errors/Duration), 대시보드 | 완료(`PhotoDLQNotEmpty`·`AgentTokensAlarm`은 기존) | 완료 | 해당 없음 | 통과 | 임계값 **승인 대기**(BE-Q130), 배포 대기. AI 세션 상태 분포는 지표로 낼 수 없어 근사 위젯과 `report.py`로 대체 |
+| AWS Budgets | 완료(조건부) | 완료 | 해당 없음 | 통과 | 금액·수신자 **결정 대기**(BE-Q131) |
+| `scripts/deploy_web.py` | 완료(dry-run 기본) | 완료(moto) | 해당 없음 | — | 실제 실행은 AWS 담당 |
+| `scripts/seed.py` | 완료 | 완료(moto) | 완료(Floci에서 시드·재실행·reset·clean) | — | `demo` 스택 실행 대기 |
+| `scripts/report.py` | 완료 | 완료(손계산 대조) | 완료(Floci 읽기) | — | 시범 운영 데이터 대기 |
+| `demo` 환경 배포 → T1–T22 | — | — | — | — | **실제 AWS 배포·인수 판정 대기** |
+| 시연 리허설 | — | — | — | — | 대기 |
+
+4단계 묶음 B(`GET /claims/{claimId}/record`)는 같은 브랜치에서 구현했고(BE-Q46 권장안) §3.4 503 계약 변경은 프론트엔드 담당 승인 대기다.
+
 ## 7.4 프론트엔드 단계별 계획
 
 순서는 §7.4을 따른다. 각 단계는 MSW 목업으로 동작하는 상태까지 완성한다.

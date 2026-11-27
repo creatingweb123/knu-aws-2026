@@ -207,6 +207,8 @@
 
 ### 묶음 B: 방문 기록 조회 `GET /claims/{claimId}/record` (BE-Q46, A 커밋 뒤 별도 커밋)
 
+> **2026-11-27 구현 현황**: 13·14(스냅샷 읽기 헬퍼, 기록 조회)는 `feat/be-7-completion`의 `a8afb61`에 구현했다(`f3626c0`은 저장소에 없어 이 문서 기준으로 새로 작성). 단위 테스트 `tests/unit/test_get_record.py`, 로컬 사례(`test_local_photo.py`), AWS 판정 테스트(`test_authz.py`·`test_concurrency.py`) 코드를 작성했다. **20(§3.4 계약 변경)은 프론트엔드 담당 승인 대기**, 17(AWS 판정)은 AWS 담당 실행 대기다. 아래 체크박스는 작성 당시 그대로 둔다.
+
 - [ ] 13. 스냅샷 읽기 헬퍼 (`common/ddb.py`)
   - 선행: 12
   - [ ] 13.1 `transact_get_with_retry` 추가

@@ -248,7 +248,7 @@
 
 ### 묶음 B 의존 (4단계 `GET /claims/{claimId}/record`가 브랜치에 들어온 뒤)
 
-- [ ] 17. `GET /record` 폴링 확인 **[대기: BE-Q46 승인과 묶음 B 병합 뒤]** (2026-11-26 현재 보류)
+- [~] 17. `GET /record` 폴링 확인 **[2026-11-27: `feat/be-7-completion`에 묶음 B 구현, 로컬 폴링 사례 4건 통과(`tests/local/test_local_photo.py`). BE-Q46 계약 승인과 AWS 판정은 대기]** (이전 기록: 2026-11-26 보류)
   - 선행: 16, BE-Q46 결정(승인 → 묶음 B 병합, 또는 거부 → 대안 A로 교체된 묶음 B 병합)
   - [ ] 17.1 PR base를 묶음 B가 들어간 브랜치로 옮긴다(rebase 없이 base 변경 또는 병합 커밋, 사용자 확인).
   - [ ] 17.2 로컬 `test_record_polling_view`와 AWS 같은 이름 사례: 업로드 흐름에서 `GET /record`의 `photoStatus`(`UPLOAD_PENDING` → `PROCESSING`/`FAILED`/`READY`)·`delivered`·`claimStatus`를 확인한다. 묶음 B 전에는 이 사례가 `ROUTES`에 경로가 없어 skip(사유 출력)되는지 지금(작업 11.3·13.2)도 확인해 둔다.

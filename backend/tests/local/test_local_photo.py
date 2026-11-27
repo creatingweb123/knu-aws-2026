@@ -302,3 +302,70 @@ def test_redrive_to_dlq_marks_retry_exhausted():
 @pytest.mark.parametrize("item", sorted(LOCAL_UNSUPPORTED))
 def test_local_unsupported(item):
     pytest.skip(f"로컬 미지원({item}): {LOCAL_UNSUPPORTED[item]}")
+
+
+# ------------------------------------------------------------------ GET /claims/{claimId}/record 폴링 (작업 A·B-1)
+
+ORDER = ["NONE", "UPLOAD_PENDING", "PROCESSING", "READY"]
+
+
+def poll_record(token: str, cid: str, pred, timeout: float = 20.0) -> tuple[dict[str, Any], list[str]]:
+    """GET /record를 200ms 간격으로 부르며 관측한 photoStatus 순서와 마지막 본문을 돌려준다."""
+    seen: list[str] = []
+    deadline = time.monotonic() + timeout
+    body: dict[str, Any] = {}
+    while time.monotonic() < deadline:
+        status, _, body = call("GET", f"/claims/{cid}/record", token=token)
+        assert status == 200, body
+        assert set(body) == {"record", "claimStatus", "delivered", "photoStatus"}
+        if not seen or seen[-1] != body["photoStatus"]:
+            seen.append(body["photoStatus"])
+        if pred(body):
+            return body, seen
+        time.sleep(0.2)
+    raise AssertionError(f"timeout: seen={seen}")
+
+
+def test_poll_record_no_record_and_authorization():
+    owner, _, runner, pid, cid = claimed()
+    status, _, body = call("GET", f"/claims/{cid}/record", token=runner)
+    assert (status, body) == (200, {"record": None, "claimStatus": "ACTIVE", "delivered": False, "photoStatus": "NONE"})
+    assert call("GET", f"/claims/{cid}/record", token=owner)[0] == 403  # 계획자도 실행자가 아니다(BE-Q1)
+    assert call("GET", f"/claims/{cid}/record", token=dev_token(f"u-{uuid.uuid4()}", "민준"))[0] == 403
+    assert call("GET", "/claims/clm_nonexistent/record", token=runner)[0] == 404
+    assert call("GET", f"/claims/{cid}/record")[0] == 401
+
+
+def test_poll_record_photo_flow_reaches_ready_and_completed():
+    _, _, runner, pid, cid = claimed()
+    data = jpeg_with_gps()
+    upload = put_record_with_photo(runner, cid, data)
+    status, _, first = call("GET", f"/claims/{cid}/record", token=runner)
+    assert first["photoStatus"] == "UPLOAD_PENDING" and first["record"]["photoStatus"] == "UPLOAD_PENDING" and first["delivered"] is False
+    assert "photoKey" not in str(first) and "processedKey" not in str(first)
+    assert put(upload, data) == 200
+    body, seen = poll_record(runner, cid, lambda b: b["delivered"])
+    assert body["photoStatus"] == "READY" and body["claimStatus"] == "COMPLETED" and body["record"]["deliveredAt"]
+    assert seen == [s for s in ORDER if s in seen] and seen[0] == "UPLOAD_PENDING" and seen[-1] == "READY"  # 되돌아가지 않는다
+
+
+def test_poll_record_failed_then_text_only_is_discarded():
+    _, _, runner, pid, cid = claimed()
+    data = b"\xff\xd8\xff not really a jpeg" * 10
+    assert put(put_record_with_photo(runner, cid, data), data) == 200
+    body, _ = poll_record(runner, cid, lambda b: b["photoStatus"] == "FAILED")
+    assert body["delivered"] is False and body["claimStatus"] == "ACTIVE"
+    status, _, done = call("POST", f"/claims/{cid}/complete", token=runner, body={"mode": "TEXT_ONLY"})
+    assert status == 200 and done["hasPhoto"] is False
+    _, _, after = call("GET", f"/claims/{cid}/record", token=runner)
+    assert after["claimStatus"] == "COMPLETED" and after["delivered"] is True and after["photoStatus"] == "DISCARDED"
+
+
+def test_poll_record_abandon_keeps_readable_and_text_only_without_photo():
+    _, _, runner, pid, cid = claimed()
+    call("PUT", f"/claims/{cid}/record", token=runner, body={"letter": "글만"})
+    status, _, body = call("GET", f"/claims/{cid}/record", token=runner)
+    assert body["photoStatus"] == "NONE" and body["record"]["letter"] == "글만"
+    assert call("POST", f"/claims/{cid}/abandon", token=runner)[0] == 200
+    _, _, after = call("GET", f"/claims/{cid}/record", token=runner)
+    assert after["claimStatus"] == "ABANDONED" and after["delivered"] is False

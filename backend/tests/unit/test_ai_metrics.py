@@ -313,3 +313,9 @@ def test_agent_session_privacy_answer_not_a_source(agent_env, monkeypatch):
     m, item = _agent_plan(agent_env, view, sid, A_STORY)
     assert item["answers"][0]["privacy"] is True and m["privacyDetected"] >= 1
     assert ai_metrics.answer_sources(item["answers"]) == []
+
+
+def test_session_metrics_never_carry_internal_llm_attributes():
+    """6a design §15.1·정확성 13: llmMode 같은 AiSession 내부 속성은 Plan metrics에 넣지 않는다(승인 없이 응답·저장 모양을 바꾸지 않는다)."""
+    m = ai_metrics.session_metrics(session(llmMode="fake", llmProviderLabel="x"), final(), STORY, "2026-11-26T03:00:00.000Z")
+    assert "llmMode" not in m and "llmProviderLabel" not in m

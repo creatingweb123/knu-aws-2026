@@ -2,13 +2,14 @@ AWSTemplateFormatVersion: "2010-09-09"
 Transform: AWS::Serverless-2016-10-31
 Description: >-
   이어온 하루 백엔드 1–5단계와 6a·6b단계 (HttpApi + JWT authorizer, Cognito, HaruTable, /me, /plans, /claims, /inbox,
-  사진 파이프라인, AI 하루 카드 /ai/card-sessions, 레벨 0과 6b 에이전트·체크포인트 테이블). CloudFront·웹 버킷은 이후 단계에서 추가한다.
+  사진 파이프라인, AI 하루 카드 /ai/card-sessions, 레벨 0과 6b 에이전트·체크포인트 테이블)와 7단계(웹 버킷 + CloudFront OAC,
+  CloudWatch 알람·대시보드, 선택 AWS Budgets).
 
 Parameters:
   AllowedOrigins:
     Type: CommaDelimitedList
     Default: http://localhost:5173
-    Description: API CORS 허용 Origin. CloudFront 도메인은 7단계에서 추가한다(BE-INFRA-03). 사진 버킷 CORS도 같은 값을 쓴다.
+    Description: API CORS 허용 Origin(로컬 개발 등). 이 스택의 CloudFront 도메인(https://<DistributionDomain>)은 템플릿이 자동으로 덧붙인다(BE-INFRA-03). 사진 버킷 CORS도 같은 값을 쓴다.
   Stage:
     Type: String
     AllowedValues: [dev, demo]
@@ -91,6 +92,42 @@ Parameters:
   AiDailySessionLimit:
     Type: String
     Default: "10"
+  AiMaskBeforeSend:
+    Type: String
+    AllowedValues: ["false", "true"]
+    Default: "false"
+    Description: 사연·답변을 모델로 보내기 전에 전화·이메일·주민번호·동호수를 가릴지(BE-Q10). 미결 정책이라 false를 유지한다. 승인 전에는 바꾸지 않는다.
+
+  # --- 7단계 알람 임계값. 명세에 값이 없어 **임시값**이다(BE-Q130). 값은 dev 부하 관측 뒤 AWS 담당·팀이 정한다.
+  AlarmApi5xxThreshold:
+    Type: Number
+    Default: 5
+    Description: HTTP API 5xx 5분 합계가 이 값보다 크면 알람(임시값, BE-Q130).
+  AlarmLambdaErrorsThreshold:
+    Type: Number
+    Default: 1
+    Description: 모든 Lambda 함수의 Errors 5분 합계가 이 값 이상이면 알람(임시값, BE-Q130). 사진 처리 재시도 오류도 포함한다.
+  AlarmApiLambdaDurationMs:
+    Type: Number
+    Default: 8000
+    Description: Me·Plans·Claims·Inbox 함수 Duration p95 상한(기본 타임아웃 10초의 80%, 임시값, BE-Q130).
+  AlarmAiLambdaDurationMs:
+    Type: Number
+    Default: 22000
+    Description: AiCardFunction Duration p95 상한(타임아웃 27초의 약 80%, 임시값, BE-Q130).
+  AlarmPhotoLambdaDurationMs:
+    Type: Number
+    Default: 24000
+    Description: PhotoProcessorFunction Duration p95 상한(타임아웃 30초의 80%, 임시값, BE-Q130).
+  # --- AWS Budgets 월 비용 알림(BE-OBS-02). 금액과 수신자는 코드에 넣지 않는다. 둘 다 채울 때만 만든다(BE-Q131).
+  BudgetMonthlyUsd:
+    Type: Number
+    Default: 0
+    Description: 월 예산(USD). 0이면 Budget을 만들지 않는다. 금액은 AWS 담당·팀이 정한다(BE-Q131).
+  BudgetNotificationEmail:
+    Type: String
+    Default: ""
+    Description: 예산 알림 수신 이메일. 비우면 Budget을 만들지 않는다. samconfig나 --parameter-overrides로만 넣고 저장소에 올리지 않는다(BE-Q131).
 
 Conditions:
   IsDev: !Equals [!Ref Stage, dev]
@@ -99,6 +136,9 @@ Conditions:
   # 5단계 사진 장애 주입(BE-Q59). FakeAllowed와 같은 조건이다.
   FaultAllowed: !And [!Condition IsDev, !Equals [!Ref "AWS::StackName", haru-dev]]
   UseIfNoneMatch: !Equals [!Ref UploadIfNoneMatch, "true"]
+  CreateBudget: !And
+    - !Not [!Equals [!Ref BudgetNotificationEmail, ""]]
+    - !Not [!Equals [!Ref BudgetMonthlyUsd, 0]]
   HasLlmKeyParam: !Not [!Equals [!Ref LlmApiKeyParam, ""]]
   LlmIsFake: !Equals [!Ref LlmProvider, fake]
   HasLlmRegion: !Not [!Equals [!Ref LlmRegion, ""]]
@@ -216,7 +256,7 @@ Resources:
               audience:
                 - !Ref UserPoolClient
       CorsConfiguration:
-        AllowOrigins: !Ref AllowedOrigins
+        AllowOrigins: !Split [",", !Join [",", [!Join [",", !Ref AllowedOrigins], !Sub "https://${WebDistribution.DomainName}"]]]
         AllowHeaders: [Authorization, Content-Type, Idempotency-Key]
         AllowMethods: [GET, POST, PUT, OPTIONS]
       # AI 경로 스로틀(BE-Q82 임시값, design §19.2). 초과 응답 429 {"message":"Too Many Requests"}는 계약 에러 형식이 아니다(BE-Q92).
@@ -298,6 +338,9 @@ Resources:
         AbandonClaim:
           Type: HttpApi
           Properties: { ApiId: !Ref HttpApi, Path: "/claims/{claimId}/abandon", Method: POST }
+        GetRecord: # TransactGetItems는 GetItem 권한으로 실행된다(BE-Q46 권장안, 계약 변경 승인 대기)
+          Type: HttpApi
+          Properties: { ApiId: !Ref HttpApi, Path: "/claims/{claimId}/record", Method: GET }
         PutRecord:
           Type: HttpApi
           Properties: { ApiId: !Ref HttpApi, Path: "/claims/{claimId}/record", Method: PUT }
@@ -342,6 +385,7 @@ Resources:
           FAULT_INJECT: !If [FakeAllowed, !Ref AiFaultInject, ""]
           FAULT_INJECT_ALLOWED: !If [FakeAllowed, "true", "false"]
           AI_DAILY_SESSION_LIMIT: !Ref AiDailySessionLimit
+          AI_MASK_BEFORE_SEND: !Ref AiMaskBeforeSend
           # AI 함수 전용 SDK 설정(BE-Q85). 다른 함수는 기본값 그대로다(BE-Q48).
           AI_SDK_CONNECT_TIMEOUT_S: "1"
           AI_SDK_READ_TIMEOUT_S: "2"
@@ -489,7 +533,7 @@ Resources:
           - ServerSideEncryptionByDefault: { SSEAlgorithm: AES256 }
       CorsConfiguration:
         CorsRules:
-          - AllowedOrigins: !Ref AllowedOrigins
+          - AllowedOrigins: !Split [",", !Join [",", [!Join [",", !Ref AllowedOrigins], !Sub "https://${WebDistribution.DomainName}"]]]
             AllowedMethods: [PUT, GET]
             AllowedHeaders: !If [UseIfNoneMatch, [Content-Type, If-None-Match], [Content-Type]]
             MaxAge: 3000
@@ -622,6 +666,277 @@ Resources:
       # UserPool → 함수 → UserPool 순환 참조를 피하려고 와일드카드를 쓴다(design.md).
       SourceArn: !Sub arn:${AWS::Partition}:cognito-idp:${AWS::Region}:${AWS::AccountId}:userpool/*
 
+  # ------------------------------------------------------------------ 7단계 웹 호스팅 (BE-INFRA-02·03·04)
+  # 순환 참조가 없는 방향: WebBucket ← WebDistribution(OAC) ← WebBucketPolicy, HttpApi·PhotoBucket CORS → WebDistribution.
+  # 배포 도메인은 Distribution이 만든 뒤에만 알 수 있어 AllowedOrigins 파라미터에 넣을 수 없다. 템플릿이 덧붙인다.
+  WebBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub ${AWS::StackName}-web-${AWS::AccountId}
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        IgnorePublicAcls: true
+        BlockPublicPolicy: true
+        RestrictPublicBuckets: true
+      OwnershipControls:
+        Rules: [{ ObjectOwnership: BucketOwnerEnforced }]
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault: { SSEAlgorithm: AES256 }
+      LifecycleConfiguration:
+        Rules:
+          - Id: AbortIncompleteUploads
+            Status: Enabled
+            AbortIncompleteMultipartUpload: { DaysAfterInitiation: 1 }
+
+  WebOriginAccessControl:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub ${AWS::StackName}-web-oac
+        Description: 웹 버킷 전용 OAC(SigV4). 버킷은 비공개다.
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  WebDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        Comment: !Sub ${AWS::StackName} 웹(SPA)
+        DefaultRootObject: index.html
+        HttpVersion: http2and3
+        IPV6Enabled: true
+        PriceClass: PriceClass_200  # 아시아 포함, 북미·유럽. 임시값(BE-Q132)
+        Origins:
+          - Id: web-s3
+            DomainName: !GetAtt WebBucket.RegionalDomainName
+            S3OriginConfig: { OriginAccessIdentity: "" }
+            OriginAccessControlId: !GetAtt WebOriginAccessControl.Id
+        DefaultCacheBehavior:
+          TargetOriginId: web-s3
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods: [GET, HEAD]
+          CachedMethods: [GET, HEAD]
+          Compress: true
+          # Managed-CachingDisabled: index.html과 루트 파일은 항상 원본 확인(배포 직후 새 해시 파일명을 바로 받게 한다)
+          CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
+          # Managed-SecurityHeadersPolicy
+          ResponseHeadersPolicyId: 67f7725c-6f97-48c1-86a6-d8d6b5fc7a49
+        CacheBehaviors:
+          - PathPattern: /assets/*
+            TargetOriginId: web-s3
+            ViewerProtocolPolicy: redirect-to-https
+            AllowedMethods: [GET, HEAD]
+            CachedMethods: [GET, HEAD]
+            Compress: true
+            # Managed-CachingOptimized: 해시 파일명 정적 자산을 오래 캐시한다(원본 Cache-Control 범위 안에서)
+            CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+            ResponseHeadersPolicyId: 67f7725c-6f97-48c1-86a6-d8d6b5fc7a49
+        # SPA 라우팅: 비공개 버킷에서 없는 객체는 403(ListBucket 권한 없음)이나 404다. 둘 다 index.html(200)로 돌려준다.
+        CustomErrorResponses:
+          - { ErrorCode: 403, ResponseCode: 200, ResponsePagePath: /index.html, ErrorCachingMinTTL: 0 }
+          - { ErrorCode: 404, ResponseCode: 200, ResponsePagePath: /index.html, ErrorCachingMinTTL: 0 }
+        ViewerCertificate: { CloudFrontDefaultCertificate: true }
+
+  WebBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref WebBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: "*"
+            Action: s3:*
+            Resource: [!GetAtt WebBucket.Arn, !Sub "${WebBucket.Arn}/*"]
+            Condition: { Bool: { "aws:SecureTransport": "false" } }
+          - Sid: AllowCloudFrontRead
+            Effect: Allow
+            Principal: { Service: cloudfront.amazonaws.com }
+            Action: s3:GetObject
+            Resource: !Sub "${WebBucket.Arn}/*"
+            Condition:
+              StringEquals:
+                "AWS:SourceArn": !Sub arn:${AWS::Partition}:cloudfront::${AWS::AccountId}:distribution/${WebDistribution}
+
+  # ------------------------------------------------------------------ 7단계 알람 (BE-OBS-02)
+  # PhotoDLQNotEmpty·AgentTokensAlarm은 위에 이미 있다. 알림 대상(SNS)은 두지 않는다(BE-Q62). 임계값은 파라미터(임시값, BE-Q130).
+  HttpApi5xxAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: HTTP API 5xx 5분 합계가 AlarmApi5xxThreshold를 넘었다(임시 임계값, BE-Q130).
+      Namespace: AWS/ApiGateway
+      MetricName: 5xx
+      Dimensions: [{ Name: ApiId, Value: !Ref HttpApi }]
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: !Ref AlarmApi5xxThreshold
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+
+  LambdaErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: 모든 Lambda 함수의 Errors 5분 합계가 AlarmLambdaErrorsThreshold 이상이다(임시 임계값, BE-Q130).
+      Threshold: !Ref AlarmLambdaErrorsThreshold
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      EvaluationPeriods: 1
+      TreatMissingData: notBreaching
+      Metrics:
+        - Id: m1
+          ReturnData: false
+          MetricStat:
+            Metric: { Namespace: AWS/Lambda, MetricName: Errors, Dimensions: [{ Name: FunctionName, Value: !Ref MeFunction }] }
+            Period: 300
+            Stat: Sum
+        - Id: m2
+          ReturnData: false
+          MetricStat:
+            Metric: { Namespace: AWS/Lambda, MetricName: Errors, Dimensions: [{ Name: FunctionName, Value: !Ref PlansFunction }] }
+            Period: 300
+            Stat: Sum
+        - Id: m3
+          ReturnData: false
+          MetricStat:
+            Metric: { Namespace: AWS/Lambda, MetricName: Errors, Dimensions: [{ Name: FunctionName, Value: !Ref ClaimsFunction }] }
+            Period: 300
+            Stat: Sum
+        - Id: m4
+          ReturnData: false
+          MetricStat:
+            Metric: { Namespace: AWS/Lambda, MetricName: Errors, Dimensions: [{ Name: FunctionName, Value: !Ref InboxFunction }] }
+            Period: 300
+            Stat: Sum
+        - Id: m5
+          ReturnData: false
+          MetricStat:
+            Metric: { Namespace: AWS/Lambda, MetricName: Errors, Dimensions: [{ Name: FunctionName, Value: !Ref AiCardFunction }] }
+            Period: 300
+            Stat: Sum
+        - Id: m6
+          ReturnData: false
+          MetricStat:
+            Metric: { Namespace: AWS/Lambda, MetricName: Errors, Dimensions: [{ Name: FunctionName, Value: !Ref PhotoProcessorFunction }] }
+            Period: 300
+            Stat: Sum
+        - Id: m7
+          ReturnData: false
+          MetricStat:
+            Metric: { Namespace: AWS/Lambda, MetricName: Errors, Dimensions: [{ Name: FunctionName, Value: !Ref PreSignUpFunction }] }
+            Period: 300
+            Stat: Sum
+        - { Id: total, Expression: "SUM(METRICS())", Label: Lambda Errors 합계, ReturnData: true }
+
+  ApiLambdaDurationAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: Me·Plans·Claims·Inbox 함수 중 하나의 Duration p95가 AlarmApiLambdaDurationMs를 넘었다(임시 임계값, BE-Q130).
+      Threshold: !Ref AlarmApiLambdaDurationMs
+      ComparisonOperator: GreaterThanThreshold
+      EvaluationPeriods: 1
+      TreatMissingData: notBreaching
+      Metrics:
+        - Id: m1
+          ReturnData: false
+          MetricStat:
+            Metric: { Namespace: AWS/Lambda, MetricName: Duration, Dimensions: [{ Name: FunctionName, Value: !Ref MeFunction }] }
+            Period: 300
+            Stat: p95
+        - Id: m2
+          ReturnData: false
+          MetricStat:
+            Metric: { Namespace: AWS/Lambda, MetricName: Duration, Dimensions: [{ Name: FunctionName, Value: !Ref PlansFunction }] }
+            Period: 300
+            Stat: p95
+        - Id: m3
+          ReturnData: false
+          MetricStat:
+            Metric: { Namespace: AWS/Lambda, MetricName: Duration, Dimensions: [{ Name: FunctionName, Value: !Ref ClaimsFunction }] }
+            Period: 300
+            Stat: p95
+        - Id: m4
+          ReturnData: false
+          MetricStat:
+            Metric: { Namespace: AWS/Lambda, MetricName: Duration, Dimensions: [{ Name: FunctionName, Value: !Ref InboxFunction }] }
+            Period: 300
+            Stat: p95
+        - { Id: worst, Expression: "MAX(METRICS())", Label: API 함수 Duration p95 최대, ReturnData: true }
+
+  AiCardLambdaDurationAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: AiCardFunction Duration p95가 AlarmAiLambdaDurationMs를 넘었다(타임아웃 27초, 임시 임계값, BE-Q130).
+      Namespace: AWS/Lambda
+      MetricName: Duration
+      Dimensions: [{ Name: FunctionName, Value: !Ref AiCardFunction }]
+      ExtendedStatistic: p95
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: !Ref AlarmAiLambdaDurationMs
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+
+  PhotoLambdaDurationAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: PhotoProcessorFunction Duration p95가 AlarmPhotoLambdaDurationMs를 넘었다(타임아웃 30초, 임시 임계값, BE-Q130).
+      Namespace: AWS/Lambda
+      MetricName: Duration
+      Dimensions: [{ Name: FunctionName, Value: !Ref PhotoProcessorFunction }]
+      ExtendedStatistic: p95
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: !Ref AlarmPhotoLambdaDurationMs
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+
+  # ------------------------------------------------------------------ 7단계 대시보드 (BE-OBS-03)
+  # 위젯 지표는 common/metrics.py·handlers/ai_agent.py가 실제로 내는 EMF 이름과 AWS 기본 지표만 쓴다(tests/unit/test_dashboard.py가 확인).
+  OpsDashboard:
+    Type: AWS::CloudWatch::Dashboard
+    Properties:
+      DashboardName: !Sub ${AWS::StackName}-ops
+      DashboardBody: !Sub |
+        {"widgets":[
+          {"type":"text","x":0,"y":0,"width":24,"height":4,"properties":{"markdown":"**운영 대시보드 (BE-OBS-03)** — 값은 `Haru` 네임스페이스 EMF 지표와 AWS 기본 지표다. 한계: (1) **AI 세션 상태 분포**(ASKING·WORKING·READY·FAILED 개수)는 CloudWatch 지표로 내지 않는다. 아래 '세션 결과(근사)'는 턴 수·질문·degraded·실패 지표로 본 근사이고, 정확한 분포는 `scripts/report.py`(DynamoDB 저장 값)로 본다. (2) **AI 모델 호출 수·토큰**은 에이전트 모드(AGENT_MODE=agent)에서만 지표가 나온다. (3) **이어받기 충돌**은 409 ALREADY_CLAIMED 수(`ClaimConflict`)다. (4) EMF 지표에 차원이 없어 모드·경로별 분리는 할 수 없다."}},
+          {"type":"metric","x":0,"y":4,"width":12,"height":6,"properties":{"title":"API 요청 수와 오류(합계)","region":"${AWS::Region}","view":"timeSeries","stacked":false,"period":300,"metrics":[["AWS/ApiGateway","Count","ApiId","${HttpApi}",{"stat":"Sum","label":"요청"}],["AWS/ApiGateway","4xx","ApiId","${HttpApi}",{"stat":"Sum","label":"4xx"}],["AWS/ApiGateway","5xx","ApiId","${HttpApi}",{"stat":"Sum","label":"5xx"}]]}},
+          {"type":"metric","x":12,"y":4,"width":12,"height":6,"properties":{"title":"API 5xx 오류율(%)","region":"${AWS::Region}","view":"timeSeries","stacked":false,"period":300,"metrics":[["AWS/ApiGateway","Count","ApiId","${HttpApi}",{"stat":"Sum","id":"m1","visible":false}],["AWS/ApiGateway","5xx","ApiId","${HttpApi}",{"stat":"Sum","id":"m2","visible":false}],[{"expression":"100*m2/m1","label":"5xx %","id":"e1"}]],"yAxis":{"left":{"min":0}}}},
+          {"type":"metric","x":0,"y":10,"width":12,"height":6,"properties":{"title":"API 지연(p95, ms)","region":"${AWS::Region}","view":"timeSeries","stacked":false,"period":300,"metrics":[["AWS/ApiGateway","Latency","ApiId","${HttpApi}",{"stat":"p95","label":"Latency"}],["AWS/ApiGateway","IntegrationLatency","ApiId","${HttpApi}",{"stat":"p95","label":"IntegrationLatency"}]]}},
+          {"type":"metric","x":12,"y":10,"width":12,"height":6,"properties":{"title":"Lambda 호출 수","region":"${AWS::Region}","view":"timeSeries","stacked":false,"period":300,"metrics":[["AWS/Lambda","Invocations","FunctionName","${MeFunction}",{"stat":"Sum","label":"Me"}],["AWS/Lambda","Invocations","FunctionName","${PlansFunction}",{"stat":"Sum","label":"Plans"}],["AWS/Lambda","Invocations","FunctionName","${ClaimsFunction}",{"stat":"Sum","label":"Claims"}],["AWS/Lambda","Invocations","FunctionName","${InboxFunction}",{"stat":"Sum","label":"Inbox"}],["AWS/Lambda","Invocations","FunctionName","${AiCardFunction}",{"stat":"Sum","label":"AiCard"}],["AWS/Lambda","Invocations","FunctionName","${PhotoProcessorFunction}",{"stat":"Sum","label":"PhotoProcessor"}],["AWS/Lambda","Invocations","FunctionName","${PreSignUpFunction}",{"stat":"Sum","label":"PreSignUp"}]]}},
+          {"type":"metric","x":0,"y":16,"width":12,"height":6,"properties":{"title":"Lambda 오류","region":"${AWS::Region}","view":"timeSeries","stacked":false,"period":300,"metrics":[["AWS/Lambda","Errors","FunctionName","${MeFunction}",{"stat":"Sum","label":"Me"}],["AWS/Lambda","Errors","FunctionName","${PlansFunction}",{"stat":"Sum","label":"Plans"}],["AWS/Lambda","Errors","FunctionName","${ClaimsFunction}",{"stat":"Sum","label":"Claims"}],["AWS/Lambda","Errors","FunctionName","${InboxFunction}",{"stat":"Sum","label":"Inbox"}],["AWS/Lambda","Errors","FunctionName","${AiCardFunction}",{"stat":"Sum","label":"AiCard"}],["AWS/Lambda","Errors","FunctionName","${PhotoProcessorFunction}",{"stat":"Sum","label":"PhotoProcessor"}],["AWS/Lambda","Errors","FunctionName","${PreSignUpFunction}",{"stat":"Sum","label":"PreSignUp"}]]}},
+          {"type":"metric","x":12,"y":16,"width":12,"height":6,"properties":{"title":"Lambda 응답 시간(p95, ms)","region":"${AWS::Region}","view":"timeSeries","stacked":false,"period":300,"metrics":[["AWS/Lambda","Duration","FunctionName","${MeFunction}",{"stat":"p95","label":"Me"}],["AWS/Lambda","Duration","FunctionName","${PlansFunction}",{"stat":"p95","label":"Plans"}],["AWS/Lambda","Duration","FunctionName","${ClaimsFunction}",{"stat":"p95","label":"Claims"}],["AWS/Lambda","Duration","FunctionName","${InboxFunction}",{"stat":"p95","label":"Inbox"}],["AWS/Lambda","Duration","FunctionName","${AiCardFunction}",{"stat":"p95","label":"AiCard"}],["AWS/Lambda","Duration","FunctionName","${PhotoProcessorFunction}",{"stat":"p95","label":"PhotoProcessor"}],["AWS/Lambda","Duration","FunctionName","${PreSignUpFunction}",{"stat":"p95","label":"PreSignUp"}]]}},
+          {"type":"metric","x":0,"y":22,"width":12,"height":6,"properties":{"title":"이어받기·완료 정합성","region":"${AWS::Region}","view":"timeSeries","stacked":false,"period":300,"metrics":[["Haru","ClaimConflict",{"stat":"Sum","label":"이어받기 충돌(409)"}],["Haru","CompleteDuplicate",{"stat":"Sum","label":"중복 완료 요청(멱등 응답)"}],["Haru","StaleRequestRejected",{"stat":"Sum","label":"종료된 이어받기 요청 거절"}]]}},
+          {"type":"metric","x":12,"y":22,"width":12,"height":6,"properties":{"title":"사진 처리 시간(ms)·실패","region":"${AWS::Region}","view":"timeSeries","stacked":false,"period":300,"metrics":[["Haru","PhotoProcessingMs",{"stat":"Average","label":"평균 ms"}],["Haru","PhotoProcessingMs",{"stat":"p95","label":"p95 ms"}],["Haru","PhotoFailed",{"stat":"Sum","label":"실패 수","yAxis":"right"}]]}},
+          {"type":"metric","x":0,"y":28,"width":12,"height":6,"properties":{"title":"사진 DLQ·큐 깊이","region":"${AWS::Region}","view":"timeSeries","stacked":false,"period":300,"metrics":[["AWS/SQS","ApproximateNumberOfMessagesVisible","QueueName","${PhotoDLQ.QueueName}",{"stat":"Maximum","label":"DLQ"}],["AWS/SQS","ApproximateNumberOfMessagesVisible","QueueName","${PhotoQueue.QueueName}",{"stat":"Maximum","label":"처리 대기 큐"}]]}},
+          {"type":"metric","x":12,"y":28,"width":12,"height":6,"properties":{"title":"AI 응답 시간(ms)·오류","region":"${AWS::Region}","view":"timeSeries","stacked":false,"period":300,"metrics":[["Haru","AiLatencyMs",{"stat":"p50","label":"p50 ms"}],["Haru","AiLatencyMs",{"stat":"p95","label":"p95 ms"}],["Haru","AiFailure",{"stat":"Sum","label":"AiFailure","yAxis":"right"}],["Haru","AiInvalidOutput",{"stat":"Sum","label":"AiInvalidOutput","yAxis":"right"}]]}},
+          {"type":"metric","x":0,"y":34,"width":12,"height":6,"properties":{"title":"에이전트 턴 시간(ms)","region":"${AWS::Region}","view":"timeSeries","stacked":false,"period":300,"metrics":[["Haru","AgentTurnMs",{"stat":"p50","label":"p50"}],["Haru","AgentTurnMs",{"stat":"p95","label":"p95"}]]}},
+          {"type":"metric","x":12,"y":34,"width":12,"height":6,"properties":{"title":"AI 모델 호출 수·토큰(에이전트 모드)","region":"${AWS::Region}","view":"timeSeries","stacked":false,"period":300,"metrics":[["Haru","AgentModelCalls",{"stat":"Sum","label":"모델 호출 수"}],["Haru","AgentTokens",{"stat":"Sum","label":"토큰","yAxis":"right"}]]}},
+          {"type":"metric","x":0,"y":40,"width":12,"height":6,"properties":{"title":"에이전트 질문·자체 수정·게이트","region":"${AWS::Region}","view":"timeSeries","stacked":false,"period":300,"metrics":[["Haru","AgentQuestionsAsked",{"stat":"Sum","label":"질문 수"}],["Haru","AgentSelfRepairs",{"stat":"Sum","label":"자체 수정"}],["Haru","AgentGateRejected",{"stat":"Sum","label":"게이트 거부"}],["Haru","AgentDegraded",{"stat":"Sum","label":"degraded 종료"}]]}},
+          {"type":"metric","x":12,"y":40,"width":12,"height":6,"properties":{"title":"AI 세션 결과(근사, 정확한 분포는 report.py)","region":"${AWS::Region}","view":"timeSeries","stacked":false,"period":300,"metrics":[["Haru","AiLatencyMs",{"stat":"SampleCount","label":"완료된 AI 턴"}],["Haru","AgentQuestionsAsked",{"stat":"Sum","label":"질문으로 멈춤"}],["Haru","AgentDegraded",{"stat":"Sum","label":"degraded"}],["Haru","AiFailure",{"stat":"Sum","label":"실패"}]]}},
+          {"type":"metric","x":0,"y":46,"width":12,"height":6,"properties":{"title":"체크포인트 항목 크기(최대 bytes, 400KB 한도 감시)","region":"${AWS::Region}","view":"timeSeries","stacked":false,"period":300,"metrics":[["Haru","AgentCheckpointBytes",{"stat":"Maximum","label":"최대"}]],"yAxis":{"left":{"min":0}}}}
+        ]}
+
+  # ------------------------------------------------------------------ AWS Budgets 월 비용 알림 (BE-OBS-02, BE-Q131)
+  # 계정 단위 비용이다(스택 태그 필터 없음). 금액·수신 이메일은 파라미터이고 둘 다 있을 때만 만든다.
+  MonthlyCostBudget:
+    Type: AWS::Budgets::Budget
+    Condition: CreateBudget
+    Properties:
+      Budget:
+        BudgetName: !Sub ${AWS::StackName}-monthly-cost
+        BudgetType: COST
+        TimeUnit: MONTHLY
+        BudgetLimit: { Amount: !Ref BudgetMonthlyUsd, Unit: USD }
+      NotificationsWithSubscribers:
+        - Notification: { NotificationType: ACTUAL, ComparisonOperator: GREATER_THAN, Threshold: 80, ThresholdType: PERCENTAGE }
+          Subscribers: [{ SubscriptionType: EMAIL, Address: !Ref BudgetNotificationEmail }]
+        - Notification: { NotificationType: FORECASTED, ComparisonOperator: GREATER_THAN, Threshold: 100, ThresholdType: PERCENTAGE }
+          Subscribers: [{ SubscriptionType: EMAIL, Address: !Ref BudgetNotificationEmail }]
+
 Outputs:
   ApiUrl:
     Description: HTTP API 주소 (스테이지 $default)
@@ -630,3 +945,12 @@ Outputs:
     Value: !Ref UserPool
   UserPoolClientId:
     Value: !Ref UserPoolClient
+  WebBucketName:
+    Description: 프론트엔드 빌드 산출물(dist/)을 올릴 비공개 S3 버킷. scripts/deploy_web.py가 쓴다.
+    Value: !Ref WebBucket
+  DistributionId:
+    Description: CloudFront 배포 ID(캐시 무효화용)
+    Value: !Ref WebDistribution
+  DistributionDomain:
+    Description: CloudFront 도메인(https://로 접속). API·사진 버킷 CORS에 자동으로 들어간다.
+    Value: !GetAtt WebDistribution.DomainName

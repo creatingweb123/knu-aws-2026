@@ -357,3 +357,8 @@ def test_poller_starts_when_local_with_queue(monkeypatch):
 
 def test_photo_replace_route_is_dispatched():
     assert "POST /claims/{claimId}/record/photo" in {rk for _, _, rk, _ in app._compile_routes(app.ROUTES)}
+
+
+def test_record_get_and_put_are_distinct_routes():
+    keys = {rk for _, _, rk, _ in app._compile_routes(app.ROUTES)}
+    assert {"GET /claims/{claimId}/record", "PUT /claims/{claimId}/record"} <= keys

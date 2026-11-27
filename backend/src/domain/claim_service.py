@@ -250,6 +250,17 @@ def _active_claim_checks(table: str, plan_id: str, claim_id: str) -> list[dict[s
     ]
 
 
+def get_record(claim_id: str, user: User) -> tuple[dict[str, Any], dict[str, Any] | None]:
+    """(Claim 항목, Record 항목 또는 None). 쓰기 없음. Claim·Record를 TransactGetItems 한 번의 스냅샷으로 읽는다
+    (BE-Q46 권장안). 없으면 404, 실행자가 아니면 403(트랜잭션 전에 낸다, BE-Q1)."""
+    lookup = _lookup(claim_id, user)
+    plan_id = lookup["planId"]
+    claim, record = ddb.transact_get_with_retry([_claim_key(plan_id, claim_id), _record_key(plan_id, claim_id)])
+    if claim is None:
+        raise ApiError(NOT_FOUND)
+    return claim, record
+
+
 def put_record(claim_id: str, user: User, letter: str, now: datetime | None = None) -> dict[str, Any]:
     """Current_Claim이고 ACTIVE일 때만 글을 쓴다. 완료 전까지 덮어쓸 수 있다. 사진 속성은 건드리지 않는다(3단계, BE-REC-03)."""
     return _write_record(claim_id, user, letter, None, now)[0]
