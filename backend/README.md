@@ -6,7 +6,7 @@ AWS 계정 없이 개발한 백엔드를 AWS 담당이 배포·판정할 수 있
 
 | 항목 | 상태 |
 |---|---|
-| 기준·브랜치 | 기준 브랜치 `main`, HEAD `17486ed`(2026-11-27). 병합 커밋: 4단계 `8f4c288`(`feat/be-4-inbox`), 5단계 `17486ed`(`feat/be-5-photo-pipeline`), Bedrock 전환 `bef1702`(전환 커밋 `2b9af27`, `feat/be-bedrock`), 프론트엔드 1–6단계와 7단계 인증 코드까지 `33aea80`. 1–3단계, 6a단계, 6b단계는 병합 커밋 없이 `main` 이력에 들어 있다 |
+| 기준·브랜치 | 기준 브랜치 `main`, 기준 커밋 `17486ed`(2026-11-27). 병합 커밋: 4단계 `8f4c288`(`feat/be-4-inbox`), 5단계 `17486ed`(`feat/be-5-photo-pipeline`), Bedrock 전환 `bef1702`(전환 커밋 `2b9af27`, `feat/be-bedrock`), 프론트엔드 1–6단계와 7단계 인증 코드까지 `33aea80`. 1–3단계, 6a단계, 6b단계는 병합 커밋 없이 `main` 이력에 들어 있다 |
 | 범위(1·2단계) | 인증, `GET /me`, 계획 생성·목록·상세, 멱등 키, 원문 충실도·개인정보 함수 |
 | 범위(3단계) | 이어받기·포기·완료 트랜잭션, 방문 기록 글 저장 최소 구현, `GET /me/claims`, EMF 지표 3종 |
 | 범위(4단계) | 수신함 4종(`GET /inbox`, `GET /inbox/{itemId}`, 읽음, 답장), `GET /me`의 `unreadInboxCount`, `InboxFunction`. 판정 실행표는 3.3절 |
@@ -21,10 +21,10 @@ AWS 계정 없이 개발한 백엔드를 AWS 담당이 배포·판정할 수 있
 | 로컬 환경(Docker) | 1–3단계 `pytest -m local tests/local` 16건 통과(2026-11-25, 5.1절). 4단계 23건 통과(5.4절, 기록 기준 브랜치 `feat/be-4-record-inbox`, 커밋 전 작업 트리). 5단계 28건 통과·8건 사유 skip(5.5절, `feat/be-5-photo-pipeline` `cfc65a7`). 6a 기존 16건과 새 7건 통과(10.1절). 6b 기본 `pipeline`에서 기존 23건, `agent` 모드에서 새 9건 통과(11.1절). 모두 `llmMode: fake`이고 판정 근거가 아니다(BE-Q15). 병합 뒤 `17486ed`에서 로컬 통합 테스트를 다시 돌린 기록은 없다(병합 뒤 미확인) |
 | AWS 판정(1–3단계) | T1·T13·T3·T4·T5·T6·T7·T14·T16과 가입 확인(1.5·14.4) **15건 모두 통과**(2026-11-25, `haru-dev`, AWS 담당). 첫 실행에서 T1 액세스 토큰 1건이 실패해 `common/auth.py`를 고친 뒤 다시 통과했다(3.1절). 기록 브랜치 `fix/be-3-aws-verify`(`e80b890`). `17486ed`에서는 병합 뒤 미확인 |
 | AWS 판정(4·5단계) | 4단계 T1 확장·T2·T17: 테스트 작성, 미실행(3.3절, 기준 브랜치 `feat/be-4-record-inbox`, 5.4절). 5단계 T8·T9·T10·T11·T15, 재업로드, IAM·CORS, 주입 차단: 테스트 작성과 수집만 하고 미실행(3.4절, `feat/be-5-photo-pipeline` `40a767f`, 12.1절). 둘 다 AWS 배포 전이다 |
-| AWS 판정(6a·6b·Bedrock) | 6a: `tests/integration/test_ai.py`를 `feat/be-6a-ai-pipeline` `7d518ed`에서 작성·수집만 했고 미실행(10.1·10.3절). 6b: T18–T22를 `feat/be-6b-ai-agent` `82275e7`에서 작성·수집만 했고 미실행(11.1·11.4절). `bedrock` 경로: `feat/be-bedrock` `2b9af27`은 AWS 통합 테스트를 바꾸지 않았고(단위 테스트 `test_ai_bedrock.py`만) 배포·판정은 미실행. 모두 AWS 배포 전이다 |
+| AWS 판정(6a·6b·Bedrock) | 6a: `tests/integration/test_ai.py`를 `feat/be-6a-ai-pipeline` `7d518ed`에서 작성·수집만 했고 미실행(10.1·10.3절). 6b: T18–T22를 `feat/be-6b-ai-agent` `82275e7`에서 작성·수집만 했고 미실행(11.1·11.4절). `bedrock` 경로: `feat/be-bedrock` `2b9af27`은 AWS 통합 테스트를 바꾸지 않았고(단위 테스트 `test_ai_bedrock.py`와 `test_template.py`만) 배포·판정은 미실행. 모두 AWS 배포 전이다 |
 | LLM 공급자 | 기본 `bedrock`(Amazon Bedrock Converse). `openai_compat`(AWS는 SSM SecureString 키, 로컬은 `.env`의 `LLM_API_KEY`)과 `fake`(AWS는 `Stage=dev`이고 스택 `haru-dev`일 때만, 로컬 `docker-compose.yml` 기본값)는 선택 경로로 유지한다. 운영 공급자·모델은 미결(BE-Q6)이다. 개발·검증용으로는 GPT-6 Luna 게이트웨이를 썼다(10.11절). 배포 전 확인은 10.2절 |
 | 다음 단계 조건 | T3–T7이 AWS에서 통과해야 4단계를 시작한다(docs/07 §7.2). **2026-11-25 충족**. 4단계 이후 PR마다 `tests/integration/test_concurrency.py`를 다시 돌린다(docs/07 §7.2). 4·5단계 병합(`8f4c288`, `17486ed`) 뒤 AWS 통합 회귀(`test_concurrency.py` 재실행, 10.8절 작업 22)는 미실행이다(아직 실행하지 않았다) |
-| PR | GitHub PR 상태(`gh pr list`, 2026-11-27 확인): #2 MERGED(`docs/monorepo-stage1-2-spec`), #1·#3–#8 CLOSED. CLOSED는 병합되지 않았다는 뜻이 아니다. 병합 여부는 `main`의 병합 커밋으로 본다: 4단계 `8f4c288`, 5단계 `17486ed`, Bedrock 전환 `bef1702`, 프론트엔드 `33aea80`. 1–3단계와 6a·6b단계는 병합 커밋 없이 이력에 있고, 6b단계 브랜치의 PR은 #1–#8 목록에 없다. 2026-11-26 기준 열림 상태는 8절에 있다 |
+| PR | GitHub PR 상태(`gh pr list`, 2026-11-27 확인): #2 MERGED(`docs/monorepo-stage1-2-spec`), #1·#3–#8 CLOSED. #1·#3–#8은 GitHub에서 CLOSED(병합 없이 닫힘) 상태다. 이 브랜치들의 내용은 `main`의 병합 커밋이나 이력으로 들어왔다: 4단계 `8f4c288`, 5단계 `17486ed`, Bedrock 전환 `bef1702`, 프론트엔드 `33aea80`. 1–3단계와 6a·6b단계는 병합 커밋 없이 이력에 있고, 6b단계 브랜치의 PR은 #1–#8 목록에 없다. 2026-11-26 기준 열림 상태는 8절에 있다 |
 
 AWS에서만 확인되는 것은 4절, 로컬 환경 구동 기록과 절차는 5절, 테스트 데이터 정리 보완은 3.2절, 4·5단계 판정 실행표는 3.3·3.4절, 6a는 10절, 6b는 11절, 5단계는 12절, PR 순서는 8절에 있다. 8·10.8·11.1·12.1절은 각 작업 시점의 기록이라 이 표와 다를 수 있다.
 
