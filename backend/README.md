@@ -318,13 +318,34 @@ IAM·CORS 실패 내용(같은 결과로 16:23에 한 번 더 확인)
 
 7단계 출력값(비밀 아님): 웹 주소 `https://da83p51l0pi6n.cloudfront.net`, `DistributionId` `E38ZPOZ2YYKHXG`, `WebBucketName` `haru-dev-web-963701985499`. API·Cognito 값은 위와 같다. Budgets 파라미터(`BudgetMonthlyUsd`, `BudgetNotificationEmail`)는 비웠다. 이 계정에 이미 월 $200 예산이 있다.
 
-7단계 판정(`integration and not fault`를 AI·사진·나머지 세 묶음으로 동시 실행)과 복원 배포 G(`AgentMode=pipeline`, 주입 끔)는 이 기록을 쓸 때 진행 중이었다.
+#### 7단계 판정 (배포 F 상태, 17:33–20:45)
+
+`integration and not fault`를 AI·사진·나머지 세 묶음으로 동시에 돌렸다. 배포 F는 `AgentMode=agent`, 주입 끔이다.
+
+| 묶음 | 결과 | 내용 |
+|---|---|---|
+| AI (`test_ai.py`) | **7 passed**, 1 skipped | T18 3건, T19, T20, T22 2건 통과(Bedrock Haiku 5.5). skip 1건은 Fake 전용 사례 |
+| 나머지(권한·이어받기·동시성·멱등·수신함·웹) | 24 passed, **1 failed** | `GET /record` 스냅샷(`test_get_record_snapshot_during_writes`) 통과. 실패는 `test_api_cors_allows_distribution_origin`(아래 "API CORS 결함") |
+| 사진 (`test_photo.py`) | 4 passed, 2 failed, 1 skipped, 1 error | 3시간 12분 걸렸다. 판정 도중 `aws login` 자격 증명 갱신(`signin.aws.amazon.com/v1/token`) 연결이 끊겨 `test_photo_fault_blocked`가 오류로 끝났다. T10 실패는 아래, IAM·CORS는 앞의 307과 같다. T15는 `processing_not_observed` skip |
+
+T10 실패 내용(`T10-text-only-during-processing-20261127T173623.json`): `PROCESSING`을 관측한 뒤 `TEXT_ONLY` 완료를 보냈지만 그 사이 사진 전달이 먼저 끝나 409 `CLAIM_NOT_ACTIVE`를 받았다. 경합에서 진 경우인데, 테스트는 200 `hasPhoto: true`만 `race_lost`(미검증)로 보고 409는 실패로 본다. 지연 주입 없는 배포에서는 생길 수 있는 결과다. 최종 판정 근거인 지연 주입 판정(배포 A)은 통과했다. 409 `CLAIM_NOT_ACTIVE` + 전달 완료도 `race_lost`로 볼지 개발 담당이 정한다.
+
+복원 배포 G(`AgentMode=pipeline`, 주입 끔): 20:47 `UPDATE_COMPLETE`. 변경은 `AiCardFunction`, `HttpApi` 수정뿐이었다. 웹 `GET /` 200.
+
+#### API CORS 결함과 수정 (배포 H, 21:04–21:10)
+
+- 증상: CloudFront 주소를 `Origin`으로 보낸 preflight가 204인데 `Access-Control-Allow-Origin`이 없었다. 실제 API의 `AllowOrigins`는 `http://localhost:5173` 하나였다. **이대로면 웹(CloudFront)에서 브라우저가 API 호출을 막는다.** 사진 버킷 CORS에는 배포 도메인이 들어가 있었다.
+- 원인: SAM은 `HttpApi` `CorsConfiguration.AllowOrigins`가 내장 함수이면 그 값을 `x-amazon-apigateway-cors` **전체**로 쓰고 `AllowHeaders`·`AllowMethods`를 버린다(samtranslator `open_api.add_cors`). 템플릿이 `!Split`을 바로 넣어서 변환 결과의 CORS 자리에 목록이 들어갔다(`get_template --template-stage Processed`로 확인). API Gateway는 이 값을 반영하지 않고 1–6단계의 설정을 그대로 두었다.
+- 수정: CORS 객체 전체(`allowOrigins`·`allowHeaders`·`allowMethods`)를 늘 참인 `!If [CorsAlways, 객체, NoValue]`로 감쌌다. `CorsAlways`는 스택 이름이 비지 않았는지로 본다(상수 비교는 cfn-lint W8003에 걸린다). `test_template.py`·`test_web_infra.py`를 새 구조에 맞췄다. SAM CLI에 들어 있는 samtranslator로 변환해 CORS 객체가 제대로 나오는 것을 확인했다.
+- 배포 H: 변경 세트는 `HttpApi` 수정 1건(교체 없음), 21:09 `UPDATE_COMPLETE`. H는 `CorsAlways: !Equals ["true", "true"]`로 배포했고, 그 뒤 lint 통과 형태로 바꾼 템플릿을 21:58에 다시 배포했다. 리소스 결과가 같아 CloudFormation이 "No updates are to be performed"로 끝냈다(스택에 저장된 템플릿의 조건식만 이전 형태). 다음 배포 때 함께 바뀐다. 실제 API `AllowOrigins`가 `["http://localhost:5173", "https://da83p51l0pi6n.cloudfront.net"]`이 됐고, 두 주소 모두 preflight에 `Access-Control-Allow-Origin`이 돌아온다.
+- 재판정: `test_web.py` 6건과 `test_authz.py` 4건, **10 passed**(`test_api_cors_allows_distribution_origin` 포함).
+- 사진 재판정(T10·T15 제외, 자격 증명 연결 오류 뒤 다시): T8, T11, 재업로드, IAM·CORS, 주입 차단 **5 passed**(3분 35초). IAM·CORS는 아래 테스트 수정 뒤 만료 URL이 403을 받았다.
+- 함께 고친 테스트: `test_photo_iam_and_cors`의 만료 URL을 SigV4로 서명한다(`Config(signature_version="s3v4")`). 기본 서명은 전역 엔드포인트 URL을 만들어 새 버킷에서 403 대신 307 `TemporaryRedirect`가 왔다. 앱의 presign은 원래 s3v4다.
 
 남은 일
 
-- 7단계 판정 결과 기록(회귀, `GET /record` 스냅샷, `test_web.py`, T18·T19·T22) → 복원 배포 G 확인.
+- T10 409 판정 규칙(위), T9 대기 시간: 테스트 수정(개발 담당).
 - T12: 지금 테스트는 `openai_compat` 무효 키 방식이라 Bedrock에 맞지 않는다. 인계 문서(`.kiro/specs/backend-stage7-ops/aws-handoff.md` 4절 9번)의 Bedrock 방식(잘못된 모델 ID·권한)으로 테스트를 바꾼다(개발 담당).
-- T9 테스트 대기 시간, IAM·CORS 만료 URL 307(위 설명): 테스트 코드 수정(개발 담당).
 - `haru-demo` 배포, `seed.py`, 90초 시연 리허설.
 - 정리: 사진·웹 버킷을 비운 뒤 `sam delete --stack-name haru-dev`.
 
