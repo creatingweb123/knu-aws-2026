@@ -32,8 +32,8 @@ BACKEND = pathlib.Path(__file__).resolve().parents[1]
 BUILD = BACKEND / ".aws-sam" / "build"
 IMAGE = "public.ecr.aws/lambda/python:3.12"
 AI_FUNCTION = "AiCardFunction"
-FORBIDDEN = ("langgraph", "langchain", "langsmith", "openai", "tiktoken", "httpx", "httpcore", "ormsgpack", "xxhash", "zstandard", "jiter", "orjson")
-MODULE_PREFIXES = ("langgraph", "langchain", "langchain_core", "langchain_openai", "openai", "langsmith")
+FORBIDDEN = ("langgraph", "langchain", "langsmith", "openai", "tiktoken", "httpx", "httpcore", "ormsgpack", "xxhash", "zstandard", "jiter", "orjson", "numpy")
+MODULE_PREFIXES = ("langgraph", "langchain", "langchain_core", "langchain_openai", "langchain_aws", "numpy", "openai", "langsmith")
 LIMIT_MB = 250
 HANDLERS = {
     "MeFunction": ("handlers.me", "GET /me"),

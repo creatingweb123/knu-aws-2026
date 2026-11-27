@@ -17,9 +17,9 @@ Parameters:
   # --- AI 하루 카드 (6a, docs/03 §3.2 설정 키). 공급자·모델 값은 BE-Q6 확정 전까지 빈 값이다(samconfig에 넣지 않는다).
   LlmProvider:
     Type: String
-    AllowedValues: [openai_compat, fake]
-    Default: openai_compat
-    Description: fake는 Stage=dev이고 실제 스택 이름이 haru-dev일 때만 함수에 들어간다(BE-Q86). 결과는 실제 공급자 검증이 아니다.
+    AllowedValues: [bedrock, openai_compat, fake]
+    Default: bedrock
+    Description: bedrock은 Amazon Bedrock Converse(IAM 인증, 키 없음). fake는 Stage=dev이고 실제 스택 이름이 haru-dev일 때만 함수에 들어간다(BE-Q86). 결과는 실제 공급자 검증이 아니다.
   LlmBaseUrl:
     Type: String
     Default: ""
@@ -27,6 +27,12 @@ Parameters:
   LlmModel:
     Type: String
     Default: ""
+    Description: bedrock은 모델 ID 또는 추론 프로필 ID(예 apac.anthropic.claude-...). 빈 값이면 CONFIG(503)로 끝나 사연이 나가지 않는다.
+  LlmRegion:
+    Type: String
+    Default: ""
+    AllowedPattern: ^$|^[a-z]{2}(-[a-z]+)+-[0-9]$
+    Description: bedrock 호출 리전. 빈 값이면 함수 리전(AWS_REGION)이다.
   LlmApiKeyParam:
     Type: String
     Default: ""
@@ -81,11 +87,13 @@ Conditions:
   # Rules는 파라미터 값만 검사하므로 실제 스택 이름까지 확인한다(BE-Q86, 5단계 BE-Q59와 같은 방식). 이름은 samconfig dev stack_name과 같다.
   FakeAllowed: !And [!Condition IsDev, !Equals [!Ref "AWS::StackName", haru-dev]]
   HasLlmKeyParam: !Not [!Equals [!Ref LlmApiKeyParam, ""]]
+  LlmIsFake: !Equals [!Ref LlmProvider, fake]
+  HasLlmRegion: !Not [!Equals [!Ref LlmRegion, ""]]
 
 Rules:
   FakeLlmOnlyInDev:
     Assertions:
-      - Assert: !Or [!Equals [!Ref Stage, dev], !Equals [!Ref LlmProvider, openai_compat]]
+      - Assert: !Or [!Equals [!Ref Stage, dev], !Not [!Equals [!Ref LlmProvider, fake]]]
         AssertDescription: LlmProvider=fake는 Stage=dev에서만 쓸 수 있다(BE-Q86).
   AiFaultInjectOnlyInDev:
     Assertions:
@@ -283,10 +291,12 @@ Resources:
       Architectures: [x86_64]
       Environment:
         Variables:
-          LLM_PROVIDER: !If [FakeAllowed, !Ref LlmProvider, openai_compat]
+          # fake가 허용되지 않으면 bedrock으로 바꾼다(함수에 fake가 들어가지 않는다)
+          LLM_PROVIDER: !If [FakeAllowed, !Ref LlmProvider, !If [LlmIsFake, bedrock, !Ref LlmProvider]]
           FAKE_LLM_ALLOWED: !If [FakeAllowed, "true", "false"]
           LLM_BASE_URL: !Ref LlmBaseUrl
           LLM_MODEL: !Ref LlmModel
+          LLM_REGION: !If [HasLlmRegion, !Ref LlmRegion, !Ref "AWS::NoValue"]
           LLM_API_KEY_PARAM: !If [HasLlmKeyParam, !Ref LlmApiKeyParam, !Ref "AWS::NoValue"]
           LLM_PROVIDER_LABEL: !Ref LlmProviderLabel
           LLM_TEMPERATURE: !Ref LlmTemperature
@@ -333,6 +343,16 @@ Resources:
                 Action: ssm:GetParameter
                 Resource: !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter${LlmApiKeyParam}"
           - !Ref "AWS::NoValue"
+        - Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              # Bedrock Converse(LLM_PROVIDER=bedrock). 스트리밍은 쓰지 않는다. 교차 리전 추론 프로필은
+              # 프로필과 대상 리전들의 기반 모델 둘 다 권한이 있어야 해서 기반 모델은 리전을 와일드카드로 둔다.
+              Action: bedrock:InvokeModel
+              Resource:
+                - !Sub "arn:${AWS::Partition}:bedrock:*::foundation-model/*"
+                - !Sub "arn:${AWS::Partition}:bedrock:*:${AWS::AccountId}:inference-profile/*"
+                - !Sub "arn:${AWS::Partition}:bedrock:*:${AWS::AccountId}:application-inference-profile/*"
       Events:
         CreateAiCardSession:
           Type: HttpApi

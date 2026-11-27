@@ -54,6 +54,7 @@ services:
       LANGCHAIN_TRACING_V2: "false"
       # AI 하루 카드 레벨 0 (6a). 기본은 Fake 모델이라 사연이 밖으로 나가지 않는다.
       # 실모델 전환은 .env에서 LLM_PROVIDER=openai_compat, LLM_BASE_URL, LLM_MODEL, LLM_API_KEY를 채운다(합성 사연만).
+      # bedrock은 아래 AWS 자격 증명이 Floci용 test 값이라 이 컨테이너에서는 401로 끝난다(.env.example 참고).
       LLM_PROVIDER: ${LLM_PROVIDER:-fake}
       FAKE_LLM_ALLOWED: "true"
       FAKE_LLM_SCENARIO: ${FAKE_LLM_SCENARIO:-happy}
@@ -70,6 +71,7 @@ services:
       FAULT_INJECT_ALLOWED: "true"
       LLM_BASE_URL: ${LLM_BASE_URL:-}
       LLM_MODEL: ${LLM_MODEL:-}
+      LLM_REGION: ${LLM_REGION:-}
       LLM_API_KEY: ${LLM_API_KEY:-}
       LLM_PROVIDER_LABEL: ${LLM_PROVIDER_LABEL:-}
       LLM_TEMPERATURE: ${LLM_TEMPERATURE-0}
