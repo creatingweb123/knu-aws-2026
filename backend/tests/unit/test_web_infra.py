@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.unit.test_template import ALLOWED_ORIGINS_WITH_WEB, BACKEND, template  # noqa: F401  (template은 fixture)
+from tests.unit.test_template import ALLOWED_ORIGINS_WITH_WEB, BACKEND, http_api_cors, template  # noqa: F401  (template은 fixture)
 
 SRC = BACKEND / "src"
 
@@ -121,7 +121,7 @@ def test_cache_policies_split_index_and_assets(template):
 
 
 def test_cors_uses_web_domain_in_api_and_photo_bucket(template):
-    assert res(template, "HttpApi")["Properties"]["CorsConfiguration"]["AllowOrigins"] == ALLOWED_ORIGINS_WITH_WEB
+    assert http_api_cors(template)["allowOrigins"] == ALLOWED_ORIGINS_WITH_WEB
     (rule,) = res(template, "PhotoBucket")["Properties"]["CorsConfiguration"]["CorsRules"]
     assert rule["AllowedOrigins"] == ALLOWED_ORIGINS_WITH_WEB
     assert template["Parameters"]["AllowedOrigins"]["Default"] == "http://localhost:5173"

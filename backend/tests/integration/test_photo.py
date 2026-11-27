@@ -309,7 +309,11 @@ def test_photo_iam_and_cors(stack):
 
     # 만료 URL: 테스트 실행자 자격 증명으로 1초짜리 presigned PUT을 같은 Claim prefix 아래에 만든다
     bucket = photo_resources(stack)["bucket"]
-    expired_url = _boto("s3").generate_presigned_url(
+    # SigV4로 서명해야 리전 엔드포인트 URL이 나온다. 기본 서명은 전역 엔드포인트를 써서 만든 지 얼마 안 된 버킷에서
+    # 만료 검사 전에 307 TemporaryRedirect가 온다(2026-11-27 haru-dev 관측). 앱의 presign도 s3v4다(common/s3.py).
+    from botocore.config import Config
+
+    expired_url = _boto("s3", config=Config(signature_version="s3v4")).generate_presigned_url(
         "put_object", Params={"Bucket": bucket, "Key": f"photos/original/{cid}/expired.jpg", "ContentType": "image/jpeg"}, ExpiresIn=1)
     time.sleep(2)
     exp_status, exp_headers, exp_code = upload_photo({"url": expired_url, "method": "PUT", "headers": {"Content-Type": "image/jpeg"}},
