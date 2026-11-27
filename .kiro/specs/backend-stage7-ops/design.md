@@ -13,7 +13,7 @@
 | Budgets는 `Condition: CreateBudget`(금액>0 AND 이메일 있음) | 값 없이 배포가 실패하지 않고 저장소에 값이 들어가지 않는다 |
 | `seed.py`는 서비스 계층을 호출하고 매니페스트(`SEED#demo-v1/MANIFEST`)에 만든 Plan만 적는다 | API와 같은 항목 모양 보장, 운영 데이터 보호. 테이블 전체 스캔·삭제 없음 |
 | `report.py`는 `ProjectionExpression`으로 필요한 속성만 읽고 이름은 전부 자리표시자로 쓴다 | `metrics`·`status`가 DynamoDB 예약어라 로컬 검증에서 실패가 드러났다. 본문·닉네임 미조회로 개인정보 최소화 |
-| Fake/실제 구분은 `Plan.metrics.llmMode`(AiSession.llmMode 복사) | 기존 Plan에는 값이 없으므로 `unknown`이고 실제 모델로 치지 않는다. API 응답 허용 목록(`METRIC_FIELDS`)에는 넣지 않는다 |
+| Fake/실제 구분은 **환경 단위**(스택 파라미터 `Stage`·`LlmProvider`)로 한다 | 6a design §15.1·정확성 13이 `llmMode`를 Plan `metrics`에 넣지 않기로 했다(승인 없이 저장·응답 모양을 바꾸지 않음). 처음에 `metrics.llmMode` 저장을 구현했다가 로컬 통합 테스트(`test_local_ai.py`의 "내부 속성은 Plan 지표에 없다")가 이 결정과 충돌함을 알려 되돌렸다. demo 스택에서는 Fake가 템플릿 규칙으로 불가능하므로 환경 단위로 충분하다 |
 | 전송 전 마스킹은 `agent.prompt.neutralize` 한 곳에서 환경 변수로 켠다 | 사연·답변이 모델로 들어가는 유일한 경로. 대조 원문(state)은 건드리지 않는다 |
 | 고아 처리본은 점검만 하고 삭제하지 않는다 | 정상 전달된 사진을 지울 위험이 있는 자동 정리를 도입하지 않는다 |
 
@@ -24,6 +24,7 @@
 | `tests/unit/test_get_record.py` | 재시도·대기 상한·로그, 속성 기반 재시도 한도, 핸들러 분기(없음·남·포기·만료·완료·사진 상태 순서·충돌 소진 503·비충돌 500·읽기 시 불변) |
 | `tests/unit/test_web_infra.py` | 순환 없음, 비공개·암호화, OAC·HTTPS·SPA, 캐시, CORS 연동, 알람, 대시보드(실제 지표만), Budgets 조건 |
 | `tests/unit/test_deploy_web.py`, `test_seed.py`, `test_report.py`, `test_photo_orphans.py` | moto·가짜 클라이언트로 스크립트 동작 |
+| `tests/unit/test_ai_metrics.py` | Plan 지표에 `llmMode`·`llmProviderLabel`이 들어가지 않음(결정 보존) |
 | `tests/unit/test_ai_prompt.py` | 마스킹 스위치 기본 꺼짐·정확히 `true`만 켜짐·오탐 없음 |
 | `tests/local/test_local_photo.py` | `GET /record` 폴링(로컬 어댑터) |
 | `tests/integration/test_web.py`, `test_authz.py`·`test_concurrency.py` 추가 | AWS 담당 실행. 이 환경에서는 `--collect-only`만 |

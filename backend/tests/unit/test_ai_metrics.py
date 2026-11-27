@@ -315,13 +315,7 @@ def test_agent_session_privacy_answer_not_a_source(agent_env, monkeypatch):
     assert ai_metrics.answer_sources(item["answers"]) == []
 
 
-def test_session_metrics_carry_llm_mode_only_when_present_and_never_in_api_view():
-    """BE-OBS-04: Fake와 실제 모델 데이터를 report.py가 섞지 않도록 공급자 구분을 저장한다. API 응답에는 내보내지 않는다."""
-    from common.responses import serialize_plan
-
-    base = ai_metrics.session_metrics(session(), final(), STORY, "2026-11-26T03:00:00.000Z")
-    assert "llmMode" not in base
-    with_mode = ai_metrics.session_metrics(session(llmMode="fake"), final(), STORY, "2026-11-26T03:00:00.000Z")
-    assert with_mode == base | {"llmMode": "fake"}
-    plan = {"planId": "p", "ownerId": "u", "metrics": with_mode}
-    assert "llmMode" not in serialize_plan(plan, is_owner=True)["metrics"]
+def test_session_metrics_never_carry_internal_llm_attributes():
+    """6a design §15.1·정확성 13: llmMode 같은 AiSession 내부 속성은 Plan metrics에 넣지 않는다(승인 없이 응답·저장 모양을 바꾸지 않는다)."""
+    m = ai_metrics.session_metrics(session(llmMode="fake", llmProviderLabel="x"), final(), STORY, "2026-11-26T03:00:00.000Z")
+    assert "llmMode" not in m and "llmProviderLabel" not in m

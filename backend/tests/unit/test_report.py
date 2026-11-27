@@ -50,13 +50,11 @@ def inbox(cid, pid, owner="o", reply=False):
 MANUAL = {"authoringMode": "MANUAL", "durationMs": 100_000, "addedNotInSource": 1, "privacyInPublished": 0}
 
 
-def ai(mode="PIPELINE", llm="bedrock", **kw):
+def ai(mode="PIPELINE", **kw):
     m = {"authoringMode": "AI_EDITED", "durationMs": 60_000, "addedNotInSource": 0, "privacyInPublished": 0, "agentMode": mode,
          "addedNotInSourceOrAnswers": 0, "firstProposalNotInSource": 2, "deliveredNotInSource": 0, "agentSelfRepairs": 1,
          "missingFirst": 1, "missingDelivered": 0, "questionsAsked": 2, "questionsSkipped": 1, "privacyDetected": 0,
          "agentWaitMs": 5_000, "answerWaitMs": 4_000, "editMs": 30_000, "fieldsEditedAfterHandoff": 2, "modelCalls": 3}
-    if llm:
-        m["llmMode"] = llm
     m.update(kw)
     return m
 
@@ -65,7 +63,7 @@ def dataset():
     items = [
         plan("p1", "COMPLETED", MANUAL), plan("p2", "COMPLETED", ai("AGENT", durationMs=80_000)), plan("p3", "OPEN", MANUAL | {"durationMs": 300_000}),
         plan("p4", "CLAIMED", ai("DEGRADED", deliveredNotInSource=1)), plan("p5", "CLAIMED"),
-        plan("p6", "OPEN", ai("AGENT", llm="fake")), plan("s1", "OPEN", MANUAL, seed="demo-v1"),
+        plan("p6", "OPEN"), plan("s1", "OPEN", MANUAL, seed="demo-v1"),
         # Claim: 5개(처음 5개) — c1 COMPLETED 정시, c2 COMPLETED 지연, c3 ABANDONED, c4 ACTIVE 기한 지남(=확정), c5 ACTIVE 기한 남음(미확정)
         claim("c1", "p1", "COMPLETED", "2026-11-10T00:00:00.000Z", late=False), claim("c2", "p2", "COMPLETED", "2026-11-11T00:00:00.000Z", late=True),
         claim("c3", "p3", "ABANDONED", "2026-11-12T00:00:00.000Z"), claim("c4", "p4", "ACTIVE", "2026-11-13T00:00:00.000Z", "2026-11-16T00:00:00.000Z"),
@@ -79,6 +77,7 @@ def dataset():
 
 def test_counts_and_rates():
     r = rp.compute(dataset(), opts())
+    assert r["environment"]["evidence"] == "formatCheckOnly"
     assert r["excludedSeedPlans"] == 1 and r["plansCreated"] == 6
     assert r["claims"] == {"total": 5, "byStatus": {"ABANDONED": 1, "ACTIVE": 2, "COMPLETED": 2}, "plansClaimed": 5}
     # 확정 Claim = c1,c2,c3,c4 (c5는 기한이 남아 미확정). 완료 = c1,c2
@@ -114,16 +113,22 @@ def test_authoring_medians_and_missing():
     assert t["AI_EDITED"]["agentWaitMsMedian"] == {"n": 2, "value": 5000.0} and t["AI_EDITED"]["editMsMedian"]["value"] == 30000.0
 
 
-def test_fake_and_real_are_never_mixed():
-    real = rp.compute(dataset(), opts(llm="real"))
-    fake = rp.compute(dataset(), opts(llm="fake"))
-    assert real["aiDatasets"]["real"] == 2 and real["aiDatasets"]["fake"] == 1 and real["aiQuality"]["aiPlans"] == 2
-    assert fake["aiQuality"]["aiPlans"] == 1 and fake["byAgentMode"]["AGENT"]["plans"] == 1 and real["byAgentMode"]["AGENT"]["plans"] == 1
-    # 같은 Plan이 두 묶음 집계에 동시에 들어가지 않는다
-    assert real["aiQuality"]["modelCalls"]["sum"] == 6 and fake["aiQuality"]["modelCalls"]["sum"] == 3
-    unknown = rp.compute([plan("u1", "OPEN", ai(llm=None))], opts(llm="unknown"))
-    assert unknown["aiQuality"]["aiPlans"] == 1
-    assert rp.compute([plan("u1", "OPEN", ai(llm=None))], opts(llm="real"))["aiQuality"]["aiPlans"] == 0  # llmMode 없으면 실제 모델로 치지 않는다
+def test_environment_guard_separates_fake_capable_environments():
+    """Plan.metrics에는 공급자 구분이 없다(6a design §15.1). 환경 단위로 막는다."""
+    assert rp.describe_environment(None, None)["evidence"] == "formatCheckOnly"  # 로컬
+    demo = rp.describe_environment("haru-demo", {"Stage": "demo", "LlmProvider": "bedrock"})
+    assert demo["evidence"] == "pilotEligible" and demo["llmProvider"] == "bedrock"
+    assert rp.describe_environment("haru-demo", {"Stage": "demo"})["evidence"] == "pilotEligible"  # 기본 bedrock
+    for params in ({"Stage": "dev", "LlmProvider": "bedrock"}, {"Stage": "dev", "LlmProvider": "fake"}, {"Stage": "demo", "LlmProvider": "fake"}, {}):
+        assert rp.describe_environment("haru-dev", params)["evidence"] == "formatCheckOnly", params
+    r = rp.compute(dataset(), opts(environment=rp.describe_environment(None, None)))
+    assert r["environment"]["kind"] == "local" and "근거 등급: formatCheckOnly" in rp.to_text(r)
+
+
+def test_ai_metrics_not_split_by_provider_and_never_read_llm_mode():
+    r = rp.compute(dataset(), opts())
+    assert r["aiQuality"]["aiPlans"] == 2 and "aiDatasets" not in r  # p2(AGENT), p4(DEGRADED)
+    assert "llmMode" not in rp.PROJECTION_NAMES.values()
 
 
 def test_ai_quality_excludes_degraded_for_delivered():

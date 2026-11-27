@@ -74,7 +74,9 @@ def forbidden_in(path: pathlib.Path) -> list[str]:
 
 
 def run_in_runtime(fn_dir: pathlib.Path, code: str, timeout: int = 120, network: str = "none", extra_env: dict | None = None) -> dict:
-    cmd = ["docker", "run", "--rm", "--network", network, "--entrypoint", "/var/lang/bin/python3",
+    # 함수가 x86_64로 빌드되므로(template.yaml Architectures) arm64 호스트(Apple Silicon)에서도 같은 아키텍처로 돌린다.
+    # 이 플래그가 없으면 arm64 이미지가 x86_64 확장 모듈(pydantic_core 등)을 읽지 못해 import가 실패한다(2026-11-27 확인).
+    cmd = ["docker", "run", "--rm", "--platform", os.environ.get("CHECK_PLATFORM", "linux/amd64"), "--network", network, "--entrypoint", "/var/lang/bin/python3",
            "-v", f"{fn_dir}:/var/task:ro", "-w", "/var/task"]
     for k, v in {**ENV, **(extra_env or {})}.items():
         cmd += ["-e", f"{k}={v}"]

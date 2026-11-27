@@ -3,7 +3,7 @@
   python scripts/report.py --local                                  # 로컬(Floci) 대상 콘솔 출력
   python scripts/report.py --stack haru-demo                        # AWS 스택 대상(CloudFormation으로 테이블 이름만 읽고 DynamoDB Scan)
   python scripts/report.py --local --json out.json --csv out.csv    # 파일 출력(- 는 표준 출력)
-  python scripts/report.py --local --llm fake                       # Fake 모델 데이터만(형식 검증용, 성과 근거 아님)
+  python scripts/report.py --stack haru-dev --allow-non-pilot-env   # dev 스택(Fake 구간이 섞였을 수 있음, 형식 확인용)
   python scripts/report.py --local --check-invariants               # 전달 불변식 감사
 
 대상은 `--local` 또는 `--stack` 중 하나를 명시한다. 테이블에는 **쓰지 않는다**. Scan은 필요한 속성만 ProjectionExpression으로 읽고
@@ -29,10 +29,13 @@
 - agentMode별 비교(PIPELINE·AGENT·DEGRADED): Plan 수, 중앙값(durationMs·agentWaitMs·editMs), 평균(위 지표).
 - 값이 없는 지표는 0으로 채우지 않는다. 그 지표의 n에서 빠지고 missing으로 센다. 계산할 데이터가 없으면 값은 null이다.
 
-Fake 모델 데이터와 실제 모델 데이터는 섞지 않는다
-- AI 지표는 Plan.metrics.llmMode(AiSession의 공급자)로 나눈다: real(bedrock·openai_compat), fake, unknown(값 없음).
-  `--llm`(기본 real)이 고른 한 묶음만 AI 지표에 들어간다. 다른 묶음의 Plan 수는 `aiDatasets`에 따로 보인다.
-  MANUAL Plan은 사람이 쓴 데이터라 어느 묶음을 골라도 들어간다. Fake 묶음은 성과 근거가 아니라 형식 검증용이다.
+Fake 모델 데이터와 실제 모델 데이터는 섞지 않는다 (환경 단위로 구분한다)
+- Plan.metrics에는 공급자 구분이 없다(6a design §15.1: `llmMode`는 AiSession 내부 속성이고 Plan 지표에 넣지 않는다). 그래서 Plan 단위로 나눌 수 없다.
+  대신 **환경 단위**로 막는다. 템플릿 규칙상 Fake는 `Stage=dev` + 스택 이름 `haru-dev`에서만 가능하고 `demo` 스택에서는 불가능하다.
+- `--stack`: CloudFormation 파라미터(Stage, LlmProvider)를 읽어 `environment`에 적는다. `Stage=demo`면 성과 근거로 쓸 수 있다(`pilotEligible`).
+  `Stage=dev`이거나 `LlmProvider=fake`이면 Fake 구간이 섞였을 수 있어 `formatCheckOnly`로 표시하고, `--allow-non-pilot-env`를 줘야 출력한다.
+- `--local`: 항상 `formatCheckOnly`(에뮬레이터·Fake 모델). 로컬 결과는 계산 형식 검증용이고 성과 근거가 아니다.
+- AI 지표는 `agentMode`(PIPELINE·AGENT·DEGRADED)별로만 나눈다. 시범 운영 `demo` 스택의 데이터만 근거로 삼는다.
 
 출력에는 계획·글·사연·답장 원문, 사용자 ID, 이메일을 넣지 않는다(불변식 위반의 Plan ID는 앞 8자만).
 """
@@ -56,7 +59,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 SEED_TAG = "demo-v1"
-REAL_MODES = {"bedrock", "openai_compat"}
 DEGRADED = "DEGRADED"
 AGENT_MODES = ("PIPELINE", "AGENT", DEGRADED)
 # 속성 이름은 모두 자리표시자로 쓴다(metrics·status 등 DynamoDB 예약어와 겹친다). 본문·닉네임·제목·키 값은 읽지 않는다.
@@ -97,21 +99,14 @@ def mean(values: list[float]) -> float | None:
     return round(sum(values) / len(values), 2) if values else None
 
 
-def llm_dataset(metrics: dict[str, Any]) -> str:
-    mode = metrics.get("llmMode")
-    if mode == "fake":
-        return "fake"
-    return "real" if mode in REAL_MODES else "unknown"
-
-
 @dataclass
 class Options:
     now: datetime
     first_n: int = 5
     exclude_abandoned: bool = False
-    llm: str = "real"
     include_seed: bool = False
     check_invariants: bool = False
+    environment: dict[str, Any] | None = None
 
 
 def scan_items(table: Any) -> list[dict[str, Any]]:
@@ -171,7 +166,8 @@ def compute(items: list[dict[str, Any]], opts: Options) -> dict[str, Any]:
         inbox = [i for i in inbox if i.get("planId") not in seed_ids]
 
     result: dict[str, Any] = {"generatedAt": opts.now.isoformat(), "options": {"firstN": opts.first_n, "excludeAbandoned": opts.exclude_abandoned,
-                                                                              "llm": opts.llm, "includeSeed": opts.include_seed}}
+                                                                              "includeSeed": opts.include_seed}}
+    result["environment"] = opts.environment or {"kind": "unknown", "evidence": "formatCheckOnly", "note": "환경을 확인하지 않았다."}
     result["excludedSeedPlans"] = excluded_seed
 
     # --- 계획·이어받기
@@ -210,17 +206,9 @@ def compute(items: list[dict[str, Any]], opts: Options) -> dict[str, Any]:
     # --- Plan.metrics
     mets = [(p, p.get("metrics") if isinstance(p.get("metrics"), dict) else {}) for p in plans]
     result["missingMetrics"] = sum(1 for _, m in mets if not m)
-    datasets = {"real": 0, "fake": 0, "unknown": 0}
-    ai_plans: list[dict[str, Any]] = []
-    for _, m in mets:
-        if m.get("authoringMode") == "AI_EDITED":
-            ds = llm_dataset(m)
-            datasets[ds] += 1
-            if ds == opts.llm and "agentMode" in m:
-                ai_plans.append(m)
-    result["aiDatasets"] = {**datasets, "selected": opts.llm, "note": "AI 지표는 selected 묶음만 집계한다. 묶음을 섞지 않는다(fake는 형식 검증용)."}
+    ai_plans = [m for _, m in mets if m.get("authoringMode") == "AI_EDITED" and "agentMode" in m]
     manual = [m for _, m in mets if m.get("authoringMode") == "MANUAL"]
-    ai_all_selected = [m for _, m in mets if m.get("authoringMode") == "AI_EDITED" and llm_dataset(m) == opts.llm]
+    ai_all_selected = [m for _, m in mets if m.get("authoringMode") == "AI_EDITED"]
 
     def per_mode(group: list[dict[str, Any]], key: str) -> list[float]:
         return [v for m in group if (v := _num(m, key)) is not None]
@@ -246,7 +234,7 @@ def compute(items: list[dict[str, Any]], opts: Options) -> dict[str, Any]:
         "fieldsEditedAfterHandoff": {"n": len(per_mode(ai_plans, "fieldsEditedAfterHandoff")), "mean": mean(per_mode(ai_plans, "fieldsEditedAfterHandoff"))},
     }
     # privacyInPublished는 사람이 쓴 계획도 검사한 값이다(privacyDetected는 AI 세션 값)
-    pub = [*manual, *ai_all_selected]  # 선택한 AI 묶음과 사람이 쓴 계획만(묶음을 섞지 않는다)
+    pub = [*manual, *ai_all_selected]
     result["privacy"] = {"privacyInPublished": {"n": len(per_mode(pub, "privacyInPublished")), "sum": sum(per_mode(pub, "privacyInPublished")), "target": 0},
                          "privacyDetected": {"n": len(per_mode(ai_plans, "privacyDetected")), "sum": sum(per_mode(ai_plans, "privacyDetected"))}}
 
@@ -303,6 +291,19 @@ def check_invariants(plans: list[dict[str, Any]], claims: list[dict[str, Any]], 
     return {"violations": len(violations), "details": violations[:50], "ok": not violations}
 
 
+def describe_environment(stack: str | None, params: dict[str, str] | None) -> dict[str, Any]:
+    """Fake 모델이 섞일 수 있는 환경인지 판정한다. Plan 지표에는 공급자 구분이 없어 환경 단위로만 막는다."""
+    if stack is None:
+        return {"kind": "local", "evidence": "formatCheckOnly", "note": "로컬 에뮬레이터와 Fake 모델이다. 계산 형식 검증용이고 성과 근거가 아니다."}
+    params = params or {}
+    stage, provider = params.get("Stage", ""), params.get("LlmProvider", "")
+    if stage == "demo" and provider != "fake":
+        return {"kind": "stack", "stage": stage, "llmProvider": provider or "bedrock", "evidence": "pilotEligible",
+                "note": "demo 스택에서는 Fake 모델이 템플릿 규칙으로 막혀 있다."}
+    return {"kind": "stack", "stage": stage or "unknown", "llmProvider": provider or "unknown", "evidence": "formatCheckOnly",
+            "note": "dev 스택이거나 Fake 공급자라 Fake 모델 데이터가 섞였을 수 있다. 성과 근거로 쓰지 않는다(6a design §15.1)."}
+
+
 # ---------------------------------------------------------------------------
 # 출력
 # ---------------------------------------------------------------------------
@@ -337,15 +338,16 @@ def _fmt(v: Any) -> str:
 def to_text(r: dict[str, Any]) -> str:
     L: list[str] = []
     o = r["options"]
-    L.append(f"성과 집계 ({r['generatedAt']}) — AI 묶음: {o['llm']}, 시드 포함: {o['includeSeed']}, 시드 제외 Plan: {r['excludedSeedPlans']}")
+    env = r["environment"]
+    L.append(f"성과 집계 ({r['generatedAt']}) — 환경: {env['kind']}, 근거 등급: {env['evidence']}, 시드 포함: {o['includeSeed']}, 시드 제외 Plan: {r['excludedSeedPlans']}")
+    if env["evidence"] != "pilotEligible":
+        L.append(f"  주의: {env.get('note', '')}")
     L.append(f"생성된 계획 {r['plansCreated']}건, 이어받기 {r['claims']['total']}건({r['claims']['byStatus']}), 이어받은 계획 {r['claims']['plansClaimed']}건")
     rc, ot, rr = r["recordCompletion"], r["onTimeRecord"], r["replyRate"]
     L.append(f"방문 기록 완료율: {rc['numerator']}/{rc['denominator']} = {_fmt(rc['ratePct'])}% (기한 남은 진행 중 {rc['pendingExcluded']}건 제외)")
     f = ot["firstN"]
     L.append(f"기한 내 방문 기록(처음 {f['n']}건): {f['numerator']}/{f['denominator']} = {_fmt(f['ratePct'])}% {'(판정 가능)' if f['complete'] else '(건수 부족, 판정 보류)'} / 전체 {ot['overall']['numerator']}/{ot['overall']['denominator']}")
     L.append(f"답장률: {rr['numerator']}/{rr['denominator']} = {_fmt(rr['ratePct'])}%")
-    d = r["aiDatasets"]
-    L.append(f"AI 묶음별 Plan 수: real {d['real']}, fake {d['fake']}, unknown {d['unknown']} (집계 대상: {d['selected']})")
     t = r["authoringTimeMs"]
     L.append(f"작성 시간 중앙값(ms): MANUAL {_fmt(t['MANUAL']['durationMsMedian']['value'])}(n={t['MANUAL']['durationMsMedian']['n']}), AI_EDITED {_fmt(t['AI_EDITED']['durationMsMedian']['value'])}(n={t['AI_EDITED']['durationMsMedian']['n']})")
     L.append(f"  AI_EDITED 구성: 에이전트 대기 {_fmt(t['AI_EDITED']['agentWaitMsMedian']['value'])}, 질문 응답 {_fmt(t['AI_EDITED']['answerWaitMsMedian']['value'])}, 편집 {_fmt(t['AI_EDITED']['editMsMedian']['value'])}")
@@ -385,7 +387,7 @@ def _parse(argv: list[str] | None) -> argparse.Namespace:
     ap.add_argument("--csv", dest="csv_out", metavar="PATH", help="CSV 출력 파일(- 는 표준 출력)")
     ap.add_argument("--first-n", type=int, default=5)
     ap.add_argument("--exclude-abandoned", action="store_true")
-    ap.add_argument("--llm", choices=("real", "fake", "unknown"), default="real")
+    ap.add_argument("--allow-non-pilot-env", action="store_true", help="dev 스택처럼 Fake 구간이 섞였을 수 있는 환경도 출력한다(성과 근거가 아니다)")
     ap.add_argument("--include-seed", action="store_true")
     ap.add_argument("--check-invariants", action="store_true")
     ap.add_argument("--now", help="기준 시각(ISO, 테스트·재현용)")
@@ -406,18 +408,24 @@ def main(argv: list[str] | None = None) -> int:
             os.environ.setdefault("AWS_SECRET_ACCESS_KEY", "test")
             session = boto3.session.Session(region_name=args.region or os.environ.get("AWS_DEFAULT_REGION", "ap-northeast-2"))
             table_name, kw = os.environ.get("TABLE_NAME", "HaruTable"), {"endpoint_url": endpoint}
+            environment = describe_environment(None, None)
         else:
             if os.environ.get("AWS_ENDPOINT_URL"):
                 raise RuntimeError("AWS_ENDPOINT_URL이 설정돼 있다. --stack은 실제 스택 대상이라 에뮬레이터 설정과 같이 쓰지 않는다.")
             session = boto3.session.Session(region_name=args.region)
-            table_name = session.client("cloudformation").describe_stack_resource(StackName=args.stack, LogicalResourceId="HaruTable")["StackResourceDetail"]["PhysicalResourceId"]
+            cfn = session.client("cloudformation")
+            table_name = cfn.describe_stack_resource(StackName=args.stack, LogicalResourceId="HaruTable")["StackResourceDetail"]["PhysicalResourceId"]
+            params = {p["ParameterKey"]: p.get("ParameterValue", "") for p in cfn.describe_stacks(StackName=args.stack)["Stacks"][0].get("Parameters", [])}
+            environment = describe_environment(args.stack, params)
             kw = {}
+            if environment["evidence"] != "pilotEligible" and not args.allow_non_pilot_env:
+                raise RuntimeError(environment["note"] + " 그래도 형식 확인용으로 보려면 --allow-non-pilot-env를 준다.")
         table = session.resource("dynamodb", **kw).Table(table_name)
         now = parse_ts(args.now) if args.now else datetime.now(timezone.utc)
         if now is None:
             raise RuntimeError("--now는 ISO 8601 형식이어야 한다.")
-        result = compute(scan_items(table), Options(now=now, first_n=args.first_n, exclude_abandoned=args.exclude_abandoned, llm=args.llm,
-                                                    include_seed=args.include_seed, check_invariants=args.check_invariants))
+        result = compute(scan_items(table), Options(now=now, first_n=args.first_n, exclude_abandoned=args.exclude_abandoned,
+                                                    include_seed=args.include_seed, check_invariants=args.check_invariants, environment=environment))
     except Exception as e:  # noqa: BLE001 - 대상 오류는 메시지만(값·키는 담지 않는다)
         if type(e).__name__ in ("RuntimeError", "SeedError"):
             print(f"오류: {e}", file=sys.stderr)

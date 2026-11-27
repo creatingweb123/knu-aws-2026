@@ -112,5 +112,5 @@ Floci는 CORS preflight, 버킷 정책 강제, 수명 주기 만료, 실제 SQS 
 ## 6. 운영 스크립트
 - `scripts/photo_dlq_recover.py`: DLQ 복구(기본 dry-run, 안전 확인 통과 시 `--apply`). 런북은 `backend/README.md` "사진 DLQ 복구".
 - `scripts/photo_orphans.py --stack haru-dev`: 전달되지 않은 처리본 후보 점검(읽기 전용, 삭제하지 않는다). `orphan_candidate`는 운영자가 확인한 뒤 직접 처리한다.
-- `scripts/report.py --stack haru-demo [--check-invariants] [--json out.json]`: 성과 집계. 기본은 실제 모델 데이터만, 시드 제외.
+- `scripts/report.py --stack haru-demo [--check-invariants] [--json out.json]`: 성과 집계. `Stage=demo` 스택만 성과 근거(`pilotEligible`)로 출력하고, dev·Fake는 `--allow-non-pilot-env`가 있어야 출력하며 `formatCheckOnly`로 표시된다. 시드는 기본 제외.
 - 정리: 데모 데이터는 `seed.py --clean`, 웹 버킷은 스택 삭제 전에 비워야 한다(`aws s3 rm s3://<WebBucketName> --recursive`; 파괴적이므로 대상 확인 뒤 AWS 담당이 실행).

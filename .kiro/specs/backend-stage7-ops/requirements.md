@@ -68,7 +68,7 @@
 ### Requirement 6: 시연 데이터와 성과 집계 [BE-OBS-04·05, BE-NFR-06]
 1. THE `seed.py` SHALL 대상(`--local`/`--stack`)을 명시해야 하고 기본 dry-run이며, 매니페스트로 멱등하고, `--reset`·`--clean`은 매니페스트의 Plan만 지우며, 데모 사용자가 아닌 사람의 Claim이 있는 Plan은 지키고, 서비스 계층으로 데이터를 만든다.
 2. THE `report.py` SHALL 읽기 전용이고 필요한 속성만 Scan하며(본문·닉네임·제목·답장 본문 미조회), 지표별 분모·제외·누락값을 docstring에 정의하고, 빈 데이터는 null로 내며, 콘솔·JSON·CSV를 지원한다.
-3. THE 집계 SHALL Fake 모델 데이터와 실제 모델 데이터를 섞지 않는다. `Plan.metrics.llmMode`(저장만, API 미노출)로 묶음을 나누고 기본은 실제 모델 묶음만 본다.
+3. THE 집계 SHALL Fake 모델 데이터와 실제 모델 데이터를 섞지 않는다. Plan 지표에는 공급자 구분이 없으므로(6a design §15.1 유지) **환경 단위**로 막는다: `--stack`은 `Stage`·`LlmProvider`를 읽어 `demo` 스택만 `pilotEligible`로 표시하고, 그 밖(dev·Fake·로컬)은 `formatCheckOnly`이며 명시 플래그 없이는 출력하지 않는다(BE-Q133).
 4. THE 시드 데이터 SHALL 집계에서 기본 제외된다(`Plan.seed` 태그).
 
 ### Requirement 7: AI 안정화 [BE-Q10, BE-Q26]
