@@ -96,7 +96,7 @@ def session_metrics(session: dict[str, Any], final: dict[str, Any], story: str, 
     targets = place_targets(final.get("places") or [])
     wait = answer_wait_ms(answers)
     created, ready, plan_ms = _ms(session.get("createdAt")), _ms(session.get("readyAt")), _ms(plan_created_at)
-    return {
+    out = {
         "agentMode": agent_mode(session),
         "addedNotInSourceOrAnswers": len(find_not_in_source([story, *answer_sources(answers)], targets)),
         "firstProposalNotInSource": len(first_report.get("notInSource") or []),
@@ -113,3 +113,8 @@ def session_metrics(session: dict[str, Any], final: dict[str, Any], story: str, 
         "fieldsEditedAfterHandoff": fields_edited(session.get("card"), final),
         "modelCalls": int(_n(session.get("modelCalls") or 0)),
     }
+    # 공급자 구분(fake·bedrock·openai_compat). 저장만 하고 API 응답 허용 목록(METRIC_FIELDS)에는 넣지 않는다.
+    # scripts/report.py가 Fake 모델 데이터와 실제 모델 데이터를 섞지 않으려고 쓴다(BE-OBS-04).
+    if isinstance(session.get("llmMode"), str) and session["llmMode"]:
+        out["llmMode"] = session["llmMode"]
+    return out
