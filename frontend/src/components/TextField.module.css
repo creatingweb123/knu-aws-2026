@@ -1,7 +1,7 @@
 .field {
   display: flex;
   flex-direction: column;
-  gap: var(--space-1);
+  gap: 6px;
   margin-bottom: var(--space-4);
 }
 
@@ -12,7 +12,7 @@
 }
 
 .label {
-  font-size: var(--font-size-sm);
+  font-size: 13px;
   font-weight: 700;
 }
 
@@ -23,15 +23,32 @@
 
 .input {
   width: 100%;
-  padding: var(--space-3);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
+  min-height: var(--input-height);
+  padding: var(--space-3) 14px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-input);
   background: var(--color-surface);
+  font-size: 15px;
+}
+
+.input:focus-visible {
+  outline-offset: 0;
+  border-color: var(--color-primary);
 }
 
 .textarea {
   resize: vertical;
-  line-height: var(--line-height-body);
+  line-height: 1.55;
+}
+
+/* 경험 기록 글: 본문보다 큰 글자와 넓은 줄 간격(docs/05 §5.3) */
+.letter {
+  padding: var(--space-4);
+  border-radius: var(--radius-md);
+  font-family: var(--font-family-letter);
+  font-size: var(--font-size-md);
+  line-height: var(--line-height-letter);
+  resize: none;
 }
 
 .invalid {

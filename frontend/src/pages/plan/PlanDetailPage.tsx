@@ -6,7 +6,8 @@ import { errorMessage } from '../../api/errors';
 import { useClaim } from '../../api/mutations/useClaim';
 import { usePlan } from '../../api/queries/usePlans';
 import type { PlanStatus } from '../../api/types';
-import { PrimaryButton } from '../../components/PrimaryButton';
+import { Icon } from '../../components/Icon';
+import { BottomActions, PrimaryButton } from '../../components/PrimaryButton';
 import { ResultScreen } from '../../components/ResultScreen';
 import { RouteTimeline } from '../../components/RouteTimeline';
 import { StatusBadge } from '../../components/StatusBadge';
@@ -71,7 +72,7 @@ function PlanDetail({ planId }: { planId: string }) {
     return (
       <section data-testid="screen-2">
         <ResultScreen
-          icon="alert"
+          icon="notice"
           title="이 하루는 더 이상 볼 수 없어요"
           description="완료되었거나 사라진 하루예요. 다른 하루를 둘러보세요."
           action={<PrimaryButton onClick={browse}>둘러보기로 가기</PrimaryButton>}
@@ -94,34 +95,54 @@ function PlanDetail({ planId }: { planId: string }) {
 
   return (
     <section data-testid={view === 'claimed' ? 'screen-2-1' : 'screen-2'}>
-      <div className={styles.cover} aria-hidden="true" />
+      {/* 위쪽 띠: 넘겨받는 티켓의 위쪽 칸(docs/05 §5.3). 남이 이어받은 하루는 회색으로 가라앉힌다 */}
+      <div className={`${styles.hero} ${view === 'claimed' || view === 'completed' ? styles.heroMuted : ''}`}>
+        <div className={styles.badges} data-testid="detail-badges">
+          {view === 'myClaim' ? <StatusBadge kind="myClaim" /> : null}
+          {view === 'owner' ? (
+            <>
+              <StatusBadge kind="mine" />
+              <StatusBadge kind={OWNER_STATUS[plan.status]} />
+            </>
+          ) : null}
+          {view === 'claimable' ? <StatusBadge kind="claimable" /> : null}
+          {view === 'claimed' ? <StatusBadge kind="claimed" /> : null}
+          {view === 'completed' ? <StatusBadge kind="completed" /> : null}
+        </div>
 
-      <div className={styles.badges} data-testid="detail-badges">
-        {view === 'myClaim' ? <StatusBadge kind="myClaim" /> : null}
-        {view === 'owner' ? (
-          <>
-            <StatusBadge kind="mine" />
-            <StatusBadge kind={OWNER_STATUS[plan.status]} />
-          </>
-        ) : null}
-        {view === 'claimable' ? <StatusBadge kind="claimable" /> : null}
-        {view === 'claimed' ? <StatusBadge kind="claimed" /> : null}
-        {view === 'completed' ? <StatusBadge kind="completed" /> : null}
+        <h2 className={styles.title}>{plan.title}</h2>
+        <p className={styles.summary}>{plan.summary}</p>
+        <p className={styles.meta}>
+          <Icon name="clock" size={14} strokeWidth={2} />
+          {planMetaText(plan.estimatedMinutes, plan.places.length)}
+        </p>
       </div>
-
-      <h2 className={styles.title}>{plan.title}</h2>
-      <p className={styles.summary}>{plan.summary}</p>
-      <p className={styles.meta}>{planMetaText(plan.estimatedMinutes, plan.places.length)}</p>
+      <div className={styles.perforation} aria-hidden="true" />
 
       <div className={styles.planner}>
-        <p className={styles.plannerLabel}>{plan.owner.nickname} · 취소한 이유</p>
-        <p className={styles.plannerReason}>{plan.reason}</p>
+        <span className={styles.avatar} aria-hidden="true">
+          {plan.owner.nickname.slice(0, 1)}
+        </span>
+        <div>
+          <p className={styles.plannerLabel}>{plan.owner.nickname} · 취소한 이유</p>
+          <p className={styles.plannerReason}>{plan.reason}</p>
+        </div>
       </div>
 
       <div className={styles.section}>
-        <h3 className={styles.sectionTitle}>산책 동선</h3>
+        <h3 className={styles.sectionTitle}>방문할 장소</h3>
         <RouteTimeline places={plan.places} />
       </div>
+
+      {view === 'claimable' || view === 'myClaim' || view === 'owner' ? (
+        <div className={styles.question}>
+          <p className={styles.questionLabel}>
+            <Icon name="chat" size={14} strokeWidth={2} />
+            다녀와서 답해 주세요
+          </p>
+          <p className={styles.questionText}>{plan.question}</p>
+        </div>
+      ) : null}
 
       {view === 'claimed' ? <ClaimedNotice onBrowse={browse} /> : null}
 
@@ -129,9 +150,11 @@ function PlanDetail({ planId }: { planId: string }) {
         <PrimaryButton onClick={() => navigate('/me')}>내 하루로 가기</PrimaryButton>
       ) : null}
       {view === 'claimable' ? (
-        <PrimaryButton onClick={onClaim} loading={claim.isPending}>
-          이 하루 이어받기
-        </PrimaryButton>
+        <BottomActions hint="이어받으면 3일 안에 다녀와서 경험 기록을 보내요">
+          <PrimaryButton fixed={false} onClick={onClaim} loading={claim.isPending}>
+            이 하루 이어받기
+          </PrimaryButton>
+        </BottomActions>
       ) : null}
       {view === 'other' ? <PrimaryButton onClick={browse}>다른 하루 둘러보기</PrimaryButton> : null}
     </section>

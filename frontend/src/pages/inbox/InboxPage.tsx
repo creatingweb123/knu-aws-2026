@@ -4,6 +4,7 @@ import { errorMessage } from '../../api/errors';
 import { useInbox } from '../../api/queries/useInbox';
 import type { InboxItem } from '../../api/types';
 import { PageTitle } from '../../components/PageTitle';
+import { Icon } from '../../components/Icon';
 import { PrimaryButton } from '../../components/PrimaryButton';
 import { StatusBadge } from '../../components/StatusBadge';
 import { formatDateTime } from '../../utils/date';
@@ -48,22 +49,28 @@ export function InboxPage() {
 }
 
 function sentLine(item: Pick<InboxItem, 'claimerNickname' | 'hasPhoto'>): string {
-  return `${item.claimerNickname}님이 ${item.hasPhoto ? '사진과 방문 기록을' : '방문 기록을'} 보냈어요`;
+  return `${item.claimerNickname}님이 ${item.hasPhoto ? '사진과 경험 기록을' : '경험 기록을'} 보냈어요`;
 }
 
 function InboxRow({ item }: { item: InboxItem }) {
   return (
     <li>
-      <Link to={`/inbox/${encodeURIComponent(item.itemId)}`} className={styles.item}>
-        <div className={styles.head}>
-          <StatusBadge kind={item.read ? 'read' : 'newLetter'} />
-          {item.read ? null : (
-            <span className={styles.dot} aria-hidden="true" data-testid="item-unread-dot" />
-          )}
-        </div>
-        <p className={styles.title}>{item.planTitle}</p>
-        <p className={styles.line}>{sentLine(item)}</p>
-        <p className={styles.time}>{formatDateTime(item.createdAt)}</p>
+      <Link
+        to={`/inbox/${encodeURIComponent(item.itemId)}`}
+        className={`${styles.item} ${item.read ? styles.itemRead : ''}`}
+      >
+        <span className={styles.tile} aria-hidden="true">
+          <Icon name="mail" />
+          {item.read ? null : <span className={styles.dot} data-testid="item-unread-dot" />}
+        </span>
+        <span className={styles.itemBody}>
+          <span className={styles.head}>
+            <span className={styles.title}>{item.planTitle}</span>
+            <StatusBadge kind={item.read ? 'read' : 'newLetter'} />
+          </span>
+          <span className={styles.line}>{sentLine(item)}</span>
+          <span className={styles.time}>{formatDateTime(item.createdAt)}</span>
+        </span>
       </Link>
     </li>
   );

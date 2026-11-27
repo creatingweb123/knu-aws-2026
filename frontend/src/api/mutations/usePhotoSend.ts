@@ -25,7 +25,7 @@ async function upload(
 }
 
 /**
- * 사진과 방문 기록 보내기(FE-REC-04): `PUT /record { letter, photo }` → presigned PUT.
+ * 사진과 경험 기록 보내기(FE-REC-04): `PUT /record { letter, photo }` → presigned PUT.
  * `PUT /record`의 오류(CLAIM_NOT_ACTIVE 등)는 던진다. 화면은 성공하면 보내는 중으로 간다.
  */
 export function useSendWithPhoto(claimId: string) {

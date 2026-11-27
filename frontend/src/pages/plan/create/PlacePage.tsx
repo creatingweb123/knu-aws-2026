@@ -75,15 +75,36 @@ export function PlacePage() {
   return (
     <section data-testid="screen-3-3">
       <PageTitle
-        title={editing ? `${index + 1}번 장소를\n고쳐 주세요` : '산책 동선에\n장소를 더해 주세요'}
+        title={editing ? `${index + 1}번 장소를\n고쳐 주세요` : '방문할 장소를\n더해 주세요'}
         description="공개된 장소만 적어 주세요. 집이나 개인 공간은 빼 주세요."
       />
+      {/* 지금 담긴 장소와, 새 장소(또는 고치는 장소)가 몇 번째인지 미리 보인다. 번호는 순서일 뿐 경로가 아니다 */}
+      {places.length > 0 || !editing ? (
+        <div className={styles.placeChips} aria-hidden="true">
+          {places.map((p, i) => (
+            <span
+              key={`${i}-${p.name}`}
+              className={`${styles.placeChip} ${i === index ? styles.placeChipNow : ''}`}
+            >
+              <span className={styles.placeChipNo}>{i + 1}</span>
+              {i === index ? place.name.trim() || p.name : p.name}
+            </span>
+          ))}
+          {!editing ? (
+            <span className={`${styles.placeChip} ${styles.placeChipNow}`}>
+              <span className={styles.placeChipNo}>{places.length + 1}</span>
+              {place.name.trim() || '새 장소'}
+            </span>
+          ) : null}
+        </div>
+      ) : null}
       <div className={styles.form}>
         <TextField
           label="장소 이름"
           value={place.name}
           maxLength={LIMITS.placeName}
           error={errors.name}
+          placeholder="예: 동네 빵집"
           onChange={(e) => setField('name', e.target.value)}
         />
         <TextField
@@ -91,6 +112,7 @@ export function PlacePage() {
           value={place.activity}
           maxLength={LIMITS.placeActivity}
           error={errors.activity}
+          placeholder="예: 갓 나온 빵 하나 사기"
           onChange={(e) => setField('activity', e.target.value)}
         />
         <TextArea
@@ -103,7 +125,7 @@ export function PlacePage() {
           onChange={(e) => setField('whyChosen', e.target.value)}
         />
       </div>
-      <PrimaryButton onClick={onSave}>{editing ? '저장하기' : '동선에 추가하기'}</PrimaryButton>
+      <PrimaryButton onClick={onSave}>{editing ? '저장하기' : '장소 추가하기'}</PrimaryButton>
     </section>
   );
 }

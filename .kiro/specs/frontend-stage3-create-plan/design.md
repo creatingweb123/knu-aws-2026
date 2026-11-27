@@ -61,7 +61,7 @@ interface PlanDraft {
 ## 폼 오류 표시
 
 - 클라이언트 오류와 서버 `details`를 같은 `{ [path]: message }` 모양으로 합쳐 보여 준다. 입력을 고치면 그 경로의 오류만 지운다.
-- 장소 오류(`places[i].name` 등)는 i번째 장소 항목 아래에, `places`(개수)는 동선 제목 아래에 보여 준다.
+- 장소 오류(`places[i].name` 등)는 i번째 장소 항목 아래에, `places`(개수)는 '방문할 장소' 제목 아래에 보여 준다.
 
 ## 목업 `POST /plans`
 

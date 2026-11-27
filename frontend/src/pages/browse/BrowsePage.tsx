@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { usePlans } from '../../api/queries/usePlans';
 import { errorMessage } from '../../api/errors';
 import { PageTitle } from '../../components/PageTitle';
-import { PrimaryButton } from '../../components/PrimaryButton';
+import { Icon } from '../../components/Icon';
 import styles from './BrowsePage.module.css';
 import { PlanCard } from './PlanCard';
 
@@ -20,13 +20,27 @@ export function BrowsePage() {
     <section data-testid="screen-1">
       <PageTitle
         title={'이어받을 수 있는\n하루를 둘러보세요'}
-        description="누군가 하지 못한 동네 산책을 이어받아요."
+        description="누군가 하지 못한 하루를 이어받아요."
       />
-      <div className={styles.create}>
-        <PrimaryButton fixed={false} variant="secondary" onClick={() => navigate('/plans/new')}>
-          취소된 하루 남기기
-        </PrimaryButton>
-      </div>
+      {/* 목록과 구분되는 점선 카드. 버튼 이름은 제목만 두고 보조 문구는 설명으로 연결한다 */}
+      <button
+        type="button"
+        className={styles.create}
+        aria-label="취소된 하루 남기기"
+        aria-describedby="browse-create-desc"
+        onClick={() => navigate('/plans/new')}
+      >
+        <span className={styles.createIcon}>
+          <Icon name="plus" size={20} strokeWidth={2} />
+        </span>
+        <span className={styles.createText}>
+          <span className={styles.createTitle}>취소된 하루 남기기</span>
+          <span id="browse-create-desc" className={styles.createDesc}>
+            사연만 적으면 AI가 하루 카드로 정리해요
+          </span>
+        </span>
+        <Icon name="chevron" size={18} strokeWidth={2} />
+      </button>
 
       {isPending ? <p className={styles.status}>불러오는 중…</p> : null}
 
@@ -42,14 +56,14 @@ export function BrowsePage() {
       {data && data.items.length === 0 ? (
         <div className={styles.empty} data-testid="browse-empty">
           <p className={styles.emptyTitle}>아직 남겨진 하루가 없어요</p>
-          <p className={styles.emptyText}>하지 못한 산책이 있다면 첫 하루를 남겨 보세요.</p>
+          <p className={styles.emptyText}>하지 못한 하루가 있다면 첫 하루를 남겨 보세요.</p>
         </div>
       ) : null}
 
       {data && data.items.length > 0 ? (
         <ul className={styles.list} aria-label="이어받을 수 있는 하루" data-testid="plan-list">
-          {data.items.map((p) => (
-            <PlanCard key={p.planId} plan={p} />
+          {data.items.map((p, i) => (
+            <PlanCard key={p.planId} plan={p} index={i} />
           ))}
         </ul>
       ) : null}

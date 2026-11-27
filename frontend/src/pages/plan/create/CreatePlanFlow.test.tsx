@@ -35,9 +35,9 @@ async function fillForm() {
   type('취소한 이유', '이삿짐 정리가 길어졌어요.');
   type('예상 소요 시간(분)', '45');
   type('방문 질문', '빵집에서 무엇을 샀나요?');
-  fireEvent.click(screen.getByRole('button', { name: '+ 장소 추가' }));
+  fireEvent.click(screen.getByRole('button', { name: '장소 추가하기' }));
   await fillPlace('출근길 빵집', '들러서 빵 사기', '출근길에 지나치던 곳이에요.');
-  fireEvent.click(screen.getByRole('button', { name: '동선에 추가하기' }));
+  fireEvent.click(screen.getByRole('button', { name: '장소 추가하기' }));
   await screen.findByTestId('screen-3-2');
 }
 
@@ -101,12 +101,12 @@ describe('폼·장소(FE-CRT-06, FE-CRT-07, FE-Q20)', () => {
   it('장소 추가 → 고치기 → 빼기, 3곳이면 추가 버튼이 사라진다', async () => {
     await startManual();
     for (const name of ['빵집', '하천 벤치', '공원']) {
-      fireEvent.click(screen.getByRole('button', { name: '+ 장소 추가' }));
+      fireEvent.click(screen.getByRole('button', { name: '장소 추가하기' }));
       await fillPlace(name, '들르기');
-      fireEvent.click(screen.getByRole('button', { name: '동선에 추가하기' }));
+      fireEvent.click(screen.getByRole('button', { name: '장소 추가하기' }));
       await screen.findByTestId('screen-3-2');
     }
-    expect(screen.queryByRole('button', { name: '+ 장소 추가' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '장소 추가하기' })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: '2번 장소 고치기' }));
     await screen.findByTestId('screen-3-3');
@@ -118,14 +118,14 @@ describe('폼·장소(FE-CRT-06, FE-CRT-07, FE-Q20)', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '1번 장소 빼기' }));
     expect(loadDraft()?.form.places.map((p) => p.name)).toEqual(['하천 산책로 벤치', '공원']);
-    expect(screen.getByRole('button', { name: '+ 장소 추가' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '장소 추가하기' })).toBeInTheDocument();
   });
 
   it('장소 입력 검증: 이름·하고 싶었던 일은 필수', async () => {
     await startManual();
-    fireEvent.click(screen.getByRole('button', { name: '+ 장소 추가' }));
+    fireEvent.click(screen.getByRole('button', { name: '장소 추가하기' }));
     await screen.findByTestId('screen-3-3');
-    fireEvent.click(screen.getByRole('button', { name: '동선에 추가하기' }));
+    fireEvent.click(screen.getByRole('button', { name: '장소 추가하기' }));
     expect(await screen.findByText('1–30자로 입력해 주세요.')).toBeInTheDocument();
     expect(screen.getByText('1–60자로 입력해 주세요.')).toBeInTheDocument();
   });

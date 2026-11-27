@@ -41,6 +41,39 @@ def _card(**over: Any) -> str:
     return json.dumps(card, ensure_ascii=False)
 
 
+# 비산책 대표 활동 카드(전시회 한 곳·카페·서점·공원 사진). 산책 데모와 같은 형식이며 Fake가 사연을 읽지는 않는다.
+# 시나리오 이름과 짝인 사연은 tests/fixtures/stories.json(nonwalk_*)에 있다. 카드의 장소·활동은 그 사연에 나온 말만 쓴다.
+NONWALK_CARDS: dict[str, dict[str, Any]] = {
+    "exhibition": {
+        "title": "시립미술관 전시 관람", "summary": "곧 끝나는 시립미술관 전시를 보고 싶었어요.",
+        "reason": "일정이 바뀌어 전시를 보러 가지 못했어요.", "estimatedMinutes": 90,
+        "places": [{"name": "시립미술관", "activity": "전시 보기", "whyChosen": "전시가 곧 끝나요."}],
+        "question": "가장 오래 머문 작품은 무엇이었나요?",
+    },
+    "cafe": {
+        "title": "골목 카페에서 라떼 한 잔", "summary": "단골이 되고 싶던 골목 카페에서 라떼를 마시며 책을 읽고 싶었어요.",
+        "reason": "감기에 걸려 카페에 가지 못했어요.", "estimatedMinutes": 60,
+        "places": [{"name": "골목 카페", "activity": "라떼 마시며 책 읽기", "whyChosen": "단골이 되고 싶던 곳이에요."}],
+        "question": "라떼는 어떤 맛이었나요?",
+    },
+    "bookstore": {
+        "title": "동네 서점에서 책 고르기", "summary": "동네 서점에서 마음에 드는 책을 한 권 고르고 싶었어요.",
+        "reason": "회사 일이 늦게 끝나 서점 문 닫기 전에 가지 못했어요.", "estimatedMinutes": 40,
+        "places": [{"name": "동네 서점", "activity": "책 한 권 고르기", "whyChosen": "퇴근길에 늘 지나치던 곳이에요."}],
+        "question": "어떤 책을 골랐나요?",
+    },
+    "park_photo": {
+        "title": "공원 벚나무 사진 찍기", "summary": "공원 벚나무가 활짝 핀 모습을 사진으로 남기고 싶었어요.",
+        "reason": "비가 와서 꽃이 지기 전에 가지 못했어요.", "estimatedMinutes": None,
+        "places": [{"name": "공원 벚나무", "activity": "사진 찍기", "whyChosen": "해마다 봄이면 보던 나무예요."}],
+        "question": "벚나무는 지금 어떤 모습이었나요?",
+    },
+}
+# 원문에 없는 주변 장소를 덧붙인 전시회 카드(NOT_IN_SOURCE 확인용). 사연에는 미술관 한 곳뿐이다.
+EXHIBITION_EXTRA = {**NONWALK_CARDS["exhibition"], "places": NONWALK_CARDS["exhibition"]["places"] + [
+    {"name": "근처 공원", "activity": "산책하기", "whyChosen": None}]}
+
+
 def _status(code: int) -> openai.APIStatusError:
     resp = httpx.Response(code, request=_REQ, json={"error": {"message": "fake", "type": "fake"}})
     cls = {400: openai.BadRequestError, 401: openai.AuthenticationError, 403: openai.PermissionDeniedError,
@@ -76,6 +109,8 @@ SCENARIOS: dict[str, list[dict[str, Any]]] = {
     "slow": [_content(_card(), sleep=30.0)],
     "no_usage": [_content(_card(), usage=False)],
     "fenced_json": [_content("```json\n" + _card() + "\n```")],
+    **{name: [_content(_card(**card))] for name, card in NONWALK_CARDS.items()},
+    "exhibition_extra_place": [_content(_card(**EXHIBITION_EXTRA))],
 }
 
 
@@ -149,6 +184,15 @@ AGENT_SCENARIOS: dict[str, list[dict[str, Any]]] = {
     "json_then_schema": [_content("JSON 객체가 아니에요."), _content(_card(title="가" * 41)), _tool("submit_card", card=GOOD, notes=SUBMIT_NOTE)],
     "schema_then_json": [_content(_card(title="가" * 41)), _content("여전히 JSON 객체가 아니에요."), _tool("submit_card", card=GOOD, notes=SUBMIT_NOTE)],
     "schema_twice": [_content(_card(title="가" * 41)), _content(_card(estimatedMinutes=300)), _tool("submit_card", card=GOOD, notes=SUBMIT_NOTE)],
+    **{name: [_content(_card(**card)), _tool("submit_card", card=card, notes=[])] for name, card in NONWALK_CARDS.items()},
+    # 원문에 없는 주변 장소: 서버 검사(Gate)가 한 번 거절하고 모델이 고쳐 다시 제출한다.
+    "exhibition_extra_place": [_content(_card(**EXHIBITION_EXTRA)), _tool("submit_card", card=EXHIBITION_EXTRA),
+                               _tool("submit_card", card=NONWALK_CARDS["exhibition"], notes=[])],
+    # 전시회 소요 시간 질문 하나(활동에 맞는 문구). 계획자가 답하면 제출한다.
+    "exhibition_ask_time": [_content(_card(**(NONWALK_CARDS["exhibition"] | {"estimatedMinutes": None}))),
+                            _tool("ask_planner", path="estimatedMinutes", question="전시를 보는 데 얼마나 걸릴 예정이었나요?",
+                                  reason="사연에 소요 시간이 없어요.", options=["1시간", "90분", "2시간"], allowFreeText=True),
+                            _tool("submit_card", card=NONWALK_CARDS["exhibition"], notes=[])],
     "empty_info_card": [_content(json.dumps({"title": None, "summary": None, "reason": None, "estimatedMinutes": None, "places": [],
                                               "question": None}, ensure_ascii=False)), _tool("submit_card", card=GOOD, notes=SUBMIT_NOTE)],
 }

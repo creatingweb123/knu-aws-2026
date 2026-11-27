@@ -30,8 +30,8 @@ export function DonePage() {
           !known
             ? '전송 결과를 확인하고 있어요'
             : hasPhoto
-              ? '사진과 방문 기록을 보냈어요'
-              : '방문 기록을 보냈어요'
+              ? '사진과 경험 기록을 보냈어요'
+              : '경험 기록을 보냈어요'
         }
         description={known ? '계획자의 수신함에 그날의 이야기가 도착했어요.' : undefined}
         action={

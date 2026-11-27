@@ -1,7 +1,7 @@
 """실제 OpenAI 호환 공급자 호환성 확인 (BE-Q6 개발용 공급자, BE-Q9·BE-Q12 실측).
 
 사용(backend/에서):
-    .venv/bin/python scripts/probe_provider.py --env-file .env [--stories 15] [--only raw,pipeline,tools,handler]
+    .venv/bin/python scripts/probe_provider.py --env-file .env [--stories 22] [--only raw,pipeline,tools,handler]
 
 - 설정은 --env-file의 LLM_* 줄에서만 읽는다(os.environ을 바꾸지 않는다). API 키는 출력·저장하지 않는다.
 - 사연은 tests/fixtures/stories.json의 합성 사연만 쓴다. 실제 사용자 사연을 넣지 않는다.

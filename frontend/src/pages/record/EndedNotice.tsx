@@ -29,15 +29,13 @@ export function EndedNotice({ claimId, letter }: { claimId: string; letter: stri
   return (
     <div data-testid="screen-8">
       <ResultScreen
-        icon="alert"
+        icon="ended"
         title="이 이어받기는 종료되었어요"
         description="포기했거나 기한이 지나 이어받기가 끝났어요. 작성한 글은 복사해 둘 수 있어요."
         summary={
           letter.trim() ? (
             <>
-              <p>
-                <strong>작성한 글</strong>
-              </p>
+              <p className={styles.letterLabel}>작성한 글</p>
               <p className={styles.letter}>{letter}</p>
               <button type="button" className={styles.copy} onClick={() => void copy()}>
                 글 복사하기

@@ -23,7 +23,7 @@ MAX_QUESTIONS = 2
 MAX_CHECKS = 4          # 최초 자동 검사 + 모델 요청 검사(BE-Q98)
 MAX_GATE_REJECTS = 2    # 세 번째 거부 → fallback
 Q_TEXT_MAX, Q_REASON_MAX, OPT_MAX, OPTS_MAX = 60, 80, 15, 4
-PRIVATE_OPTION = "동선에서 빼기"
+PRIVATE_OPTION = "장소에서 빼기"
 NOTE_REASON_MAX = 60
 SAFE_NOTE_REASON = "카드를 원문에 맞게 고쳤어요."
 
@@ -233,7 +233,7 @@ def apply_private_place_answer(card: dict[str, Any] | None, question: dict[str, 
         return card, None
     if answer.get("choice") == PRIVATE_OPTION:
         new = dict(card, places=places[:i] + places[i + 1:])
-        return new, {"path": f"places[{i}].name", "action": "REMOVED", "reason": "계획자가 동선에서 뺐어요.", "source": "ANSWER"}
+        return new, {"path": f"places[{i}].name", "action": "REMOVED", "reason": "계획자가 장소에서 뺐어요.", "source": "ANSWER"}
     t = answer.get("text")
     if isinstance(t, str) and t and not answer.get("privacy") and len(t) <= 30:
         places[i] = dict(places[i], name=t)

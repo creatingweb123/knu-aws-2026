@@ -45,11 +45,11 @@ def kinds(items):
 
 def test_seed_creates_scenario(table):
     r = sd.seed(table, USERS, now=NOW, out=lambda *_: None)
-    assert r["plans"] == 6 and r["claims"] == 3 and r["records"] == 3 and r["inbox"] == 2
+    assert r["plans"] == 9 and r["claims"] == 4 and r["records"] == 4 and r["inbox"] == 2
     k = kinds(scan(table))
-    assert k["PLAN/META"] == 6 and k["PLAN/CLAIM"] == 3 and k["PLAN/RECORD"] == 3 and k["USER/INBOX"] == 2 and k["CLAIM/META"] == 3
+    assert k["PLAN/META"] == 9 and k["PLAN/CLAIM"] == 4 and k["PLAN/RECORD"] == 4 and k["USER/INBOX"] == 2 and k["CLAIM/META"] == 4
     statuses = sorted(i["status"] for i in scan(table) if i["SK"] == "META" and i["PK"].startswith("PLAN#"))
-    assert statuses == ["CLAIMED", "COMPLETED", "COMPLETED", "OPEN", "OPEN", "OPEN"]
+    assert statuses == ["CLAIMED", "CLAIMED", "COMPLETED", "COMPLETED", "OPEN", "OPEN", "OPEN", "OPEN", "OPEN"]
     assert all(i.get("seed") == "demo-v1" for i in scan(table) if i["PK"].startswith("PLAN#") and i["SK"] == "META")
     assert sd.get_manifest(table)["status"] == "complete"
 
@@ -61,7 +61,7 @@ def test_seed_shapes_match_api_flow(table):
     replied = [i for i in inbox if "reply" in i]
     assert len(replied) == 1 and replied[0]["read"] is True
     records = [i for i in scan(table) if i["SK"].startswith("RECORD#")]
-    assert sum(1 for r in records if r.get("deliveredAt")) == 2 and sum(1 for r in records if not r.get("deliveredAt")) == 1
+    assert sum(1 for r in records if r.get("deliveredAt")) == 2 and sum(1 for r in records if not r.get("deliveredAt")) == 2
 
 
 def test_seed_is_idempotent(table):
@@ -77,7 +77,7 @@ def test_clean_removes_only_seed_data_and_keeps_others(table):
     table.put_item(Item={"PK": "USER#real-user", "SK": "INBOX#real", "ownerId": "real-user"})
     sd.seed(table, USERS, now=NOW, out=lambda *_: None)
     res = sd.clean(table, {s for s, _ in USERS.values()}, out=lambda *_: None)
-    assert res["plans"] == 6 and res["skipped"] == 0
+    assert res["plans"] == 9 and res["skipped"] == 0
     left = scan(table)
     assert {(i["PK"], i["SK"]) for i in left} == {("PLAN#realplan", "META"), ("USER#real-user", "INBOX#real")}  # 매니페스트도 사라진다
 
@@ -90,7 +90,7 @@ def test_clean_protects_plan_claimed_by_real_user(table):
 
     cs.claim_plan(open_plan["planId"], User("real-stranger", "낯선이"), NOW)
     res = sd.clean(table, {s for s, _ in USERS.values()}, out=lambda *_: None)
-    assert res["skipped"] == 1 and res["plans"] == 5
+    assert res["skipped"] == 1 and res["plans"] == 8
     assert table.get_item(Key={"PK": open_plan["PK"], "SK": "META"}).get("Item") is not None
     assert sd.get_manifest(table)["planIds"] == [open_plan["planId"]]
     forced = sd.clean(table, {s for s, _ in USERS.values()}, force_foreign=True, out=lambda *_: None)
@@ -103,8 +103,8 @@ def test_reset_recreates_with_new_ids(table):
     sd.clean(table, {s for s, _ in USERS.values()}, out=lambda *_: None)
     sd.seed(table, USERS, now=NOW, out=lambda *_: None)
     second = set(sd.get_manifest(table)["planIds"])
-    assert len(second) == 6 and first.isdisjoint(second)
-    assert kinds(scan(table))["PLAN/META"] == 6
+    assert len(second) == 9 and first.isdisjoint(second)
+    assert kinds(scan(table))["PLAN/META"] == 9
 
 
 def test_clean_without_manifest_does_nothing(table):
@@ -180,3 +180,11 @@ def test_fixed_users_match_frontend_dev_jwt_ids():
     ts = (Path(sd.__file__).resolve().parents[2] / "frontend" / "src" / "auth" / "devUsers.ts").read_text(encoding="utf-8")
     front = dict(re.findall(r"userId: '([^']+)', nickname: '([^']+)'", ts))
     assert {sub: nick for sub, nick in sd.fixed_users().values()} == front
+
+
+def test_scenario_covers_non_walk_activities():
+    """시드가 산책 한 가지가 아니라 전시회(장소 1곳)·서점·카페·공원 사진 등 여러 활동을 담는다."""
+    keys = {s.key for s in sd.SCENARIO}
+    assert {"open-1", "open-4", "active-2", "open-5", "done-2"} <= keys
+    assert any(len(s.places) == 1 for s in sd.SCENARIO if s.key == "open-4")
+    assert {s.state for s in sd.SCENARIO} >= {"OPEN", "ACTIVE", "DONE", "DONE_REPLIED"}

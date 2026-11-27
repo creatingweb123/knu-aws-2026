@@ -1,7 +1,7 @@
 .card {
   display: block;
   overflow: hidden;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   background: var(--color-surface);
   box-shadow: var(--shadow-card);
   color: inherit;
@@ -13,24 +13,83 @@
   outline-offset: 2px;
 }
 
-/* 대표 사진 자리(docs/05 §5.6 4번). 장식용 */
-.cover {
-  height: 96px;
-  background: linear-gradient(135deg, var(--color-record), var(--color-plan));
+/* 티켓 위쪽 칸: 대표 사진 자리(docs/05 §5.6 4번) */
+.stub {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px var(--space-4);
+}
+
+.plan {
+  background: var(--color-plan);
+}
+
+.record {
+  background: var(--color-record);
+}
+
+.stub-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.owner {
+  overflow: hidden;
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  color: var(--color-plan-text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.record .owner {
+  color: var(--color-record-text);
+}
+
+.numbers {
+  display: flex;
+  gap: 6px;
+}
+
+.num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: 1.5px solid var(--color-primary);
+  border-radius: var(--radius-pill);
+  background: var(--color-surface);
+  color: var(--color-primary);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.last {
+  background: var(--color-primary);
+  color: var(--color-on-primary);
+}
+
+/* 점선 절취선 */
+.perforation {
+  border-top: 2px dashed var(--color-border);
 }
 
 .body {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  gap: var(--space-2);
-  padding: var(--space-4);
+  gap: 6px;
+  padding: 14px var(--space-4) var(--space-4);
 }
 
 .title {
   font-size: var(--font-size-lg);
-  font-weight: 700;
-  line-height: var(--line-height-title);
+  font-weight: 800;
+  letter-spacing: -0.3px;
+  line-height: 1.35;
 }
 
 /* summary 2줄 말줄임(FE-BRW-01) */
@@ -45,6 +104,10 @@
 }
 
 .meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin-top: 2px;
   font-size: var(--font-size-xs);
   color: var(--color-text-sub);
 }

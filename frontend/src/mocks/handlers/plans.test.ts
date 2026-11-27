@@ -36,7 +36,15 @@ describe('시드(FE-TECH-04, FE-Q15)', () => {
 describe('목록 규칙(docs/03 §3.3)', () => {
   it('OPEN과 기한 지난 CLAIMED를 최신순으로, 모두 OPEN으로 돌려준다', () => {
     const db = createSeed(NOW);
-    expect(listOpenPlans(db, nowIso).map((p) => p.planId)).toEqual(['pln_demo', 'pln_library']);
+    // 앞의 둘은 데모, 뒤의 넷은 산책이 아닌 일상 활동 예시(가장 오래된 순)
+    expect(listOpenPlans(db, nowIso).map((p) => p.planId)).toEqual([
+      'pln_demo',
+      'pln_library',
+      'pln_cafe',
+      'pln_exhibit',
+      'pln_bookshop',
+      'pln_parkphoto',
+    ]);
 
     const market = db.plans.find((p) => p.planId === 'pln_market')!;
     market.dueAt = iso(NOW - DAY_MS);

@@ -99,7 +99,7 @@ VITE_USE_MOCK=false
 | `MeFunction` | `GET /me`, `GET /me/claims`, `GET /me/plans`(P1) | 내 정보, 내 하루 |
 | `PlansFunction` | `/plans*` | 계획 생성·조회·목록, 이어받기 |
 | `AiCardFunction` | `/ai/card-sessions*` | 하루 카드 에이전트 그래프(LangGraph `StateGraph` + `ChatBedrockConverse`(기본) / `ChatOpenAI`)·레벨 0, 세션·체크포인트 저장 (메모리 1024MB부터 시작해 측정으로 조정, 타임아웃 27s, VPC 밖. LangGraph 의존성은 이 함수 빌드에만 넣는다) |
-| `ClaimsFunction` | `/claims/*` | 포기, 방문 기록 저장, 업로드 URL, 완료 |
+| `ClaimsFunction` | `/claims/*` | 포기, 경험 기록 저장, 업로드 URL, 완료 |
 | `InboxFunction` | `/inbox*` | 수신함, 읽음, 답장 |
 | `PhotoProcessorFunction` | SQS | 사진 검사·축소·메타데이터 제거, 완료 트랜잭션 |
 
@@ -315,7 +315,7 @@ volumes: { floci-data: {}, ollama-models: {} }
 |---|---|---|
 | Plan | `OPEN` | 이어받기 가능 |
 | | `CLAIMED` | 누군가 이어받음 (기한 내) |
-| | `COMPLETED` | 방문 기록이 수신함에 전달됨 |
+| | `COMPLETED` | 경험 기록이 수신함에 전달됨 |
 | Claim | `ACTIVE` → `COMPLETED` / `ABANDONED` / `EXPIRED` | 한 번의 이어받기 시도 |
 | Record.photoStatus | `NONE` / `UPLOAD_PENDING` / `PROCESSING` / `READY` / `FAILED` / `DISCARDED` | 사진 처리 상태 |
 
@@ -329,6 +329,9 @@ Plan:  OPEN ──claim──▶ CLAIMED ──complete──▶ COMPLETED
 기한: `dueAt = claimedAt + CLAIM_DURATION_DAYS(기본 3일)`. 별도 스케줄러 없이 **지연 해제** 방식으로 처리한다. 기한이 지난 `CLAIMED` 계획은 새 이어받기 요청이 들어오면 인수 가능하며, 그 전까지는 기존 실행자가 늦게라도 완료할 수 있다(`late = true`로 기록). 둘러보기 목록에는 `OPEN`과 기한 지난 `CLAIMED`를 함께 "이어받기 가능"으로 노출한다.
 
 ### Plan (하루 계획)
+
+Plan은 실현하지 못한 일상 계획 하나를 담는 일반 구조다. 활동 종류를 구분하는 필드는 없고, `places`가 1–3곳이면 장소 1곳짜리 계획(전시회 한 곳 등)도 같은 구조로 저장한다. 아래 JSON은 **예시**이며, 값은 데모 시나리오(지연의 동네 산책)에서 가져왔다. 한 동네로 운영 범위를 정하는 것은 MVP 정책이고, `areaId`는 이를 위해 예약한 필드다(서비스가 동네 산책이어야 한다는 뜻이 아니다).
+
 ```json
 {
   "planId": "pln_01H...",
@@ -365,13 +368,14 @@ Plan:  OPEN ──claim──▶ CLAIMED ──complete──▶ COMPLETED
 필드 쓰임 (시안 기준)
 - `summary` — 하고 싶었던 일 한두 문장. 둘러보기 카드 본문, 돌아온 하루의 "내가 남긴 계획" 칸.
 - `reason` — 취소한 이유. 하루 상세의 "{계획자} · 취소한 이유" 박스.
-- `question` — 방문 기록 작성 화면에서 다시 보여주는 질문.
+- `question` — 경험 기록 작성 화면에서 다시 보여주는 질문(하루 카드의 방문 질문).
 - `metrics` — 측정용. API 응답에서는 소유자에게만 포함한다. 필드 계산은 [§3.3](./03-api-contract.md), AI 세션 관련 필드는 `MANUAL`이면 저장하지 않는다.
 
 ### Claim (이어받기)
 `claimId`, `planId`, `claimer {userId, nickname}`, `status`, `claimedAt`, `dueAt`, `completedAt`, `late`.
 
-### Record (방문 기록) — Claim당 1개, 키는 `claimId`
+### Record (경험 기록) — Claim당 1개, 키는 `claimId`
+실행자가 직접 경험한 일을 적은 글과 선택 사진이다. 화면과 서술은 '경험 기록'이고 엔티티·필드 이름은 `Record`를 그대로 쓴다.
 `claimId`, `planId`, `authorId`, `letter`(1–1000자), `photoStatus`, `photoKey`(현재 유효한 원본 키), `processedKey`, `photoError`, `updatedAt`, `deliveredAt`.
 
 ### InboxItem (수신함) — Claim당 최대 1개, `itemId = claimId`
@@ -523,7 +527,7 @@ SAM 주의: 버킷 알림(QueueConfiguration)은 SQS 큐 정책이 먼저 있어
 ### 시범 운영 지표 (DynamoDB에 저장된 값으로 집계, `scripts/report.py`)
 | 지표 | 목표 | 계산 |
 |---|---|---|
-| 기한 내 방문 기록 | 최초 확정 5건 중 3건 이상 | 처음 5개 Claim(ABANDONED 제외 여부는 팀 결정) 중 `COMPLETED && !late` |
+| 기한 내 경험 기록 | 최초 확정 5건 중 3건 이상 | 처음 5개 Claim(ABANDONED 제외 여부는 팀 결정) 중 `COMPLETED && !late` |
 | 답장률 | 완료 건 중 2건 이상 | `InboxItem.reply != null` |
 | 작성 시간 비교 | — | `metrics.authoringMode`별 `durationMs` 중앙값. `AI_EDITED`는 `agentWaitMs`·`answerWaitMs`·`editMs`로 나눠 질문이 시간을 늘렸는지 본다 |
 | 원문에 없던 장소·활동 추가 건수 | — | 모드별 `metrics.addedNotInSource` 합계/평균 비교 (사연 기준, MANUAL과 비교 가능) + `addedNotInSourceOrAnswers` |
@@ -617,7 +621,7 @@ src/
     inbox/              # 목록, 돌아온 하루
   state/
     planDraft.ts        # 하루 남기기 작성 상태 (sessionStorage)
-    letterDraft.ts      # 방문 기록 임시 글 (localStorage, claimId별)
+    letterDraft.ts      # 경험 기록 임시 글 (localStorage, claimId별)
   mocks/
     handlers/           # 경로별 MSW 핸들러
     db.ts               # 메모리 상태 (지연·수현·민준, 예시 계획)
@@ -653,7 +657,7 @@ src/
 | 3 사연 입력, 3-1 AI와 함께 정리하기 | `/plans/new`, `/plans/new/card` | `/ai/card-sessions*` 3종 | `AiCardFunction` | FE-CRT-01–04, 12–14 / BE-AI-01–12 |
 | 3-2 폼, 3-3 장소 추가, 3-4 공개 완료 | `/plans/new/form`, `/plans/new/place`, `/plans/:planId/published` | `POST /plans` | `PlansFunction` | FE-CRT-05–11 / BE-PLAN-01–03 |
 | 4 내 하루, 4-1 포기 확인 | `/me`, `/claims/:claimId/abandon` | `GET /me/claims`, `POST /claims/{claimId}/abandon` | `MeFunction`, `ClaimsFunction` | FE-ME-01–04 / BE-CLAIM-06, 07 |
-| 5 방문 기록 작성, 5-1 보내는 중, 5-2 실패, 5-3 사진 교체, 5-4 전송 완료, 8 종료 안내 | `/claims/:claimId/record` 등 | `PUT`·`GET /claims/{claimId}/record`, `POST …/record/photo`, `POST …/complete`, S3 presigned PUT | `ClaimsFunction`, `PhotoProcessorFunction` | FE-REC-01–11 / BE-REC-01–10, BE-PHOTO-01–09 |
+| 5 경험 기록 작성, 5-1 보내는 중, 5-2 실패, 5-3 사진 교체, 5-4 전송 완료, 8 종료 안내 | `/claims/:claimId/record` 등 | `PUT`·`GET /claims/{claimId}/record`, `POST …/record/photo`, `POST …/complete`, S3 presigned PUT | `ClaimsFunction`, `PhotoProcessorFunction` | FE-REC-01–11 / BE-REC-01–10, BE-PHOTO-01–09 |
 | 6 수신함, 7 돌아온 하루, 7-1 답장 보낸 상태 | `/inbox`, `/inbox/:itemId` | `GET /inbox`, `GET /inbox/{itemId}`, `POST …/read`, `POST …/reply` | `InboxFunction` | FE-INB-01–05 / BE-INBOX-01–04 |
 
 공통 요구사항은 FE-COM-01–06, FE-TECH-01–07, FE-NFR-01–07과 BE-INFRA-01–06, BE-OBS-01–05, BE-NFR-01–07이다.

@@ -30,7 +30,7 @@ export type ErrorCode =
 
 /** `details`의 키는 요청 본문 경로(예: `places[0].name`) */
 export interface ErrorBody {
-  // 이 파일의 `Record`는 방문 기록 타입이라 내장 Record<K, V> 대신 인덱스 시그니처를 쓴다
+  // 이 파일의 `Record`는 경험 기록 타입이라 내장 Record<K, V> 대신 인덱스 시그니처를 쓴다
   error: { code: ErrorCode; message: string; details?: { [path: string]: string } };
 }
 

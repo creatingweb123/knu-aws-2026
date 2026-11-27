@@ -7,7 +7,7 @@
 }
 
 .main {
-  padding: 0 var(--space-4);
+  padding: 0 var(--page-gutter);
 }
 
 /* 하단 탭이나 하단 고정 버튼에 본문이 가리지 않게 한다 */

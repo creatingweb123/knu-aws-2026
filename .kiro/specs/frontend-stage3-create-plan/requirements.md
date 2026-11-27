@@ -29,9 +29,9 @@
 #### Acceptance Criteria
 
 1. IF Plan_Draft에 사연이 없으면 THE Form_Page·Place_Page SHALL Story_Page로 보낸다.
-2. THE Form_Page SHALL 상단에 사연을 참고용으로 보여 주고, 제목(40), 하고 싶었던 일 요약(120), 취소한 이유(300), 예상 소요 시간(분, 10–240 정수), 산책 동선(1–3곳), 방문 질문(80) 입력칸을 둔다.
+2. THE Form_Page SHALL 상단에 사연을 참고용으로 보여 주고, 제목(40), 하고 싶었던 일 요약(120), 취소한 이유(300), 예상 소요 시간(분, 10–240 정수), 방문할 장소(1–3곳), 방문 질문(80) 입력칸을 둔다.
 3. THE Form_Page SHALL 입력할 때마다 폼 값을 Plan_Draft에 저장한다.
-4. THE 산책 동선 SHALL 장소마다 이름·하고 싶었던 일·고른 이유와 "고치기"·"빼기" 버튼을 보여 주고, 3곳 미만이면 "장소 추가" 버튼으로 Place_Page에 간다(FE-Q20).
+4. THE 방문할 장소 목록 SHALL 장소마다 이름·하고 싶었던 일·고른 이유와 "고치기"·"빼기" 버튼을 보여 주고, 3곳 미만이면 "장소 추가" 버튼으로 Place_Page에 간다(FE-Q20).
 5. WHEN "이 하루 공개하기"를 누르면 THE Form_Page SHALL 클라이언트 검증을 하고, 실패하면 요청하지 않고 경로별 오류를 해당 입력칸에 보여 준다. 규칙과 문구는 백엔드 검증(`common/validation.py`)과 같고, 앞뒤 공백을 뺀 값으로 센다(FE-Q19).
 6. WHEN 서버가 400 `VALIDATION_ERROR`를 돌려주면 THE Form_Page SHALL `details`의 경로(`places[0].name` 등)별 메시지를 같은 입력칸에 보여 준다. 장소 경로의 오류는 그 장소 항목에 보여 준다.
 
@@ -40,7 +40,7 @@
 #### Acceptance Criteria
 
 1. THE Place_Page SHALL 장소 이름(1–30), 하고 싶었던 일(1–60), 이 장소를 고른 이유(0–120, 선택)를 받는다.
-2. WHEN 저장을 누르면 THE Place_Page SHALL 검증하고, 통과하면 동선 끝에 추가(`?index=` 없음)하거나 그 위치의 장소를 바꾼(`?index=n`) 뒤 Form_Page로 돌아간다.
+2. WHEN 저장을 누르면 THE Place_Page SHALL 검증하고, 통과하면 장소 목록 끝에 추가(`?index=` 없음)하거나 그 위치의 장소를 바꾼(`?index=n`) 뒤 Form_Page로 돌아간다.
 3. IF 이미 3곳인데 추가로 들어오거나 `index`가 범위 밖이면 THE Place_Page SHALL Form_Page로 돌려보낸다.
 
 ### Requirement 4: 작성 상태 보관 [FE-CRT-08, FE-CRT-09]

@@ -26,7 +26,7 @@ describe('내 하루(FE-ME-01–03)', () => {
     expect(await screen.findByTestId('me-empty')).toHaveTextContent('아직 이어받은 하루가 없어요');
   });
 
-  it('제목·계획자·기한 문구·동선, 다녀온 이야기 쓰기 → 작성 화면', async () => {
+  it('제목·계획자·기한 문구·방문할 장소, 다녀온 이야기 쓰기 → 작성 화면', async () => {
     const claimId = suhyunClaims();
     const { router } = renderApp('/me', 'u-suhyun');
     const card = await screen.findByTestId(`claim-${claimId}`);
@@ -39,7 +39,7 @@ describe('내 하루(FE-ME-01–03)', () => {
   });
 });
 
-describe('방문 기록(FE-REC-01–03, 05, 10)', () => {
+describe('경험 기록(FE-REC-01–03, 05, 10)', () => {
   it('질문·"지연에게" 표시, 글로 완료 → 5-4, 임시 글 삭제, 지연 수신함에 도착', async () => {
     const claimId = suhyunClaims();
     const { router } = renderApp(`/claims/${claimId}/record`, 'u-suhyun');
@@ -51,7 +51,7 @@ describe('방문 기록(FE-REC-01–03, 05, 10)', () => {
     expect(loadLetter(claimId)).toContain('소금빵');
     fireEvent.click(screen.getByRole('button', { name: '글로 완료하기' }));
 
-    expect(await screen.findByText('방문 기록을 보냈어요')).toBeInTheDocument();
+    expect(await screen.findByText('경험 기록을 보냈어요')).toBeInTheDocument();
     expect(router.state.location.pathname).toBe(`/claims/${claimId}/done`);
     expect(loadLetter(claimId)).toBeNull();
     const db = loadDb();
@@ -98,7 +98,7 @@ describe('방문 기록(FE-REC-01–03, 05, 10)', () => {
     renderApp(`/claims/${claimId}/record`, 'u-suhyun');
     fireEvent.change(await screen.findByLabelText('다녀온 이야기'), { target: { value: '글' } });
     fireEvent.click(screen.getByRole('button', { name: '글로 완료하기' }));
-    expect(await screen.findByText('방문 기록을 보냈어요')).toBeInTheDocument();
+    expect(await screen.findByText('경험 기록을 보냈어요')).toBeInTheDocument();
     server.events.removeAllListeners();
     expect(puts).toBe(2);
     expect(completes).toBe(2);
@@ -107,7 +107,7 @@ describe('방문 기록(FE-REC-01–03, 05, 10)', () => {
   it('완료된 기록으로 들어오면 전송 완료로, 새로고침한 5-4는 GET /record로 판단', async () => {
     const { router } = renderApp('/claims/clm_bridge_suhyun/record', 'u-suhyun');
     await waitFor(() => expect(router.state.location.pathname).toBe('/claims/clm_bridge_suhyun/done'));
-    expect(await screen.findByText('방문 기록을 보냈어요')).toBeInTheDocument();
+    expect(await screen.findByText('경험 기록을 보냈어요')).toBeInTheDocument();
   });
 });
 

@@ -78,7 +78,7 @@
 #### Acceptance Criteria
 
 1. WHEN `VITE_USE_MOCK=true`이면, THE Frontend SHALL 앱을 그리기 전에 MSW 워커를 시작하고, 그 외에는 MSW 코드를 불러오지 않는다.
-2. THE Mock_DB SHALL 시드 사용자 지연·수현·민준과 docs/02 §2.5 예시 계획("이사 전, 마지막 동네 산책", 출근길 빵집·하천 산책로 벤치)을 포함한 계획 2건 이상을 가진다.
+2. THE Mock_DB SHALL 시드 사용자 지연·수현·민준과 docs/02 §2.5 대표 사례 예시 계획("이사 전, 마지막 동네 산책", 출근길 빵집·하천 산책로 벤치)을 포함한 계획 2건 이상을 가진다.
 3. THE Mock_DB SHALL 상태를 localStorage `haru.mock.db`에 저장해 같은 브라우저의 탭끼리 공유하고, 초기화 함수를 제공한다.
 4. THE Mock handlers SHALL 1단계에서 `GET /me`, `GET /plans`, `GET /plans/{planId}`를 docs/03과 같은 형태로 응답하고, 나머지 경로는 2–6단계에서 추가한다.
 5. THE Mock handlers SHALL 요청의 `Authorization` 토큰으로 Mock_User를 판별하고, 토큰이 없으면 401을 돌려준다.

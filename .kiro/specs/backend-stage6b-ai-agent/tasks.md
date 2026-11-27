@@ -109,7 +109,7 @@ push 전 확인(각 Checkpoint와 push마다)
     - _Requirements: 8.3, 8.4, 8.7, 8.8 · BE-Q115_
   - [x] 7.2 질문 검증(design §11.1: 개수·`path` 중복·길이·선택지·개인정보·허용 경로·`finishRequested`), `questionId` 서버 부여.
     - _Requirements: 9.1–9.4 · BE-Q123_
-  - [x] 7.3 비공개 장소 질문(선택지 고정 `["동선에서 빼기"]` + 직접 입력)과 답변의 결정적 반영(design §11.2).
+  - [x] 7.3 비공개 장소 질문(선택지 고정 `["장소에서 빼기"]` + 직접 입력)과 답변의 결정적 반영(design §11.2).
     - _Requirements: 9.6 · BE-Q116_
   - [x] 7.4 답변 근거: 개인정보 답변 `privacy = true`, Sources 제외(6a `ai_metrics.answer_sources`와 같은 규칙), 모델에는 `withheld`.
     - _Requirements: 10.3, 10.4_

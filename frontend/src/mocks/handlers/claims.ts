@@ -1,5 +1,5 @@
 /**
- * 내 하루·포기·방문 기록·완료 목업(docs/03 §3.1, §3.4). 판정 순서는 백엔드 claim_service와 같다.
+ * 내 하루·포기·경험 기록·완료 목업(docs/03 §3.1, §3.4). 판정 순서는 백엔드 claim_service와 같다.
  * - `_lookup`: 없는 Claim 404, 남의 Claim 403
  * - 쓰기 조건: Claim ACTIVE, Plan CLAIMED, `currentClaimId = claimId` (아니면 409 CLAIM_NOT_ACTIVE, G3)
  * - 완료: 이미 COMPLETED면 멱등 200, 기록 없으면 400 RECORD_REQUIRED, InboxItem 1건(G2, G4)
@@ -40,7 +40,7 @@ const MESSAGES: Partial<{ [code in ErrorCode]: string }> = {
   NOT_FOUND: '찾을 수 없어요.',
   FORBIDDEN: '이 요청을 할 권한이 없어요.',
   CLAIM_NOT_ACTIVE: '이미 종료된 이어받기예요.',
-  RECORD_REQUIRED: '방문 기록을 먼저 저장해 주세요.',
+  RECORD_REQUIRED: '경험 기록을 먼저 저장해 주세요.',
   VALIDATION_ERROR: '입력값을 확인해 주세요.',
 };
 

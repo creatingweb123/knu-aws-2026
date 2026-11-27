@@ -33,6 +33,14 @@ const type = (label: string, value: string) =>
   fireEvent.change(screen.getByLabelText(label), { target: { value } });
 
 describe('로그인(FE-AUTH-01, 03)', () => {
+  it('소개 문구는 산책에 한정하지 않고 취소된 하루의 이어받기와 이야기 반환을 말한다', async () => {
+    fakeAuth('cognito');
+    renderApp('/login');
+    await screen.findByTestId('screen-0');
+    expect(screen.getByText('취소된 하루를 이어받고, 그날의 이야기를 돌려줘요.')).toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent('산책');
+  });
+
   it('보호된 경로 → /login?redirect → 로그인 → 그 경로로 돌아간다', async () => {
     const auth = fakeAuth('cognito');
     const { router } = renderApp('/inbox');

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
+import { Icon } from '../../../components/Icon';
 import { PageTitle } from '../../../components/PageTitle';
 import { BottomActions, PrimaryButton } from '../../../components/PrimaryButton';
 import { TextArea } from '../../../components/TextArea';
@@ -58,7 +59,7 @@ export function StoryPage() {
           maxLength={LIMITS.story}
           error={error}
           hint="집 주소나 개인 정보는 적지 말아주세요."
-          placeholder="예: 이사 전에 5년 살던 동네를 마지막으로 걷고 싶었어요."
+          placeholder="예: 이사 전에 가 보려던 동네 서점에 일정이 바뀌어 못 갔어요."
           onChange={(e) => {
             const value = e.target.value;
             update((d) => ({ ...d, story: value }));
@@ -66,6 +67,7 @@ export function StoryPage() {
           }}
         />
         <div className={styles.notice}>
+          <Icon name="info" size={16} strokeWidth={2} />
           <p>
             AI와 함께 정리하기를 누르면 사연이 외부 AI 서비스로 전송되고, 공급자 정책에 따라 일정 기간 보관될
             수 있어요.
@@ -74,6 +76,7 @@ export function StoryPage() {
       </div>
       <BottomActions>
         <PrimaryButton fixed={false} onClick={onAi}>
+          <Icon name="spark" size={18} strokeWidth={2} />
           AI와 함께 정리하기
         </PrimaryButton>
         <PrimaryButton fixed={false} variant="secondary" onClick={onManual}>
