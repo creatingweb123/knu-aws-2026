@@ -26,7 +26,7 @@ async function call(path: string, withAuth = true) {
 
 beforeAll(async () => {
   if (!base) throw new Error('VITE_API_BASE_URL이 비어 있어요. frontend/.env.local을 확인해 주세요.');
-  token = externalToken ?? (await requestDevToken('dev-suhyun', '수현'));
+  token = externalToken || (await requestDevToken('dev-suhyun', '수현'));
 });
 
 describe('인증 (docs/03 공통 규칙)', () => {
@@ -46,8 +46,8 @@ describe('GET /me (docs/03 §3.1)', () => {
     expect(typeof body.unreadInboxCount).toBe('number');
   });
 
-  it('로컬 dev JWT로 받으면 닉네임이 시드 값 수현이다', async () => {
-    if (externalToken) return;
+  // 외부 ID 토큰(dev/demo)은 시드 닉네임을 모르므로 건너뛴다
+  it.skipIf(Boolean(externalToken))('로컬 dev JWT로 받으면 닉네임이 시드 값 수현이다', async () => {
     const { body } = await call('/me');
     expect(body.nickname).toBe('수현');
   });

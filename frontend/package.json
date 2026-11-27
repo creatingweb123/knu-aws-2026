@@ -15,7 +15,8 @@
     "format:check": "prettier --check .",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:integration": "vitest run --config vitest.integration.config.ts"
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "test:integration:dev": "vitest run --config vitest.integration.config.ts --mode dev"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.62.0",
