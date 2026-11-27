@@ -374,8 +374,19 @@ T10 실패 내용(`T10-text-only-during-processing-20261127T173623.json`): `PROC
 - `haru-demo` 배포(`AgentMode=agent`, 11.13절 결정), `seed.py`, 90초 시연 리허설.
 - 데모 전 `PhotoDLQ` 비우기: T9 테스트 메시지가 남아 `PhotoDLQNotEmpty` 알람이 ALARM이다(12.3절 런북).
 - 계정 비용: 이번 달 실제 $239.84로 월 $200 예산을 넘었다(계정 전체, docs/08 BE-Q131). 계정 관리자에게 원인 확인.
-- `main`의 `ad58f3f`(일반화, 선택지 `장소에서 빼기`)·`cf0220e`(화면 개편)는 아직 `haru-dev`에 배포하지 않았다. 22:21부터 다시 배포 중이다(배포 J: `agent` → 판정 → 배포 K: `pipeline` 복원).
-- **전체 단위 테스트가 AWS 담당 PC(Windows)에서 멈춘다**(개발 담당 확인 필요). 2026-11-27 22:21–22:47 `pytest tests/unit -q`가 약 18%(약 350건) 지점에서 25분 동안 진행하지 않아 끝냈다. AWS 자격 증명을 뺀 환경(`AWS_ACCESS_KEY_ID=testing`)에서도 같은 지점이라, 앞의 "환경 메모"에 적은 `AWS_PROFILE` 원인 추정은 맞지 않는다. 어느 테스트에서 멈추는지는 아직 확인하지 않았다(`pytest -v --timeout`으로 찾을 수 있다). 그래서 배포 전 단위 테스트는 템플릿·바뀐 AI 문구 관련 파일만 돌린다. 프론트 `vitest`·`npm run build`는 통과했다.
+- **최신 main 재배포 완료(2026-11-28 00:08–00:15, AWS 담당, IAM `aws2026001`)**: 코드 `f02bb53`(`main` `75fe960`까지 병합: 일반화 `ad58f3f`, 화면 개편 `cf0220e`, 닉네임 수정 `0ff1222` + 이 브랜치의 CloudFront 정책 ID·CORS 수정).
+  - 그 전 22:28–22:41에 팀원이 같은 `haru-dev`를 root로 배포했다(22:37 첫 시도는 틀린 정책 ID로 롤백, 22:41 성공, CORS 수정 없음). 같은 스택에 두 곳에서 배포하면 서로 덮어쓰므로 이후 배포는 AWS 담당이 이어서 한다.
+  - 배포 J(`AgentMode=agent`, 주입 끔): 함수 7개·`HttpApi`·`UserPool` 수정, 교체 없음. Pillow 레이어가 팀원 빌드 버전(`PillowLayer60363ce7b0`)에서 이 빌드 버전(`PillowLayere53890df86`)으로 바뀌는 Remove 1건은 사용자 승인으로 허용했다(SAM 기본 RetentionPolicy=Retain이라 지워지지 않는다). 00:09 `UPDATE_COMPLETE`.
+  - 웹 업로드 7개, 오래된 assets 3개 삭제, 무효화 `IAW9GU48QKZCYZ96IK6UWYEKLL`.
+  - 판정: AI(`test_ai.py`) **7 passed**, 1 skipped(Fake 전용). 웹·권한·수신함·멱등(`test_web.py`, `test_authz.py`, `test_inbox.py`, `test_idempotency.py`) **17 passed**.
+  - 배포 K(`AgentMode=pipeline` 복원): `AiCardFunction`·`HttpApi` 수정, 00:14 `UPDATE_COMPLETE`. API CORS에 CloudFront 주소가 있고 두 주소 모두 preflight 204.
+- **단위 테스트가 AWS 담당 PC(Windows)에서 18% 지점에서 멈춘 것처럼 보이던 원인**(개발 담당 확인 필요). 2026-11-27 23:17–23:25 `pytest tests/unit -v -o faulthandler_timeout=120`으로 관찰했다. 멈춘 곳은 `test_agent_properties.py::test_property_46_tip_selection_and_ttl`이고, 교착이 아니라 매우 느린 것이다. faulthandler 스택은 테스트 108행 `boto3.client("dynamodb")` → botocore `loaders.list_available_services`였다. 속성 테스트가 hypothesis 예시(50개 이상)마다 moto·boto3 클라이언트·테이블·그래프를 새로 만들어, 이 PC에서는 테스트 하나가 몇 분 걸린다. 앞의 "환경 메모"에 적은 `AWS_PROFILE` 원인 추정은 맞지 않는다(자격 증명을 빼도 같다). 제안: 클라이언트·moto를 예시마다 만들지 않거나, 느린 환경용 `max_examples` 설정을 둔다.
+- **`*_properties.py` 5개 파일(31건)을 뺀 단위 테스트 결과**(`f02bb53`, 23:26–23:43, 17분 26초): 1629 passed, **9 failed**, 1 skipped, **1 error**. 모두 이 PC 환경 원인으로 보고 사용자 승인으로 배포를 진행했다(개발 담당 확인 필요).
+  - 시간 한도 6건(`test_ai_bedrock::test_deadline_cuts_slow_converse`, `test_ai_cancel::test_cancel_return_time_bounded` 3건, `test_ai_llm_stub::test_deadline_cuts_slow_response` 2건): 한도 0.8–1.5초에 실제 1.1–1.9초. 판정 값(`TIMEOUT` 등)은 맞고 시간만 넘었다. AWS(Linux)의 T21 판정은 통과했다.
+  - `test_ai_llm_stub::test_connection_refused`: 닫힌 포트 연결이 Windows에서는 바로 거절되지 않고 재시도하다 시간 초과가 되어 `CONNECTION` 대신 `TIMEOUT`.
+  - `test_eval_agent` 2건: 하위 프로세스가 `asyncio`를 불러올 때 `OSError: [WinError 10106]`. Windows에서 하위 프로세스 환경 변수(`SYSTEMROOT` 등)가 빠지면 나는 오류로 보인다.
+  - 오류 1건(세션 끝 격리 검사, `tests/unit/conftest.py:47`): `test_auth.py::test_user_comes_from_sub_only`, `test_claim_service_moto.py`의 몇 건이 외부 주소 `34.8.121.39`로 연결을 시도했다. 원인 미확인.
+  - 프론트 `vitest`·`npm run build`는 통과했다.
 - 정리: 사진·웹 버킷을 비운 뒤 `sam delete --stack-name haru-dev`.
 
 ## 4. AWS에서만 확인되는 것 (1·2단계 해당분, docs/02 §2.4.4)
