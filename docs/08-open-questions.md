@@ -164,7 +164,7 @@
 | FE-Q11 | `?mock=` 시나리오 값을 어떻게 유지할지. | 진입 URL의 `?mock=` 값을 sessionStorage `haru.mock.scenario`에 저장해 탭을 닫을 때까지 유지한다. `?mock=`(빈 값)이면 지운다. |
 | FE-Q12 | 하단 탭이 보이는 "목록형 화면"(FE-COM-01)의 범위. | 둘러보기(`/`), 내 하루(`/me`), 수신함(`/inbox`) 세 화면. |
 | FE-Q13 | 보호 경로 범위(FE-AUTH-03). | `/login`을 뺀 모든 경로. 실제 로그인은 7단계이고, 그 전까지 목업 모드는 FE-Q10의 목업 사용자로 통과한다. |
-| FE-Q14 | 글꼴·글자 크기·간격·그림자 토큰이 문서에 없다(색과 모서리 12–16px만 있음). | 시스템 글꼴, 4px 단위 간격, 모서리 14px로 두고 `tokens.css`에 추정값으로 표시한다(FE-Q5처럼 값만 교체). |
+| FE-Q14 | 글꼴·글자 크기·간격·그림자 토큰이 문서에 없다(색과 모서리 12–16px만 있음). | **결정(2026-11-27, 화면 개선안)**: 전체 글꼴은 `Pretendard`(jsDelivr 동적 서브셋, 실패 시 시스템 글꼴). 경험 기록 글은 같은 글꼴에 큰 글자·넓은 줄 간격. 4px 단위 간격, 본문 좌우 여백 20px, 모서리 입력칸 12px·버튼 14px·카드 18px, 카드 그림자 2단. 값은 [§5.3](./05-screens.md)과 `tokens.css`에 있다. 색은 FE-Q5대로 추정값이며 디자인 확정 시 값만 바꾼다. 외부 글꼴 요청(cdn.jsdelivr.net)을 없애야 하면 Pretendard를 자체 호스팅으로 바꾼다(SIL OFL). |
 | FE-Q15 | 목업 시드 계획의 예시 장소 이름(§5.6 3번). | 명세(§2.5)의 "출근길 빵집"·"하천 산책로 벤치"를 쓴다. 이 이름들은 대표 사례(데모)의 예시 값이다(BE-Q135). |
 | FE-Q16 | 프론트 도구 버전(문서에 없음). | Node 22 LTS, React 18, Vite·React Router·TanStack Query·MSW·Vitest는 1단계 시점의 안정판을 `package-lock.json`으로 고정한다. |
 | FE-Q17 | 2단계(둘러보기·이어받기) 분기를 한 탭에서 확인할 목업 시나리오 이름(§2.10은 AI·사진 경로만 정했다). | `?mock=claim-conflict`: `POST /plans/{planId}/claims`가 판정 없이 409 `ALREADY_CLAIMED`. `?mock=browse-empty`: `GET /plans?status=OPEN`이 빈 `items`. 두 탭 경합은 시나리오 없이 FE-Q10의 탭별 사용자로 재현한다. |

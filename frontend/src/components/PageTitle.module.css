@@ -1,17 +1,19 @@
 .wrap {
-  margin: var(--space-4) 0 var(--space-6);
+  margin: var(--space-2) 0 var(--space-5);
 }
 
 .title {
   font-size: var(--font-size-title);
   line-height: var(--line-height-title);
-  font-weight: 700;
+  font-weight: 800;
+  letter-spacing: var(--letter-spacing-title);
   color: var(--color-primary);
   white-space: pre-line;
 }
 
 .description {
   margin-top: var(--space-2);
+  font-size: 15px;
   color: var(--color-text-sub);
   white-space: pre-line;
 }

@@ -8,6 +8,7 @@ import { useCompleteText } from '../../api/mutations/useCompleteText';
 import { useSendWithPhoto } from '../../api/mutations/usePhotoSend';
 import { useMyClaims } from '../../api/queries/useMyClaims';
 import { useRecord } from '../../api/queries/useRecord';
+import { Icon } from '../../components/Icon';
 import { BottomActions, PrimaryButton } from '../../components/PrimaryButton';
 import { ResultScreen } from '../../components/ResultScreen';
 import { TextArea } from '../../components/TextArea';
@@ -57,7 +58,7 @@ function RecordEditor({ claimId }: { claimId: string }) {
     const gone = isApiError(e) && (e.code === 'NOT_FOUND' || e.code === 'FORBIDDEN');
     return wrap(
       <ResultScreen
-        icon="alert"
+        icon={gone ? 'notice' : 'alert'}
         title={gone ? '찾을 수 없어요' : '불러오지 못했어요'}
         description={errorMessage(e)}
         action={
@@ -141,13 +142,17 @@ function RecordEditor({ claimId }: { claimId: string }) {
         <p className={styles.to}>{item ? `${item.plan.owner.nickname}에게` : '계획자에게'}</p>
         {item ? (
           <div className={styles.question}>
-            <p className={styles.questionLabel}>하루 카드의 질문</p>
+            <p className={styles.questionLabel}>
+              <Icon name="chat" size={14} strokeWidth={2} />
+              하루 카드의 질문
+            </p>
             <p className={styles.questionText}>{item.plan.question}</p>
           </div>
         ) : null}
         <TextArea
           label="다녀온 이야기"
-          rows={10}
+          rows={9}
+          variant="letter"
           value={letter}
           maxLength={LETTER_MAX}
           error={error}

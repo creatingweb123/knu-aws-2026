@@ -1,5 +1,6 @@
 import { useEffect, useId, useState } from 'react';
 
+import { Icon } from '../../components/Icon';
 import { PHOTO_TYPES, validatePhoto } from '../../utils/photo';
 import styles from './Record.module.css';
 
@@ -23,9 +24,6 @@ export function PhotoPicker({ file, onChange, serverError, label = '사진 (선�
 
   return (
     <div className={styles.photoField}>
-      <label htmlFor={id} className={styles.photoLabel}>
-        {label}
-      </label>
       {file ? (
         <div className={styles.photoPreview}>
           {preview ? <img src={preview} alt="고른 사진 미리보기" className={styles.photoImg} /> : null}
@@ -35,13 +33,14 @@ export function PhotoPicker({ file, onChange, serverError, label = '사진 (선�
           </button>
         </div>
       ) : null}
+      {/* 기본 파일 선택칸은 감추고 라벨을 점선 카드로 보인다. 키보드 포커스는 입력칸이 받고 카드에 테두리로 보인다 */}
       <input
         id={id}
         type="file"
         accept={PHOTO_TYPES.join(',')}
         className={styles.photoInput}
         aria-invalid={shown ? true : undefined}
-        aria-describedby={shown ? `${id}-error` : undefined}
+        aria-describedby={shown ? `${id}-error` : `${id}-hint`}
         onChange={(e) => {
           const picked = e.target.files?.[0] ?? null;
           e.target.value = '';
@@ -51,6 +50,15 @@ export function PhotoPicker({ file, onChange, serverError, label = '사진 (선�
           if (!problem) onChange(picked);
         }}
       />
+      <label htmlFor={id} className={styles.photoCard}>
+        <span className={styles.photoIcon}>
+          <Icon name="camera" size={20} />
+        </span>
+        <span className={styles.photoLabel}>{label}</span>
+      </label>
+      <p id={`${id}-hint`} className={styles.photoHint}>
+        JPEG·PNG, 10MB 이하 · 사진의 위치 정보는 지워져요
+      </p>
       {shown ? (
         <p id={`${id}-error`} className={styles.photoError} role="alert">
           {shown}

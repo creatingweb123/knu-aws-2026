@@ -7,31 +7,40 @@
   list-style: none;
 }
 
+/* 정리 단계: 체크 원 + 문구. 진행 중은 채운 원 + 굵은 글씨로 구분한다(색만으로 나누지 않음) */
 .chip {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-2) var(--space-3);
-  border-radius: var(--radius-pill);
-  background: var(--color-record);
-  font-size: var(--font-size-sm);
+  gap: 10px;
+  font-size: 13px;
+  color: var(--color-text-body);
   animation: chip-in 0.3s ease-out;
 }
 
 .chip::before {
   content: '✓';
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: var(--radius-pill);
+  background: var(--color-record);
+  color: var(--color-primary);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.chip-working {
   font-weight: 700;
   color: var(--color-primary);
 }
 
-.chip-working {
-  background: var(--color-surface);
-  border: 1px dashed var(--color-primary);
-  color: var(--color-text-sub);
-}
-
 .chip-working::before {
   content: '…';
+  background: var(--color-primary);
+  color: var(--color-on-primary);
 }
 
 @keyframes chip-in {
@@ -48,16 +57,19 @@
 }
 
 /* 질문 말풍선 */
+/* 질문 말풍선: 왼쪽 위 모서리만 덜 둥글게 해 말하는 쪽을 보인다 */
 .bubble {
   position: relative;
   padding: var(--space-4);
-  border-radius: var(--radius-md);
+  border-radius: 4px var(--radius-lg) var(--radius-lg) var(--radius-lg);
   background: var(--color-surface);
-  box-shadow: var(--shadow-card);
+  box-shadow: var(--shadow-raised);
 }
 
 .bubble-text {
+  font-size: var(--font-size-md);
   font-weight: 700;
+  line-height: 1.5;
 }
 
 .bubble-reason {
@@ -67,20 +79,28 @@
 }
 
 .options {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(88px, 1fr));
   gap: var(--space-2);
   margin-top: var(--space-3);
 }
 
 .option {
-  padding: var(--space-2) var(--space-4);
-  border: 1px solid var(--color-primary);
-  border-radius: var(--radius-pill);
+  min-height: var(--touch-target);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-input);
   background: var(--color-surface);
-  color: var(--color-primary);
-  font-weight: 700;
+  color: var(--color-text);
+  font-size: 15px;
+  font-weight: 500;
   cursor: pointer;
+}
+
+.option:not(:disabled):hover {
+  border-color: var(--color-primary);
+  background: var(--color-record);
+  color: var(--color-primary);
 }
 
 .option:disabled,
@@ -98,8 +118,9 @@
 }
 
 .skip {
-  margin-top: var(--space-3);
-  padding: 0;
+  min-height: var(--touch-target);
+  margin-top: var(--space-1);
+  padding: 0 var(--space-1);
   border: 0;
   background: none;
   color: var(--color-text-sub);
@@ -108,37 +129,57 @@
 }
 
 /* 카드 미리보기 */
+/* 카드 미리보기: 둘러보기 카드와 같은 티켓 모양(위쪽 칸 + 점선 절취선) */
 .card {
-  padding: var(--space-4);
-  border-radius: var(--radius-md);
+  overflow: hidden;
+  padding: 0 var(--space-4) var(--space-4);
+  border-radius: var(--radius-lg);
   background: var(--color-surface);
-  box-shadow: var(--shadow-card);
+  box-shadow: var(--shadow-raised);
 }
 
 .card-head {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
+  justify-content: space-between;
   gap: var(--space-2);
-  margin-bottom: var(--space-3);
+  margin: 0 calc(var(--space-4) * -1) var(--space-1);
+  padding: 14px var(--space-4);
+  border-bottom: 2px dashed var(--color-border);
+  background: var(--color-plan);
 }
 
 .passed {
-  padding: 2px var(--space-2);
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 9px;
   border-radius: var(--radius-pill);
-  background: var(--color-record);
-  color: var(--color-primary);
+  background: var(--color-primary);
+  color: var(--color-on-primary);
   font-size: var(--font-size-xs);
   font-weight: 700;
 }
 
+.passed::before {
+  content: '✓ ';
+}
+
 .card-title {
   font-size: var(--font-size-lg);
-  font-weight: 700;
+  font-weight: 800;
+  letter-spacing: -0.3px;
 }
 
 .field {
-  margin-top: var(--space-3);
+  padding: 10px 0;
+  border-bottom: 1px solid var(--color-divider);
+}
+
+.field:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
 }
 
 .field-label {
@@ -163,8 +204,10 @@
 }
 
 .notes-title {
-  margin-bottom: var(--space-2);
-  font-weight: 700;
+  margin-bottom: 10px;
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--color-primary);
 }
 
 .note-list {
@@ -177,25 +220,32 @@
 }
 
 .note {
-  padding: var(--space-3);
-  border-radius: var(--radius-sm);
-  background: var(--color-plan);
+  padding: var(--space-3) 14px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
   font-size: var(--font-size-sm);
+  line-height: 1.5;
 }
 
 .source {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
   margin-left: var(--space-2);
   padding: 0 var(--space-2);
   border-radius: var(--radius-pill);
-  background: var(--color-surface);
-  font-size: var(--font-size-xs);
+  background: var(--color-plan);
+  color: var(--color-plan-text);
+  font-size: 11px;
   font-weight: 700;
+  vertical-align: 1px;
 }
 
 .restore {
+  min-height: var(--touch-target);
   margin-top: var(--space-2);
-  padding: var(--space-1) var(--space-3);
+  padding: 0 14px;
   border: 1px solid var(--color-primary);
   border-radius: var(--radius-sm);
   background: var(--color-surface);

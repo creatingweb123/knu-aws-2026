@@ -28,7 +28,7 @@ export function Layout({ title, back, tab = false, bare = false, children }: Pro
           <DevMockBar />
         </Suspense>
       ) : null}
-      {bare ? null : <Header title={title} back={back} />}
+      {bare ? null : <Header title={title} back={back} brand={tab && !back} />}
       <main className={`${styles.main} ${tab ? styles.withTab : styles.withButton}`}>{children}</main>
       {tab ? <BottomTab /> : null}
     </div>

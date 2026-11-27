@@ -6,10 +6,20 @@
 
 /* 개인 정보·외부 AI 전송 안내 */
 .notice {
-  padding: var(--space-3) var(--space-4);
-  border-radius: var(--radius-md);
+  display: flex;
+  gap: var(--space-2);
+  padding: 10px var(--space-3);
+  border-radius: var(--radius-input);
   background: var(--color-plan);
-  font-size: var(--font-size-sm);
+  color: #4f463a;
+  font-size: var(--font-size-xs);
+  line-height: 1.55;
+}
+
+.notice > svg {
+  flex: none;
+  margin-top: 1px;
+  color: var(--color-plan-text);
 }
 
 .notice p + p {
@@ -23,27 +33,65 @@
 
 /* 폼 상단 사연(참고용) */
 .story-ref {
-  padding: var(--space-3) var(--space-4);
-  border-radius: var(--radius-md);
+  padding: var(--space-3) 14px;
+  border-radius: var(--radius-input);
   background: var(--color-plan);
 }
 
 .story-ref-label {
   font-size: var(--font-size-xs);
   font-weight: 700;
-  color: var(--color-text-sub);
+  color: var(--color-plan-text);
 }
 
 .story-ref-text {
   margin-top: var(--space-1);
-  font-size: var(--font-size-sm);
+  font-size: 13px;
+  line-height: 1.6;
+  color: #3b342a;
   white-space: pre-wrap;
   word-break: break-word;
 }
 
+/* 입력칸 묶음 제목: 이 하루 / 방문할 장소 / 이어받는 사람에게 */
+.group-title,
 .section-title {
-  font-size: var(--font-size-md);
-  font-weight: 700;
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--color-primary);
+}
+
+.group-title {
+  margin-bottom: calc(var(--space-2) * -1);
+}
+
+.section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.section-count {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-sub);
+}
+
+/* 방문 질문 묶음: 실행자가 받는 질문 박스와 같은 연녹색 */
+.question-box {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: 14px;
+  border-radius: var(--radius-lg);
+  background: var(--color-record);
+}
+
+.question-box .group-title {
+  margin-bottom: 0;
+}
+
+.question-box > div {
+  margin-bottom: 0;
 }
 
 .places {
@@ -58,7 +106,7 @@
 .place {
   display: flex;
   gap: var(--space-3);
-  padding: var(--space-3) var(--space-4);
+  padding: 14px 14px var(--space-1);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   background: var(--color-surface);
@@ -66,6 +114,12 @@
 
 .place-invalid {
   border-color: var(--color-danger);
+}
+
+/* AI 안내(flags)가 붙은 장소: 확인이 필요하다는 걸 테두리로도 보인다 */
+.place-flagged {
+  border: 1.5px solid #d9907f;
+  background: #fdf6f4;
 }
 
 .place-no {
@@ -77,9 +131,15 @@
   height: 28px;
   border-radius: var(--radius-pill);
   border: 2px solid var(--color-primary);
+  background: var(--color-surface);
   color: var(--color-primary);
-  font-size: var(--font-size-sm);
+  font-size: 13px;
   font-weight: 700;
+}
+
+.place-no-last {
+  background: var(--color-primary);
+  color: var(--color-on-primary);
 }
 
 .place-body {
@@ -98,36 +158,52 @@
 }
 
 .place-why {
-  margin-top: var(--space-1);
-  font-size: var(--font-size-sm);
+  margin-top: 2px;
+  font-size: var(--font-size-xs);
   color: var(--color-text-sub);
   word-break: break-word;
 }
 
+.place-why::before {
+  content: '고른 이유 · ';
+}
+
 .place-actions {
   display: flex;
-  gap: var(--space-2);
-  margin-top: var(--space-2);
+  justify-content: flex-end;
+  gap: var(--space-1);
 }
 
 .small-button {
-  padding: var(--space-1) var(--space-3);
-  border: 1px solid var(--color-border);
+  min-height: var(--touch-target);
+  padding: 0 var(--space-3);
+  border: 0;
   border-radius: var(--radius-sm);
-  background: var(--color-surface);
-  color: var(--color-text);
-  font-size: var(--font-size-xs);
+  background: transparent;
+  color: var(--color-primary);
+  font-size: 13px;
+  font-weight: 700;
   cursor: pointer;
 }
 
+.small-button + .small-button {
+  color: var(--color-text-sub);
+  font-weight: 500;
+}
+
 .add-place {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   width: 100%;
+  min-height: var(--input-height);
   margin-top: var(--space-3);
-  padding: var(--space-3);
-  border: 1px dashed var(--color-primary);
+  border: 1.5px dashed #9db5a4;
   border-radius: var(--radius-md);
   background: transparent;
   color: var(--color-primary);
+  font-size: var(--font-size-sm);
   font-weight: 700;
   cursor: pointer;
 }
@@ -160,8 +236,65 @@
 
 /* 장소 AI 안내(flags) */
 .flag-text {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   margin-top: var(--space-2);
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+  color: #8f3424;
+}
+
+/* 3-3 지금 담긴 장소 칩 */
+.place-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: var(--space-5);
+  padding: var(--space-3) 14px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+
+.place-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  height: 28px;
+  padding: 0 10px 0 4px;
+  border-radius: var(--radius-pill);
+  background: var(--color-surface-sub);
+  font-size: 13px;
+  font-weight: 500;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.place-chip-now {
+  border: 1.5px dashed var(--color-primary);
+  background: transparent;
   color: var(--color-primary);
   font-weight: 700;
+}
+
+.place-chip-no {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: 1.5px solid var(--color-primary);
+  border-radius: var(--radius-pill);
+  color: var(--color-primary);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.place-chip-now .place-chip-no {
+  background: var(--color-primary);
+  color: var(--color-on-primary);
 }

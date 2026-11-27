@@ -7,6 +7,7 @@ import { errorMessage } from '../../api/errors';
 import { useMarkRead, useReply } from '../../api/mutations/useInboxActions';
 import { useInboxItem } from '../../api/queries/useInbox';
 import type { InboxDetailResponse } from '../../api/types';
+import { Icon } from '../../components/Icon';
 import { PrimaryButton } from '../../components/PrimaryButton';
 import { ResultScreen } from '../../components/ResultScreen';
 import { TextField } from '../../components/TextField';
@@ -49,7 +50,7 @@ function InboxDetail({ itemId }: { itemId: string }) {
     return wrap(
       'screen-7',
       <ResultScreen
-        icon="alert"
+        icon={gone ? 'notice' : 'alert'}
         title={gone ? '찾을 수 없어요' : '불러오지 못했어요'}
         description={errorMessage(error)}
         action={gone ? toInbox : <PrimaryButton onClick={() => void refetch()}>다시 시도</PrimaryButton>}
@@ -66,8 +67,13 @@ function InboxDetail({ itemId }: { itemId: string }) {
         {data.item.reply ? (
           <>
             <div className={styles.sent} data-testid="sent-reply">
-              <p className={styles.cardLabel}>보낸 답장</p>
-              <p className={styles.cardText}>{data.item.reply.text}</p>
+              <span className={styles.sentIcon} aria-hidden="true">
+                <Icon name="send" size={16} strokeWidth={2} />
+              </span>
+              <div>
+                <p className={styles.cardLabel}>보낸 답장</p>
+                <p className={styles.cardText}>{data.item.reply.text}</p>
+              </div>
             </div>
             {toInbox}
           </>
@@ -84,7 +90,7 @@ function Story({ data, onPhotoError }: { data: InboxDetailResponse; onPhotoError
   const retried = useRef(false);
   return (
     <>
-      <h2 className={styles.title}>{plan.title}</h2>
+      <h2 className={styles.detailTitle}>{plan.title}</h2>
       {record.photoUrl ? (
         <figure>
           <img
@@ -111,7 +117,7 @@ function Story({ data, onPhotoError }: { data: InboxDetailResponse; onPhotoError
         </div>
         <div className={`${styles.card} ${styles.record}`}>
           <p className={styles.cardLabel}>{item.claimerNickname}의 경험 기록</p>
-          <p className={styles.cardText}>{record.letter}</p>
+          <p className={`${styles.cardText} ${styles.letter}`}>{record.letter}</p>
         </div>
       </div>
     </>

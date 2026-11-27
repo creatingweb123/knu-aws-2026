@@ -1,39 +1,51 @@
 /*
  * 디자인 토큰 (docs/05 §5.3). 색은 시안에서 추정한 값이다(FE-Q5).
- * 글꼴·크기·간격·모서리·그림자는 문서에 없어 임시로 정한 추정값이다(FE-Q14).
+ * 글꼴·크기·간격·모서리·그림자는 2026-11-27 화면 개선안에서 정한 값이다(FE-Q14).
  * 디자인이 확정되면 값만 바꾼다. 컴포넌트는 색을 이 변수로만 쓴다.
  */
 :root {
   /* 색 (docs/05 §5.3, 추정) */
   --color-primary: #234d3a;
+  --color-primary-strong: #163326;
   --color-bg: #faf8f3;
   --color-surface: #ffffff;
+  --color-surface-sub: #f3f1eb;
   --color-plan: #f4ecdd;
   --color-record: #e4ede5;
   --color-accent: #f0b86e;
   --color-danger-bg: #f8e8e4;
 
-  /* 보조 색 (FE-Q14, 추정) */
+  /* 보조 색 (FE-Q14) */
   --color-text: #1f2a24;
-  --color-text-sub: #6f746f;
+  --color-text-body: #2f3832;
+  --color-text-sub: #5f665f;
+  --color-text-muted: #6f746f;
+  --color-plan-text: #6b5534;
+  --color-record-text: #234d3a;
   --color-border: #e6e2d8;
+  --color-border-strong: #d9d5ca;
+  --color-divider: #f0ede6;
   --color-on-primary: #ffffff;
-  --color-danger: #b4432f;
+  --color-danger: #a13a28;
+  --color-danger-border: #e3c4bc;
   --color-disabled: #c9ccc6;
 
-  /* 글꼴 (FE-Q14, 추정) */
+  /* 글꼴 (FE-Q14). 전체 Pretendard(index.html에서 불러온다). 경험 기록 글도 같은 글꼴에 크기·줄 간격만 다르다 */
   --font-family:
-    -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Pretendard', 'Noto Sans KR', 'Malgun Gothic',
-    sans-serif;
+    'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo',
+    'Noto Sans KR', 'Malgun Gothic', sans-serif;
+  --font-family-letter: var(--font-family);
   --font-size-xs: 12px;
   --font-size-sm: 14px;
   --font-size-md: 16px;
   --font-size-lg: 18px;
   --font-size-title: 24px;
   --line-height-body: 1.5;
-  --line-height-title: 1.35;
+  --line-height-title: 1.32;
+  --line-height-letter: 1.8;
+  --letter-spacing-title: -0.5px;
 
-  /* 간격: 4px 단위 (FE-Q14, 추정) */
+  /* 간격: 4px 단위 (FE-Q14) */
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
@@ -42,16 +54,22 @@
   --space-6: 24px;
   --space-8: 32px;
 
-  /* 모서리: 시안 12–16px (docs/05 §5.3) */
-  --radius-sm: 8px;
+  /* 모서리: 시안 12–16px (docs/05 §5.3), 카드는 18px */
+  --radius-sm: 10px;
+  --radius-input: 12px;
   --radius-md: 14px;
+  --radius-lg: 18px;
   --radius-pill: 999px;
 
-  --shadow-card: 0 1px 3px rgb(0 0 0 / 6%);
+  --shadow-card: 0 1px 2px rgb(31 42 36 / 6%), 0 4px 16px rgb(31 42 36 / 5%);
+  --shadow-raised: 0 1px 2px rgb(31 42 36 / 6%), 0 6px 20px rgb(31 42 36 / 7%);
 
   /* 레이아웃 (FE-NFR-01) */
   --layout-max-width: 480px;
+  --page-gutter: 20px;
   --header-height: 56px;
-  --tab-height: 60px;
+  --tab-height: 64px;
+  --touch-target: 44px;
+  --input-height: 48px;
   --bottom-button-area: 88px;
 }

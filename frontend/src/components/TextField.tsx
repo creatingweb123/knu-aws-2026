@@ -81,9 +81,23 @@ export function TextField({ label, hint, error, id, maxLength, value, ...rest }:
   );
 }
 
-export type TextAreaProps = CommonProps & Omit<TextareaHTMLAttributes<HTMLTextAreaElement>, 'className'>;
+export type TextAreaProps = CommonProps &
+  Omit<TextareaHTMLAttributes<HTMLTextAreaElement>, 'className'> & {
+    /** letter: 경험 기록 글(큰 글자, 넓은 줄 간격) */
+    variant?: 'default' | 'letter';
+  };
 
-export function TextArea({ label, hint, error, id, maxLength, value, rows = 5, ...rest }: TextAreaProps) {
+export function TextArea({
+  label,
+  hint,
+  error,
+  id,
+  maxLength,
+  value,
+  rows = 5,
+  variant = 'default',
+  ...rest
+}: TextAreaProps) {
   const autoId = useId();
   const fieldId = id ?? autoId;
   return (
@@ -101,7 +115,7 @@ export function TextArea({ label, hint, error, id, maxLength, value, rows = 5, .
         rows={rows}
         value={value}
         maxLength={maxLength}
-        className={`${styles.input} ${styles.textarea} ${error ? styles.invalid : ''}`}
+        className={`${styles.input} ${styles.textarea} ${variant === 'letter' ? styles.letter : ''} ${error ? styles.invalid : ''}`}
         aria-invalid={error ? true : undefined}
         aria-describedby={describedBy(fieldId, hint, error)}
       />

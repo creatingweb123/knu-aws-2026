@@ -1,10 +1,17 @@
 import type { ReactNode } from 'react';
 
+import { Icon } from './Icon';
 import styles from './ResultScreen.module.css';
 
+/**
+ * 아이콘은 색과 모양을 함께 바꿔 뜻을 나눈다(docs/05 §5.3).
+ * check: 완료·공개(숲색 체크) / notice: 확인이 필요함(베이지 느낌표) / alert: 실패(빨강 느낌표) / ended: 끝남(회색 시계)
+ */
+export type ResultIcon = 'check' | 'notice' | 'alert' | 'ended';
+
 interface Props {
-  icon: 'check' | 'alert';
-  title: string;
+  icon: ResultIcon;
+  title: ReactNode;
   description?: ReactNode;
   /** 요약 카드(선택) */
   summary?: ReactNode;
@@ -12,27 +19,20 @@ interface Props {
   action?: ReactNode;
 }
 
+const ICON = {
+  check: { name: 'check', size: 34, stroke: 2.5 },
+  notice: { name: 'alert', size: 32, stroke: 2.4 },
+  alert: { name: 'alert', size: 32, stroke: 2.4 },
+  ended: { name: 'timer', size: 30, stroke: 2 },
+} as const;
+
 /** 완료/확인 화면: 원형 아이콘 + 제목 + 설명 + 요약 카드 + 하단 버튼(docs/05 §5.3) */
 export function ResultScreen({ icon, title, description, summary, action }: Props) {
+  const i = ICON[icon];
   return (
     <section className={styles.screen}>
-      <div className={`${styles.icon} ${icon === 'alert' ? styles.alert : ''}`} aria-hidden="true">
-        {icon === 'check' ? (
-          <svg width="32" height="32" viewBox="0 0 24 24">
-            <path
-              d="M5 12.5l4.5 4.5L19 7.5"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.4"
-              strokeLinecap="round"
-            />
-          </svg>
-        ) : (
-          <svg width="32" height="32" viewBox="0 0 24 24">
-            <path d="M12 6v8" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" />
-            <circle cx="12" cy="18" r="1.4" fill="currentColor" />
-          </svg>
-        )}
+      <div className={`${styles.icon} ${styles[icon]}`}>
+        <Icon name={i.name} size={i.size} strokeWidth={i.stroke} />
       </div>
       <h2 className={styles.title}>{title}</h2>
       {description ? <p className={styles.description}>{description}</p> : null}

@@ -1,21 +1,28 @@
 .list {
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
+  gap: 10px;
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
 .item {
-  position: relative;
-  display: block;
+  display: flex;
+  gap: 14px;
   padding: var(--space-4);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   background: var(--color-surface);
   box-shadow: var(--shadow-card);
   color: inherit;
   text-decoration: none;
+}
+
+/* 읽은 기록은 한 단계 가라앉힌다 */
+.item-read {
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-sub);
+  box-shadow: none;
 }
 
 .item:focus-visible {
@@ -23,32 +30,70 @@
   outline-offset: 2px;
 }
 
-.head {
-  display: flex;
+.tile {
+  position: relative;
+  flex: none;
+  display: inline-flex;
   align-items: center;
-  gap: var(--space-2);
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius-md);
+  background: var(--color-plan);
+  color: var(--color-plan-text);
+}
+
+.item-read .tile {
+  background: var(--color-surface);
+  color: var(--color-text-muted);
 }
 
 /* 안 읽은 편지 주황 점(FE-INB-01) */
 .dot {
-  width: 8px;
-  height: 8px;
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--color-surface);
   border-radius: var(--radius-pill);
   background: var(--color-accent);
 }
 
+.item-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
 .title {
-  margin-top: var(--space-2);
+  overflow: hidden;
+  font-size: var(--font-size-md);
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.item-read .title {
   font-weight: 700;
+  color: var(--color-text-body);
 }
 
 .line {
-  margin-top: var(--space-1);
   font-size: var(--font-size-sm);
+  color: var(--color-text-body);
 }
 
 .time {
-  margin-top: var(--space-1);
   font-size: var(--font-size-xs);
   color: var(--color-text-sub);
 }
@@ -61,13 +106,22 @@
 
 .empty {
   padding: var(--space-8) var(--space-4);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   background: var(--color-surface);
   text-align: center;
   color: var(--color-text-sub);
 }
 
 /* 돌아온 하루 */
+.detail-title {
+  margin: var(--space-2) 0 var(--space-4);
+  font-size: var(--font-size-title);
+  font-weight: 800;
+  letter-spacing: var(--letter-spacing-title);
+  line-height: var(--line-height-title);
+  color: var(--color-primary);
+}
+
 .photo {
   display: block;
   width: 100%;
@@ -82,30 +136,39 @@
   color: var(--color-text-sub);
 }
 
+/* 내가 남긴 계획 위에 경험 기록이 살짝 겹쳐 이어진다 */
 .cards {
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
   margin-top: var(--space-4);
 }
 
 .card {
-  padding: var(--space-4);
+  padding: 14px var(--space-4) var(--space-4);
   border-radius: var(--radius-md);
 }
 
 .plan {
+  padding-bottom: calc(var(--space-4) + 8px);
+  border-radius: var(--radius-md) var(--radius-md) 0 0;
   background: var(--color-plan);
 }
 
 .record {
+  position: relative;
+  margin-top: -8px;
   background: var(--color-record);
+  box-shadow: var(--shadow-raised);
 }
 
 .card-label {
   font-size: var(--font-size-xs);
   font-weight: 700;
-  color: var(--color-text-sub);
+  color: var(--color-plan-text);
+}
+
+.record .card-label {
+  color: var(--color-record-text);
 }
 
 .card-title {
@@ -119,13 +182,42 @@
   word-break: break-word;
 }
 
+/* 실행자의 경험 기록 글: 본문보다 큰 글자와 넓은 줄 간격 */
+.letter {
+  font-family: var(--font-family-letter);
+  font-size: 17px;
+  line-height: var(--line-height-letter);
+}
+
 .reply {
   margin-top: var(--space-6);
 }
 
 .sent {
-  padding: var(--space-4);
+  display: flex;
+  gap: 10px;
+  padding: 14px var(--space-4);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   background: var(--color-surface);
+}
+
+.sent .card-label {
+  color: var(--color-primary);
+}
+
+.sent .card-text {
+  margin-top: 2px;
+}
+
+.sent-icon {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-pill);
+  background: var(--color-primary);
+  color: var(--color-on-primary);
 }

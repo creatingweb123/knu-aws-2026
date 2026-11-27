@@ -6,7 +6,7 @@ import type { MyClaimItem } from '../../api/types';
 import { PageTitle } from '../../components/PageTitle';
 import { PrimaryButton } from '../../components/PrimaryButton';
 import { RouteTimeline } from '../../components/RouteTimeline';
-import { dueText, recordPath } from '../../utils/claim';
+import { claimStep, dDayText, dueText, recordPath } from '../../utils/claim';
 import { planMetaText } from '../../utils/plan';
 import styles from './Me.module.css';
 
@@ -55,31 +55,56 @@ export function MyDayPage() {
   );
 }
 
+const STEPS = ['이어받음', '다녀오기', '경험 기록 보내기'] as const;
+
 function ClaimCard({ item }: { item: MyClaimItem }) {
   const navigate = useNavigate();
   const { claim, plan, record } = item;
   const overdue = Date.parse(claim.dueAt) <= Date.now();
+  const step = claimStep(record?.photoStatus, record !== null);
   return (
     <li className={styles.card} data-testid={`claim-${claim.claimId}`}>
-      <h3 className={styles.title}>{plan.title}</h3>
-      <p className={styles.meta}>
-        {plan.owner.nickname} · {planMetaText(plan.estimatedMinutes, plan.places.length)}
-      </p>
-      <p className={`${styles.due} ${overdue ? styles.overdue : ''}`}>{dueText(claim.dueAt)}</p>
-      <div className={styles.route}>
-        <RouteTimeline places={plan.places} />
+      <div className={`${styles.dueBar} ${overdue ? styles.overdue : ''}`}>
+        <p className={styles.due}>{dueText(claim.dueAt)}</p>
+        <span className={styles.dday}>{dDayText(claim.dueAt)}</span>
       </div>
-      <div className={styles.actions}>
-        <PrimaryButton fixed={false} onClick={() => navigate(recordPath(claim.claimId, record?.photoStatus))}>
-          다녀온 이야기 쓰기
-        </PrimaryButton>
-        <PrimaryButton
-          fixed={false}
-          variant="secondary"
-          onClick={() => navigate(`/claims/${encodeURIComponent(claim.claimId)}/abandon`)}
-        >
-          이어받기 포기
-        </PrimaryButton>
+      <div className={styles.cardBody}>
+        <div>
+          <h3 className={styles.title}>{plan.title}</h3>
+          <p className={styles.meta}>
+            {plan.owner.nickname} · {planMetaText(plan.estimatedMinutes, plan.places.length)}
+          </p>
+        </div>
+        <ol className={styles.steps} aria-label="진행 단계">
+          {STEPS.map((label, i) => (
+            <li
+              key={label}
+              className={`${styles.step} ${i < step ? styles.stepDone : ''} ${i === step ? styles.stepNow : ''}`}
+              aria-current={i === step ? 'step' : undefined}
+            >
+              <span className={styles.stepBar} aria-hidden="true" />
+              <span className={styles.stepLabel}>{label}</span>
+            </li>
+          ))}
+        </ol>
+        <div className={styles.route}>
+          <RouteTimeline places={plan.places} />
+        </div>
+        <div className={styles.actions}>
+          <PrimaryButton
+            fixed={false}
+            onClick={() => navigate(recordPath(claim.claimId, record?.photoStatus))}
+          >
+            다녀온 이야기 쓰기
+          </PrimaryButton>
+          <PrimaryButton
+            fixed={false}
+            variant="secondary"
+            onClick={() => navigate(`/claims/${encodeURIComponent(claim.claimId)}/abandon`)}
+          >
+            이어받기 포기
+          </PrimaryButton>
+        </div>
       </div>
     </li>
   );

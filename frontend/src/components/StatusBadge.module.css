@@ -2,7 +2,7 @@
   display: inline-flex;
   align-items: center;
   height: 24px;
-  padding: 0 var(--space-2);
+  padding: 0 10px;
   border-radius: var(--radius-pill);
   background: var(--color-record);
   color: var(--color-primary);
@@ -11,17 +11,30 @@
   white-space: nowrap;
 }
 
-.newLetter {
+/* 이어받을 수 있는 하루는 진하게 보여 눈에 띄게 한다 */
+.claimable {
+  background: var(--color-primary);
+  color: var(--color-on-primary);
+}
+
+.new-letter {
   background: var(--color-accent);
   color: var(--color-text);
 }
 
 .read,
-.completed {
+.completed,
+.claimed {
   background: var(--color-border);
-  color: var(--color-text-sub);
+  color: var(--color-text-body);
 }
 
 .mine {
-  background: var(--color-plan);
+  background: var(--color-surface);
+  color: var(--color-plan-text);
+}
+
+.my-claim {
+  background: var(--color-surface);
+  color: var(--color-primary);
 }

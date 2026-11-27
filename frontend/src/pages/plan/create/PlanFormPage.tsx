@@ -4,6 +4,7 @@ import { Navigate, useNavigate } from 'react-router-dom';
 import { isApiError } from '../../../api/client';
 import { errorMessage, fieldErrors } from '../../../api/errors';
 import { useCreatePlan } from '../../../api/mutations/useCreatePlan';
+import { Icon } from '../../../components/Icon';
 import { PageTitle } from '../../../components/PageTitle';
 import { PrimaryButton } from '../../../components/PrimaryButton';
 import { TextArea } from '../../../components/TextArea';
@@ -111,6 +112,7 @@ export function PlanFormPage() {
           <p className={styles.storyRefText}>{draft.story}</p>
         </div>
 
+        <h3 className={styles.groupTitle}>이 하루</h3>
         <TextField
           label="하루 제목"
           value={form.title}
@@ -147,7 +149,12 @@ export function PlanFormPage() {
         />
 
         <div>
-          <h3 className={styles.sectionTitle}>방문할 장소</h3>
+          <div className={styles.sectionHead}>
+            <h3 className={styles.sectionTitle}>방문할 장소</h3>
+            <span className={styles.sectionCount}>
+              {form.places.length} / {LIMITS.maxPlaces}곳
+            </span>
+          </div>
           {errors.places ? (
             <p className={styles.errorText} role="alert">
               {errors.places}
@@ -161,13 +168,17 @@ export function PlanFormPage() {
             <ol className={styles.places} aria-label="방문할 장소">
               {form.places.map((p, i) => {
                 const errs = placeErrors(i);
+                const flagged = errs.length === 0 && placeFlags(draft.flags, i).length > 0;
                 return (
                   <li
                     key={`${i}-${p.name}`}
-                    className={`${styles.place} ${errs.length ? styles.placeInvalid : ''}`}
+                    className={`${styles.place} ${errs.length ? styles.placeInvalid : ''} ${flagged ? styles.placeFlagged : ''}`}
                     data-testid={`place-${i}`}
                   >
-                    <span className={styles.placeNo} aria-hidden="true">
+                    <span
+                      className={`${styles.placeNo} ${i === form.places.length - 1 ? styles.placeNoLast : ''}`}
+                      aria-hidden="true"
+                    >
                       {i + 1}
                     </span>
                     <div className={styles.placeBody}>
@@ -182,6 +193,7 @@ export function PlanFormPage() {
                       {errs.length === 0
                         ? placeFlags(draft.flags, i).map((m) => (
                             <p key={m} className={styles.flagText} data-testid={`place-${i}-flag`}>
+                              <Icon name="info" size={14} strokeWidth={2.2} />
                               {m}
                             </p>
                           ))
@@ -212,19 +224,23 @@ export function PlanFormPage() {
           )}
           {form.places.length < LIMITS.maxPlaces ? (
             <button type="button" className={styles.addPlace} onClick={() => navigate('/plans/new/place')}>
-              + 장소 추가
+              <Icon name="plus" size={16} strokeWidth={2} />
+              장소 추가하기
             </button>
           ) : null}
         </div>
 
-        <TextField
-          label="방문 질문"
-          value={form.question}
-          maxLength={LIMITS.question}
-          error={errors.question}
-          hint={hintFor('question', '이어받은 사람에게 물어보고 싶은 것 하나')}
-          onChange={(e) => setField('question', e.target.value)}
-        />
+        <div className={styles.questionBox}>
+          <h3 className={styles.groupTitle}>이어받는 사람에게</h3>
+          <TextField
+            label="방문 질문"
+            value={form.question}
+            maxLength={LIMITS.question}
+            error={errors.question}
+            hint={hintFor('question', '이어받은 사람에게 물어보고 싶은 것 하나')}
+            onChange={(e) => setField('question', e.target.value)}
+          />
+        </div>
       </div>
 
       <PrimaryButton onClick={onPublish} loading={createPlan.isPending}>
