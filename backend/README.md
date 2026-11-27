@@ -357,7 +357,10 @@ T10 실패 내용(`T10-text-only-during-processing-20261127T173623.json`): `PROC
 
 - T10 409 판정 규칙(위), T9 대기 시간: 테스트 수정(개발 담당).
 - T12: 지금 테스트는 `openai_compat` 무효 키 방식이라 Bedrock에 맞지 않는다. 인계 문서(`.kiro/specs/backend-stage7-ops/aws-handoff.md` 4절 9번)의 Bedrock 방식(잘못된 모델 ID·권한)으로 테스트를 바꾼다(개발 담당).
-- `haru-demo` 배포, `seed.py`, 90초 시연 리허설.
+- `haru-demo` 배포(`AgentMode=agent`, 11.13절 결정), `seed.py`, 90초 시연 리허설.
+- 데모 전 `PhotoDLQ` 비우기: T9 테스트 메시지가 남아 `PhotoDLQNotEmpty` 알람이 ALARM이다(12.3절 런북).
+- 계정 비용: 이번 달 실제 $239.84로 월 $200 예산을 넘었다(계정 전체, docs/08 BE-Q131). 계정 관리자에게 원인 확인.
+- `main`의 `ad58f3f`(일반화, 선택지 `장소에서 빼기`)·`cf0220e`(화면 개편)는 아직 `haru-dev`에 배포하지 않았다.
 - 정리: 사진·웹 버킷을 비운 뒤 `sam delete --stack-name haru-dev`.
 
 ## 4. AWS에서만 확인되는 것 (1·2단계 해당분, docs/02 §2.4.4)
@@ -1176,6 +1179,13 @@ HTTP 지연은 1.0–5.9초였고 27초를 넘긴 요청은 없었다. 모델 �
 1. 출시 기본 모드. 이 제안을 승인할지.
 2. 데모에서 질문 단계를 보일지. 보인다면 데모 환경만 `agent`로 켠다.
 3. 사용자 `.env`의 `LLM_EXTRA_BODY` 한 줄 교체(10.11절). 키가 든 파일이라 에이전트가 직접 고치지 않았다.
+
+**결정(2026-11-27, AWS 담당 권장안 승인)**
+
+1. 출시 기본 모드는 `pipeline`이다(템플릿 기본값 그대로). `haru-dev`도 판정 뒤 `pipeline`으로 돌려 두었다.
+2. 데모에서는 질문 단계를 보인다(docs/01 §1.7). `haru-demo` 스택만 `AgentMode=agent`로 배포한다. Bedrock Haiku 5.5로 AWS `dev`에서 T18–T22를 통과했다(3.5절).
+3. 위 `agent` 기본값 전환 조건 중 남은 것: BE-Q7 동의 문구 승인, BE-Q10 결정, Bedrock 모델로 15건 × 3회 재평가, T12. 이것이 끝나기 전에는 기본값을 바꾸지 않는다.
+4. `.env`의 `LLM_EXTRA_BODY`는 사용자가 직접 바꾼다. AWS 배포는 Bedrock이라 이 값을 쓰지 않는다.
 
 ## 12. 5단계 사진 파이프라인
 
