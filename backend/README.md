@@ -371,8 +371,13 @@ T10 실패 내용(`T10-text-only-during-processing-20261127T173623.json`): `PROC
 
 - T10 409 판정 규칙(위), T9 대기 시간: 테스트 수정(개발 담당).
 - T12: 지금 테스트는 `openai_compat` 무효 키 방식이라 Bedrock에 맞지 않는다. 인계 문서(`.kiro/specs/backend-stage7-ops/aws-handoff.md` 4절 9번)의 Bedrock 방식(잘못된 모델 ID·권한)으로 테스트를 바꾼다(개발 담당).
-- `haru-demo` 배포(`AgentMode=agent`, 11.13절 결정), `seed.py`, 90초 시연 리허설.
-- 데모 전 `PhotoDLQ` 비우기: T9 테스트 메시지가 남아 `PhotoDLQNotEmpty` 알람이 ALARM이다(12.3절 런북).
+- **`haru-demo` 생성 완료(2026-11-28 00:20–00:25, AWS 담당)**: 코드 `f02bb53`, `Stage=demo LlmProvider=bedrock LlmModel=global.anthropic.claude-haiku-5-5 LlmProviderLabel=AmazonBedrock LlmTemperature="" AgentMode=agent`(11.13절 결정). 변경 세트 58건 모두 Add, 00:24 `CREATE_COMPLETE`. 함수 환경 `AGENT_MODE=agent`, `FAULT_INJECT_ALLOWED=false`, `FAKE_LLM_ALLOWED=false`(demo 규칙대로).
+  - 출력값(비밀 아님): 웹 `https://d2r8spvr7tenbc.cloudfront.net`, `ApiUrl` `https://ttzzkyg8t3.execute-api.ap-northeast-2.amazonaws.com`, `UserPoolId` `ap-northeast-2_eQMDApd9C`, `UserPoolClientId` `qqrva0j3okvkmj8ilfv538v7f`, `DistributionId` `E21U3DZA966UW5`, `WebBucketName` `haru-demo-web-963701985499`.
+  - 웹: 데모 값으로 `frontend/.env.production.local`(gitignore)을 만들어 빌드, 7개 업로드, 무효화 `I1PLFXZPZU24GIJOVLD8WH0A73`. 이 파일은 지금 `haru-demo` 값이다(`haru-dev` 웹을 다시 올리려면 dev 값으로 바꿔 빌드한다).
+  - 시드: `seed.py --stack haru-demo --apply --create-users --confirm-stack haru-demo`. Plan 9, Claim 4, Record 4, InboxItem 2(시나리오 9건, 태그 `demo-v1`). 데모 사용자는 기본 이메일(`jiyeon@example.com`, `suhyun@example.com`, `minjun@example.com`)이고, 비밀번호는 AWS 담당 PC의 `C:\Users\LGUser\.aws\haru-demo-seed-password.txt`에만 있다(저장소·로그에 없음). 로그에 `tzdata_missing fallback=UTC+9`가 한 줄 나왔다(Windows에 tzdata가 없어 KST 고정값을 썼다는 뜻).
+  - 판정: `test_web.py`(데모 스택) **6 passed**.
+- 90초 시연 리허설(`haru-demo`).
+- `PhotoDLQ` 비우기 **완료**(00:20, `haru-dev`): 메시지 1건(T9 테스트) → 0건. 알람은 다음 평가 주기에 OK로 돌아간다.
 - 계정 비용: 이번 달 실제 $239.84로 월 $200 예산을 넘었다(계정 전체, docs/08 BE-Q131). 계정 관리자에게 원인 확인.
 - **최신 main 재배포 완료(2026-11-28 00:08–00:15, AWS 담당, IAM `aws2026001`)**: 코드 `f02bb53`(`main` `75fe960`까지 병합: 일반화 `ad58f3f`, 화면 개편 `cf0220e`, 닉네임 수정 `0ff1222` + 이 브랜치의 CloudFront 정책 ID·CORS 수정).
   - 그 전 22:28–22:41에 팀원이 같은 `haru-dev`를 root로 배포했다(22:37 첫 시도는 틀린 정책 ID로 롤백, 22:41 성공, CORS 수정 없음). 같은 스택에 두 곳에서 배포하면 서로 덮어쓰므로 이후 배포는 AWS 담당이 이어서 한다.
