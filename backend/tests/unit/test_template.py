@@ -13,6 +13,7 @@ import yaml
 from handlers.routes import ROUTES
 
 BACKEND = Path(__file__).parents[2]
+ALLOWED_ORIGINS_WITH_WEB = {"!Split": [",", {"!Join": [",", [{"!Join": [",", {"!Ref": "AllowedOrigins"}]}, {"!Sub": "https://${WebDistribution.DomainName}"}]]}]}
 
 
 class CfnLoader(yaml.SafeLoader):
@@ -78,7 +79,8 @@ def test_all_routes_use_default_authorizer(template):
 
 def test_cors(template):
     cors = template["Resources"]["HttpApi"]["Properties"]["CorsConfiguration"]
-    assert cors["AllowOrigins"] == {"!Ref": "AllowedOrigins"}
+    # 7단계: AllowedOrigins(로컬 등) + 이 스택의 CloudFront 도메인(BE-INFRA-03)
+    assert cors["AllowOrigins"] == ALLOWED_ORIGINS_WITH_WEB
     assert cors["AllowHeaders"] == ["Authorization", "Content-Type", "Idempotency-Key"]
     assert cors["AllowMethods"] == ["GET", "POST", "PUT", "OPTIONS"]
     assert template["Parameters"]["AllowedOrigins"]["Default"] == "http://localhost:5173"
@@ -176,13 +178,13 @@ def test_user_pool(template):
 
 
 def test_outputs_and_scope(template):
-    assert set(template["Outputs"]) == {"ApiUrl", "UserPoolId", "UserPoolClientId"}
-    types = [r["Type"] for r in template["Resources"].values()]
-    assert "AWS::CloudFront::Distribution" not in types  # 웹 버킷·CloudFront는 7단계
-    buckets = [k for k, r in template["Resources"].items() if r["Type"] == "AWS::S3::Bucket"]
-    assert buckets == ["PhotoBucket"]  # 5단계 사진 버킷만
+    assert set(template["Outputs"]) == {"ApiUrl", "UserPoolId", "UserPoolClientId", "WebBucketName", "DistributionId", "DistributionDomain"}  # BE-INFRA-04
+    res = template["Resources"]
+    buckets = [k for k, r in res.items() if r["Type"] == "AWS::S3::Bucket"]
+    assert buckets == ["PhotoBucket", "WebBucket"]  # 5단계 사진 버킷 + 7단계 웹 버킷
+    assert [k for k, r in res.items() if r["Type"] == "AWS::CloudFront::Distribution"] == ["WebDistribution"]
     # 6b: 체크포인트 테이블이 생겼다(6a의 "없음" 기대값을 바꿈, design §18.1)
-    assert [k for k, r in template["Resources"].items() if r["Type"] == "AWS::DynamoDB::Table"] == ["HaruTable", "HaruAgentCheckpoints"]
+    assert [k for k, r in res.items() if r["Type"] == "AWS::DynamoDB::Table"] == ["HaruTable", "HaruAgentCheckpoints"]
 
 
 def test_no_stage3_dependencies():
@@ -470,7 +472,7 @@ def test_photo_bucket(template):
     assert p["OwnershipControls"] == {"Rules": [{"ObjectOwnership": "BucketOwnerEnforced"}]}
     assert p["BucketEncryption"]["ServerSideEncryptionConfiguration"][0]["ServerSideEncryptionByDefault"] == {"SSEAlgorithm": "AES256"}
     (cors,) = p["CorsConfiguration"]["CorsRules"]
-    assert cors["AllowedOrigins"] == {"!Ref": "AllowedOrigins"} and cors["AllowedMethods"] == ["PUT", "GET"]
+    assert cors["AllowedOrigins"] == ALLOWED_ORIGINS_WITH_WEB and cors["AllowedMethods"] == ["PUT", "GET"]
     assert cors["AllowedHeaders"] == {"!If": ["UseIfNoneMatch", ["Content-Type", "If-None-Match"], ["Content-Type"]]}
     rules = {x["Id"]: x for x in p["LifecycleConfiguration"]["Rules"]}
     assert rules["ExpireOriginals"]["Prefix"] == "photos/original/" and rules["ExpireOriginals"]["ExpirationInDays"] == 7
@@ -534,3 +536,25 @@ def test_stage5_parameters_defaults(template):
     for env in ("dev", "demo"):
         po = cfg[env]["deploy"]["parameters"]["parameter_overrides"]
         assert "FaultInject" not in po and "UploadIfNoneMatch" not in po
+
+
+def test_compose_has_no_duplicate_keys():
+    """통합 병합에서 api 서비스에 FAULT_INJECT가 두 번 들어가 docker compose가 파싱에 실패한 적이 있다(2026-11-27)."""
+    import pathlib
+
+    import yaml
+
+    class Strict(yaml.SafeLoader):
+        pass
+
+    def construct(loader, node, deep=False):
+        seen = set()
+        for k, _ in node.value:
+            key = loader.construct_object(k, deep=deep)
+            assert key not in seen, f"중복 키: {key}"
+            seen.add(key)
+        return yaml.SafeLoader.construct_mapping(loader, node, deep)
+
+    Strict.add_constructor(yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, construct)
+    doc = yaml.load((pathlib.Path(__file__).resolve().parents[2] / "docker-compose.yml").read_text(encoding="utf-8"), Loader=Strict)
+    assert {"aws", "api"} <= set(doc["services"])
