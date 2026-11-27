@@ -66,3 +66,12 @@ describe('dev JWT(FE-TECH-09, FE-Q26)', () => {
     await expect(devJwtService.devSignIn!('dev-suhyun', '수현')).rejects.toThrow(/STAGE=local/);
   });
 });
+
+describe('PreSignUp 거절 문구(BE-AUTH-02)', () => {
+  it('UserLambdaValidationException은 입력값 안내로 바꾼다(원문 메시지는 쓰지 않는다)', () => {
+    const e = Object.assign(new Error('닉네임은 1–20자로 입력해 주세요.'), {
+      name: 'UserLambdaValidationException',
+    });
+    expect(authErrorMessage(e)).toBe('입력값을 확인해 주세요.');
+  });
+});

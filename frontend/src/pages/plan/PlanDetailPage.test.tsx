@@ -3,7 +3,7 @@ import { HttpResponse, http } from 'msw';
 import { describe, expect, it } from 'vitest';
 
 import { loadDb, resetDb, updateDb } from '../../mocks/db';
-import { claimPlan } from '../../mocks/handlers/plans';
+import { claimPlan, planDetail } from '../../mocks/handlers/plans';
 import { server } from '../../test/server';
 import { renderApp } from '../../test/renderApp';
 
@@ -18,6 +18,25 @@ describe('하루 상세 내용(FE-PLN-01)', () => {
     expect(screen.getByText('들러서 빵 사기')).toBeInTheDocument();
     expect(screen.getByText('출근길에 지나치던 곳이에요.')).toBeInTheDocument();
     expect(screen.getByText('약 45분 · 장소 2곳')).toBeInTheDocument();
+  });
+});
+
+describe('계획자 닉네임이 없을 때(BE-Q45)', () => {
+  it('계획자 닉네임이 null이면 기본 표시명을 보이고 화면이 깨지지 않는다', async () => {
+    server.use(
+      http.get('*/plans/:planId', () => {
+        const detail = planDetail(loadDb(), 'pln_demo', 'u-suhyun', new Date().toISOString());
+        if (!detail) return HttpResponse.json({ error: { code: 'NOT_FOUND', message: '' } }, { status: 404 });
+        return HttpResponse.json({
+          ...detail,
+          plan: { ...detail.plan, owner: { userId: 'u-jiyeon', nickname: null } },
+        });
+      }),
+    );
+    renderApp('/plans/pln_demo', 'u-suhyun');
+    expect(await screen.findByText('계획을 남긴 사람 · 취소한 이유')).toBeInTheDocument();
+    expect(screen.getByText('계')).toBeInTheDocument();
+    expect(screen.queryByText(/Cannot read|Unexpected Application Error/)).not.toBeInTheDocument();
   });
 });
 

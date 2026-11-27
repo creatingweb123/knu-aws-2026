@@ -11,6 +11,7 @@ import { clearLetter } from '../../state/letterDraft';
 import { dDayText } from '../../utils/claim';
 import { planMetaText } from '../../utils/plan';
 import styles from './Me.module.css';
+import { OWNER_FALLBACK_NAME, displayNickname } from '../../utils/nickname';
 
 /** 4-1. 이어받기 포기 확인(FE-ME-04). 성공하면 둘러보기로, CLAIM_NOT_ACTIVE면 안내 후 내 하루로 */
 export function AbandonPage() {
@@ -56,7 +57,8 @@ export function AbandonPage() {
                 <span className={styles.dday}>{dDayText(item.claim.dueAt)}</span>
               </div>
               <p className={styles.meta}>
-                {plan.owner.nickname} · {planMetaText(plan.estimatedMinutes, plan.places.length)}
+                {displayNickname(plan.owner.nickname, OWNER_FALLBACK_NAME)} ·{' '}
+                {planMetaText(plan.estimatedMinutes, plan.places.length)}
               </p>
             </div>
           ) : undefined

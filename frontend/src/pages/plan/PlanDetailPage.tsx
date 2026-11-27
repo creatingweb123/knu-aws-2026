@@ -17,6 +17,7 @@ import { planMetaText } from '../../utils/plan';
 import { ClaimedNotice } from './ClaimedNotice';
 import { decideDetailView } from './detailView';
 import styles from './PlanDetailPage.module.css';
+import { OWNER_FALLBACK_NAME, displayNickname, initialOf } from '../../utils/nickname';
 
 /** 소유자에게 보여 줄 상태 배지(공개/이어받음/완료, docs/05 §5.2.2 3번) */
 const OWNER_STATUS: { [s in PlanStatus]: BadgeKind } = {
@@ -82,6 +83,7 @@ function PlanDetail({ planId }: { planId: string }) {
   }
 
   const { plan } = data;
+  const ownerName = displayNickname(plan.owner.nickname, OWNER_FALLBACK_NAME);
 
   const onClaim = () => {
     claim.mutate(undefined, {
@@ -121,10 +123,10 @@ function PlanDetail({ planId }: { planId: string }) {
 
       <div className={styles.planner}>
         <span className={styles.avatar} aria-hidden="true">
-          {plan.owner.nickname.slice(0, 1)}
+          {initialOf(ownerName)}
         </span>
         <div>
-          <p className={styles.plannerLabel}>{plan.owner.nickname} · 취소한 이유</p>
+          <p className={styles.plannerLabel}>{ownerName} · 취소한 이유</p>
           <p className={styles.plannerReason}>{plan.reason}</p>
         </div>
       </div>
