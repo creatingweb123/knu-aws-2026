@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.unit.test_template import ALLOWED_ORIGINS_WITH_WEB, BACKEND, template  # noqa: F401  (template은 fixture)
+from tests.unit.test_template import ALLOWED_ORIGINS_WITH_WEB, BACKEND, http_api_cors, template  # noqa: F401  (template은 fixture)
 
 SRC = BACKEND / "src"
 
@@ -114,10 +114,14 @@ def test_cache_policies_split_index_and_assets(template):
     assert cfg["DefaultCacheBehavior"]["CachePolicyId"] == CACHING_DISABLED  # index.html은 항상 새로
     (assets,) = cfg["CacheBehaviors"]
     assert assets["PathPattern"] == "/assets/*" and assets["CachePolicyId"] == CACHING_OPTIMIZED
+    # Managed-SecurityHeadersPolicy. 2026-11-27 AWS 배포에서 다른 ID(…-48c1-86a6-d8d6b5fc7a49)는 404로 롤백됐다
+    SECURITY_HEADERS = "67f7725c-6f97-4210-82d7-5512b31e9d03"
+    assert cfg["DefaultCacheBehavior"]["ResponseHeadersPolicyId"] == SECURITY_HEADERS
+    assert assets["ResponseHeadersPolicyId"] == SECURITY_HEADERS
 
 
 def test_cors_uses_web_domain_in_api_and_photo_bucket(template):
-    assert res(template, "HttpApi")["Properties"]["CorsConfiguration"]["AllowOrigins"] == ALLOWED_ORIGINS_WITH_WEB
+    assert http_api_cors(template)["allowOrigins"] == ALLOWED_ORIGINS_WITH_WEB
     (rule,) = res(template, "PhotoBucket")["Properties"]["CorsConfiguration"]["CorsRules"]
     assert rule["AllowedOrigins"] == ALLOWED_ORIGINS_WITH_WEB
     assert template["Parameters"]["AllowedOrigins"]["Default"] == "http://localhost:5173"

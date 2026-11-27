@@ -142,6 +142,9 @@ Conditions:
   HasLlmKeyParam: !Not [!Equals [!Ref LlmApiKeyParam, ""]]
   LlmIsFake: !Equals [!Ref LlmProvider, fake]
   HasLlmRegion: !Not [!Equals [!Ref LlmRegion, ""]]
+  # HttpApi CorsConfiguration 전용(늘 참). 위 HttpApi 주석 참고.
+  # 스택 이름은 비어 있을 수 없어 늘 참이다. 상수 비교(!Equals ["true", "true"])는 cfn-lint W8003에 걸린다.
+  CorsAlways: !Not [!Equals [!Ref "AWS::StackName", ""]]
 
 Rules:
   FakeLlmOnlyInDev:
@@ -255,10 +258,16 @@ Resources:
               issuer: !Sub https://cognito-idp.${AWS::Region}.amazonaws.com/${UserPool}
               audience:
                 - !Ref UserPoolClient
+      # SAM은 AllowOrigins가 내장 함수이면 그 값을 x-amazon-apigateway-cors 전체로 쓰고 AllowHeaders·AllowMethods를 버린다
+      # (samtranslator open_api.add_cors). !Split을 바로 넣었더니 CORS 객체 자리에 목록이 들어가 배포 도메인이 반영되지 않았다
+      # (2026-11-27 haru-dev, 실제 API AllowOrigins = localhost만). 그래서 CORS 객체 전체를 늘 참인 !If로 감싸 넘긴다.
       CorsConfiguration:
-        AllowOrigins: !Split [",", !Join [",", [!Join [",", !Ref AllowedOrigins], !Sub "https://${WebDistribution.DomainName}"]]]
-        AllowHeaders: [Authorization, Content-Type, Idempotency-Key]
-        AllowMethods: [GET, POST, PUT, OPTIONS]
+        AllowOrigins: !If
+          - CorsAlways
+          - allowOrigins: !Split [",", !Join [",", [!Join [",", !Ref AllowedOrigins], !Sub "https://${WebDistribution.DomainName}"]]]
+            allowHeaders: [Authorization, Content-Type, Idempotency-Key]
+            allowMethods: [GET, POST, PUT, OPTIONS]
+          - !Ref AWS::NoValue
       # AI 경로 스로틀(BE-Q82 임시값, design §19.2). 초과 응답 429 {"message":"Too Many Requests"}는 계약 에러 형식이 아니다(BE-Q92).
       RouteSettings:
         "POST /ai/card-sessions": { ThrottlingRateLimit: 2, ThrottlingBurstLimit: 5 }
@@ -722,8 +731,8 @@ Resources:
           Compress: true
           # Managed-CachingDisabled: index.html과 루트 파일은 항상 원본 확인(배포 직후 새 해시 파일명을 바로 받게 한다)
           CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
-          # Managed-SecurityHeadersPolicy
-          ResponseHeadersPolicyId: 67f7725c-6f97-48c1-86a6-d8d6b5fc7a49
+          # Managed-SecurityHeadersPolicy (ID는 aws cloudfront list-response-headers-policies --type managed로 확인, 2026-11-27)
+          ResponseHeadersPolicyId: 67f7725c-6f97-4210-82d7-5512b31e9d03
         CacheBehaviors:
           - PathPattern: /assets/*
             TargetOriginId: web-s3
@@ -733,7 +742,7 @@ Resources:
             Compress: true
             # Managed-CachingOptimized: 해시 파일명 정적 자산을 오래 캐시한다(원본 Cache-Control 범위 안에서)
             CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
-            ResponseHeadersPolicyId: 67f7725c-6f97-48c1-86a6-d8d6b5fc7a49
+            ResponseHeadersPolicyId: 67f7725c-6f97-4210-82d7-5512b31e9d03
         # SPA 라우팅: 비공개 버킷에서 없는 객체는 403(ListBucket 권한 없음)이나 404다. 둘 다 index.html(200)로 돌려준다.
         CustomErrorResponses:
           - { ErrorCode: 403, ResponseCode: 200, ResponsePagePath: /index.html, ErrorCachingMinTTL: 0 }

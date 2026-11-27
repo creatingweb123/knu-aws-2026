@@ -77,12 +77,23 @@ def test_all_routes_use_default_authorizer(template):
             assert "Auth" not in ev["Properties"]  # 경로별로 인증을 끄지 않는다
 
 
-def test_cors(template):
+def http_api_cors(template) -> dict:
+    """HttpApi CORS 객체. SAM은 AllowOrigins가 내장 함수이면 그 값을 x-amazon-apigateway-cors 전체로 쓰므로
+    CORS 객체 전체를 늘 참인 !If [CorsAlways, 객체, NoValue]로 감싼다(template.yaml HttpApi 주석)."""
     cors = template["Resources"]["HttpApi"]["Properties"]["CorsConfiguration"]
+    assert set(cors) == {"AllowOrigins"}  # AllowHeaders·AllowMethods를 밖에 두면 SAM이 버린다
+    cond, obj, other = cors["AllowOrigins"]["!If"]
+    assert cond == "CorsAlways" and other == {"!Ref": "AWS::NoValue"}
+    assert template["Conditions"]["CorsAlways"] == {"!Not": [{"!Equals": [{"!Ref": "AWS::StackName"}, ""]}]}  # 늘 참
+    return obj
+
+
+def test_cors(template):
+    cors = http_api_cors(template)
     # 7단계: AllowedOrigins(로컬 등) + 이 스택의 CloudFront 도메인(BE-INFRA-03)
-    assert cors["AllowOrigins"] == ALLOWED_ORIGINS_WITH_WEB
-    assert cors["AllowHeaders"] == ["Authorization", "Content-Type", "Idempotency-Key"]
-    assert cors["AllowMethods"] == ["GET", "POST", "PUT", "OPTIONS"]
+    assert cors["allowOrigins"] == ALLOWED_ORIGINS_WITH_WEB
+    assert cors["allowHeaders"] == ["Authorization", "Content-Type", "Idempotency-Key"]
+    assert cors["allowMethods"] == ["GET", "POST", "PUT", "OPTIONS"]
     assert template["Parameters"]["AllowedOrigins"]["Default"] == "http://localhost:5173"
 
 
