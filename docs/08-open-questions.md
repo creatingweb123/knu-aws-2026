@@ -9,7 +9,7 @@
 | # | 내용 | 제안 |
 |---|---|---|
 | BE-Q1 | `GET /claims/{claimId}/record`를 실행자가 아닌 사람이 호출할 때의 코드가 없다. | 403 `FORBIDDEN`. 프론트는 403/404/409를 모두 "종료된 이어받기"로 처리하므로 영향 없음. |
-| BE-Q2 | 처리 Lambda 1단계의 "`READY`이고 `deliveredAt` 없음" 상태는 `READY`를 완료 트랜잭션에서만 쓰는 현재 설계에서는 생기지 않는다. | 방어 코드로 두되 테스트 대상에서는 뺀다. |
+| BE-Q2 | 처리 Lambda 1단계의 "`READY`이고 `deliveredAt` 없음" 상태는 `READY`를 완료 트랜잭션에서만 쓰는 현재 설계에서는 생기지 않는다. | **BE-Q66과 함께 정리(5단계)**: 처리하지 않고 경고 로그 `photo_unexpected_ready`만 남긴다(메시지는 정상 종료). 단위 테스트는 이 무시 분기를 확인한다. [§2.7](./02-architecture.md) 문구 수정 여부는 BE-Q66. |
 | BE-Q3 | `GET /plans`의 `cursor` 형식이 정해지지 않았다. OPEN·CLAIMED 두 쿼리를 합치므로 단일 `LastEvaluatedKey`로 표현하기 어렵다. | MVP는 `limit` 최대 50, `nextCursor: null` 고정. 프론트는 더 보기 없이 첫 페이지만 표시. |
 | BE-Q4 | 계획 상세의 "이어받음" 상태 노출 시 숨겨야 할 필드 목록. | BE-PLAN-08의 허용 목록으로 확정. |
 | BE-Q5 | 시범 운영 지표의 "처음 5개 Claim"에 `ABANDONED` 포함 여부. | 팀 결정 후 `report.py` 옵션으로 둘 다 계산. |
@@ -41,7 +41,7 @@
 | BE-Q31 | `authoring.durationMs`의 상한이 없다. | 0 이상 정수만 검증하고 상한은 두지 않는다. 시범 운영 지표에서 이상값이 보이면 정한다. |
 | BE-Q32 | `GET /plans`의 `limit`이 숫자가 아니거나 1 미만, 50 초과일 때의 동작. | 400으로 거부하지 않고 기본 20 / 최대 50으로 보정한다. 프론트는 `limit`을 보내지 않거나 20을 보낸다. |
 | BE-Q33 | `currentClaimId`를 Plan 응답에 내보낼지. BE-PLAN-08은 내부 속성을 걸러내라고 하고, [§2.5](./02-architecture.md) Plan 예시에는 `currentClaimId: null`이 있다. | 응답에 내보내지 않는다(BE-PLAN-08 우선). 확정되면 §2.5 예시를 고친다. 프론트 `types.ts`의 Plan 타입에도 넣지 않는다. |
-| BE-Q34 | 3단계에서 `PUT /claims/{claimId}/record`를 글만 먼저 구현할 때(§7.3 3단계 비고) 요청에 `photo`가 오면. | 400 `VALIDATION_ERROR`, `details` 키 `photo`. 5단계에서 계약대로(업로드 URL 발급) 구현할 때까지만 쓴다. |
+| BE-Q34 | 3단계에서 `PUT /claims/{claimId}/record`를 글만 먼저 구현할 때(§7.3 3단계 비고) 요청에 `photo`가 오면. | **5단계에서 해소**: [§3.4](./03-api-contract.md)대로 업로드 URL을 발급한다. 3단계의 400(`details` 키 `photo`)은 없앴다. |
 | BE-Q35 | `GET /me/claims`의 `status`가 없거나 `ACTIVE`·`COMPLETED`가 아닐 때. | 400 `VALIDATION_ERROR`(`details` 키 `status`). 프론트는 항상 보낸다. |
 | BE-Q36 | `claimId` 형식. | `clm_` + ULID(`planId`와 같은 패턴). Claim의 실행자 닉네임 속성은 `claimerNickname`. |
 | BE-Q37 | EMF 지표 구현 방식·네임스페이스·차원. | 라이브러리 없이 EMF JSON 한 줄을 stdout에 출력한다. `AWS_EMF_ENVIRONMENT`와 무관하게 형식이 같다. 네임스페이스 `Haru`, 단위 `Count`, 차원 없음. |
@@ -49,14 +49,37 @@
 | BE-Q39 | `COMPLETED` Plan에 이어받기를 요청할 때의 코드. | 409 `ALREADY_CLAIMED`. 상세 조회는 남에게 404를 주므로 이 응답으로 완료된 계획의 존재가 드러난다(MVP 허용). |
 | BE-Q40 | 완료 트랜잭션의 Record 조건에 [§2.6](./02-architecture.md)보다 더한 방어 조건(`attribute_not_exists(deliveredAt)`, 읽은 `photoStatus` 일치). | 둔다. 5단계 사진 처리와 글로 완료의 경합에서 오래된 사진 상태로 계산하지 않기 위해서다. 실패하면 다시 읽어 판정하므로 응답은 문서와 같다. |
 | BE-Q41 | `GET /me/claims`는 GSI2(최종 일관성)를 읽어 방금 이어받은 Claim이 잠깐 빠질 수 있다. | MVP 허용. 프론트는 이어받기 응답의 `claim`으로 화면을 먼저 그린다(FE 확인 필요). |
-| BE-Q42 | 4단계 `GET /inbox/{itemId}`의 `photoUrl`·`photoCaption`. [§7.3](./07-development-plan.md)은 둘을 5단계 작업으로 두고, 4단계에는 사진과 함께 완료하는 경로가 없어 `hasPhoto = true` 항목이 생기지 않는다. | 4단계는 둘 다 `null`. 5단계에서 [§3.5](./03-api-contract.md)대로(15분 presigned GET, 마지막 장소 이름 + "에서") 구현한다. |
+| BE-Q42 | 4단계 `GET /inbox/{itemId}`의 `photoUrl`·`photoCaption`. | **5단계에서 해소**: [§3.5](./03-api-contract.md)대로 15분 presigned GET과 마지막 장소 이름 + "에서"를 응답 시 만든다. `hasPhoto = true`인데 `processedKey`가 없으면 BE-Q60. |
 | BE-Q43 | InboxItem 응답의 필드 목록. [§2.5](./02-architecture.md)는 저장 속성으로 `ownerId`를 적었고, 프론트 `types.ts`의 `InboxItem`에는 `ownerId`가 없다. | 응답에 `ownerId`를 내보내지 않는다(요청자 본인이고, BE-PLAN-08 허용 목록 원칙). 내보내기로 하면 §3.5에 필드를 적고 프론트 타입을 함께 고친다. |
 | BE-Q44 | 이미 읽은 항목에 `POST /inbox/{itemId}/read`가 다시 올 때. §3.5는 "204, `read = true`"만 적었다. | 204(멱등). 프론트는 `read === false`일 때만 보내지만 재전송·두 탭에서 409를 주지 않는다. |
 | BE-Q45 | InboxItem 응답의 `claimerNickname`이 `null`일 수 있는데 프론트 타입(`claimerNickname: string`)은 `null`을 허용하지 않는다. 완료 트랜잭션은 Claim에 `claimerNickname`이 있을 때만 InboxItem에 쓰고, Claim은 이어받을 때 ID 토큰 `nickname` 클레임이 있을 때만 저장한다. 같은 성격의 필드(`Me.nickname`, `UserRef.nickname`, `PlanSummary.ownerNickname`)도 프론트 타입은 `string`이다. | **권장안**: 프론트 타입을 `string \| null`로 바꾸고, UI가 `null`이면 기본 표시명(예: "이어받은 사람")을 보여 준다. 백엔드는 저장값이 없으면 `null`을 그대로 내보낸다(빈 문자열 같은 가짜 값을 쓰지 않는다). 같은 성격의 `Me.nickname`, `UserRef.nickname`, `PlanSummary.ownerNickname`도 같은 방식으로 맞춘다. 2026-11-25 AWS·Floci 실측에서는 ID 토큰에 `nickname`이 있어 정상 경로에서는 `null`이 나오지 않는다. 프론트엔드 담당이 정하면 [§3.5](./03-api-contract.md)에 "null일 수 있음"을 적는다. FE 쪽 질문 번호는 프론트엔드 담당과 정한다. |
 | BE-Q46 | `GET /claims/{claimId}/record`에서 Claim과 Record를 어떻게 읽을지. GetItem 두 번이면 그 사이에 끝난 완료·포기 트랜잭션 때문에 한 응답 안에서 `claimStatus`와 `delivered`가 서로 다른 시점의 값이 될 수 있다. 스냅샷으로 읽으면 충돌 재시도를 다 썼을 때의 503 `TRY_AGAIN`이 [§3.4](./03-api-contract.md) `GET /record` 절에 없다. | **권장안: TransactGetItems 스냅샷과 503 `TRY_AGAIN`을 유지한다.** 실패 사유가 `TransactionConflict`뿐일 때만 최초 1회 + 재시도 최대 3회(50·100·200ms 상한, equal jitter, 누적 대기 175–350ms) 하고, 다른 사유가 섞이거나 다른 사유만 있으면 500 `INTERNAL_ERROR`(BE-Q23). GetItem으로 폴백하지 않는다. 503은 §3.6·§3.7에 이미 있는 코드와 처리 규칙이다. §3.4에 503을 적는 계약 변경은 프론트엔드 담당 승인 뒤에 반영한다([§7.2](./07-development-plan.md)). 거부하면 대안 A(GetItem 두 번, 불일치 허용)로 설계를 바꾼다. 구현은 `feat/be-4-record-inbox`의 `f3626c0`에 있고 승인 전에는 PR에 넣지 않는다. 상세는 spec `backend-stage4-record-inbox` design.md. |
 | BE-Q47 | 수신함 상세·답장에서 "InboxItem은 있는데 Plan·Record가 없음"이나 "조건이 실패했는데 다시 읽어도 원인이 안 보임" 같은 정상 경로에 없는 상태의 코드. | 500 `INTERNAL_ERROR`(BE-Q23 임시 코드와 같다). 완료 트랜잭션이 넷을 함께 쓰므로 정상 경로에서는 생기지 않는다(G4). |
 | BE-Q48 | DynamoDB 클라이언트의 botocore 설정(`connect_timeout`·`read_timeout`·재시도 모드·최대 시도)과 Lambda 타임아웃(10초). 지정하지 않으면 기본값(연결·읽기 각 60초, standard 모드 DynamoDB 최대 4회 시도, 스로틀링 대기 최대 1+2+4초)이라 연결이 멈추거나 스로틀링이 길면 요청이 10초를 넘어 코드 없는 500이 될 수 있다. 모든 함수와 3단계 쓰기 경로에 같이 걸린다. Lambda 런타임 내장 boto3의 버전·재시도 모드는 확인하지 않았다. | **별도 공통 개선 과제로 관리한다**(4단계 범위 밖). 모든 Lambda의 DynamoDB 클라이언트 SDK 타임아웃·재시도 정책과 함수 타임아웃을 함께 정하는 별도 spec·PR로 진행한다. 판단 근거는 Dev_Stack 측정(함수 소요 시간, 런타임 내장 botocore 버전·재시도 모드)이다. 그 전까지 지금 설정(지정하지 않음)을 유지한다. |
-| BE-Q49–BE-Q72 | 5단계(BE-Q49–72) 질문은 5단계 브랜치(PR #7)의 이 문서에 있고, 병합 때 합친다. | — |
+| BE-Q49 | 사진 버킷·큐의 보안 기본값. docs는 퍼블릭 차단만 적었다. | 둔다: SSE-S3, 버킷 정책의 TLS 강제(`aws:SecureTransport = false` 거부), `BucketOwnerEnforced`, 큐·DLQ SSE-SQS. |
+| BE-Q50 | `photo.size`의 하한과 검증 `details` 키. | 1 이상 10,485,760 이하 정수. `details` 키는 `photo.contentType`·`photo.size`(본문 경로 표기). |
+| BE-Q51 | `POST /claims/{claimId}/record/photo` 응답에 `record`를 담을지. [§3.4](./03-api-contract.md)는 "응답은 위와 같은 `upload`"만 적었다. | **권장안(프론트엔드 리뷰 대기)**: 200 `{ "upload": … }`만. 승인되면 §3.4에 적는다. |
+| BE-Q52 | `POST /claims/{claimId}/record/photo`인데 Record가 없을 때. §3.4·§3.6에 이 경로의 코드가 없다. | **권장안(프론트엔드 리뷰 대기)**: 400 `RECORD_REQUIRED`(§3.6 코드 재사용). 끝난 이어받기는 409 `CLAIM_NOT_ACTIVE`가 먼저다. |
+| BE-Q53 | 사진 DLQ 보존 기간. | 14일(최대). |
+| BE-Q54 | 원본 키 형식(`photos/original/{claimId}/{uuid}.{jpg\|png}`)이 아닌 객체의 이벤트. | 무시하고 정상 종료(메시지 삭제). |
+| BE-Q55 | `photoError` 값의 형식. docs는 속성 이름만 적었다. | 사유 코드 5종 `UNSUPPORTED_FORMAT`, `TOO_LARGE`, `TOO_MANY_PIXELS`, `CORRUPT_IMAGE`, `RETRY_EXHAUSTED`. 응답에는 나가지 않는다. |
+| BE-Q56 | 최대 해상도. docs는 "최대 해상도 검사"만 적었다. | 40,000,000픽셀. 2026-11-25 측정 최대 상주 메모리 JPEG 104.8MB, PNG 325.3MB(1024MB의 70%인 717MB 안). |
+| BE-Q57 | 처리본 키의 `uuid`. docs는 `photos/processed/{claimId}/{uuid}.jpg`만 적었다. | 처리 시도마다 새 `attemptUuid`, 업로드는 `IfNoneMatch='*'`. 원본 키의 uuid를 공유하면 중복 실행의 진 쪽이 전달된 처리본을 덮어쓰거나 지울 수 있어서다. 대가로 고아 처리본이 생길 수 있다(BE-Q67). |
+| BE-Q58 | JPEG 품질, 투명 PNG 처리. | 품질 85, 흰 배경 합성. |
+| BE-Q59 | 장애·지연 주입(`FAULT_INJECT`)을 배포에 넘기는 방법. | 템플릿 파라미터 `FaultInject`(기본 빈 값). 세 겹으로 막는다: `Rules`(`Stage ≠ dev`면 빈 값만), 조건 `FaultAllowed`(`Stage = dev`이고 실제 스택 이름 `haru-dev`), 런타임 확인(함수 이름 `haru-dev-` 접두사). 판정 때만 `dev`에 덮어써 배포하고 되돌린다. |
+| BE-Q60 | InboxItem `hasPhoto = true`인데 Record `processedKey`가 없을 때(정상 경로에 없음). | 사진 필드만 `null`, 글은 200. 경고 로그 `inbox_photo_missing`. |
+| BE-Q61 | [§2.8](./02-architecture.md)의 "사진 GET URL: 해당 실행자". 계약에 실행자용 사진 조회 필드가 없다. | 이번에 만들지 않는다. 필요하면 계약 변경으로 정한다. |
+| BE-Q62 | DLQ 알람의 알림 대상. | 두지 않는다(상태만). SNS는 7단계 알람·대시보드와 함께 정한다. |
+| BE-Q63 | 처리 Lambda가 이미 완료된 Claim에 완료를 부르면 3단계 `CompleteDuplicate` 지표가 오른다. | 3단계 동작을 바꾸지 않는다. API 중복 완료와 섞이므로 지표 해석 주의를 backend README에 적었다. |
+| BE-Q64 | Floci의 S3 → SQS 알림, presigned PUT `Content-Length` 서명 검사, 수명 주기, 조건부 요청, redrive 지원. | **확인(2026-11-25, Floci 2.5.0-compat, 서명 검사 켬)**: 알림·`s3:TestEvent`·`If-None-Match` 412·`IfMatch` 412·잘못된 `Content-Length` 403·redrive(수신 3회 뒤 DLQ) 동작, 수명 주기·CORS 설정 수락. 로컬 미지원: 수명 주기 실제 만료, 브라우저 CORS, 버킷 정책 강제(수락만 하고 강제 안 함), 실제 이벤트 소스 매핑·강제 종료·알람. 로컬 우회 없이 알림을 그대로 쓴다. |
+| BE-Q65 | presigned PUT URL 재사용(유효 10분 안에 같은 키로 다시 PUT)으로 원본이 바뀔 수 있다. | **권장안(프론트엔드 승인 대기)**: `If-None-Match: *`를 서명 헤더에 넣는다. 스위치 `UploadIfNoneMatch`(기본 `false`) 뒤에 구현했고, 켜면 `upload.headers`·버킷 CORS·버킷 정책이 함께 바뀐다. 처리 Lambda는 스위치와 무관하게 이벤트의 ETag와 같은 객체만 처리한다. 꺼진 동안은 원본 불변성을 보장하지 못한다. |
+| BE-Q66 | [§2.7](./02-architecture.md)의 "`READY`이고 `deliveredAt` 없음이면 완료만 다시 호출"과 3단계 `complete_claim(WITH_PHOTO)`의 `PROCESSING` 전제가 맞지 않는다. | `complete_claim`은 바꾸지 않는다. 이 상태는 처리하지 않고 경고 로그만 남긴다(BE-Q2). §2.7 문구를 고칠지는 팀이 정한다. |
+| BE-Q67 | 고아 처리본(결과 불확실 뒤 재시도, 강제 종료, 진 시도의 삭제 실패) 정리. | "이 시도의 처리본이 전달되지 않았음이 확실할 때"만 자기 처리본을 지운다. 불확실하면 남긴다. `photos/processed/`에 일괄 만료를 두지 않는다. 자동 정리는 운영 개선 과제로 남긴다. |
+| BE-Q68 | Lambda 강제 종료로 `FAILED`를 못 쓰고 DLQ로 간 메시지의 Record가 `PROCESSING`으로 남는다. | DLQ 처리 Lambda를 두지 않는다. 운영자 스크립트 `backend/scripts/photo_dlq_recover.py`(기본 dry-run, `--apply`일 때만 조건부 `FAILED RETRY_EXHAUSTED`, 메시지 삭제·redrive 없음)와 런북. 실행자는 언제든 교체·글로 완료로 스스로 복구할 수 있다. |
+| BE-Q69 | T10·T15를 AWS에서 재현하는 지연 주입. | `FaultInject=photo-slow`: `PROCESSING` 전환 직후 5초(`FAULT_DELAY_S`, 1–10초) 지연. 테스트는 `PROCESSING`을 관측한 뒤 경쟁 요청을 보내고, 관측 실패나 경합 미발생은 미검증(재시험)으로 기록한다. |
+| BE-Q70 | 처리 Lambda에 `s3:ListBucket`이 없어 없는 원본의 `HeadObject`가 404가 아니라 403이 된다. | 지금은 403을 재시도 대상으로 둔다(권한 결함을 숨기지 않는다). AWS 판정 뒤 prefix 조건 `ListBucket` 추가 여부를 정한다. |
+| BE-Q71 | 처리 Lambda의 시간 예산(`PHOTO_RESERVE_MS` 5초, 단계별 7·12·7·10초)과 SDK 설정(standard, 총 시도 2회, 연결 2초, 읽기 5초). 완료 호출 1번이 중첩 재시도로 최대 GetItem 16회·TransactWriteItems 12회(SDK 시도 2회면 56회)가 될 수 있다. | 초기값으로 두고 AWS `Duration`·`PhotoProcessingMs` 측정으로 조정한다. 3단계 코드와 BE-Q48 공통 설정은 바꾸지 않는다. |
+| BE-Q72 | presigned URL을 Lambda 역할의 임시 자격 증명으로 서명하므로 실제 유효 시간이 10분보다 짧을 수 있다. | 프론트는 업로드 403에 새 URL(`POST /record/photo`)로 대응한다. 문제로 보이면 서명 전용 역할 등을 검토한다. |
 | BE-Q73 | AiQuota의 "하루" 기준. docs/02는 `yyyymmdd`만 적었다. | **권장안(팀 리뷰 대상)**: Asia/Seoul 자정 기준. 시간대 데이터가 없으면 UTC+9 고정 오프셋으로 대신한다(결과 같음). 다른 저장 시각은 UTC 그대로다. |
 | BE-Q74 | 레벨 0 세션을 언제 저장하는지. | **결정**: 그래프가 끝난 뒤 최종 상태(`READY`·`FAILED`)로 `attribute_not_exists(PK)` PutItem 한 번. 강제 종료·저장 실패 시 세션이 남지 않고 할당량만 1 소모될 수 있다. |
 | BE-Q75 | 502일 때 세션 상태와 실패 원인이 섞일 때의 코드. | **결정**: 502·503 모두 세션 `FAILED`로 저장. 마지막 시도의 원인으로 정한다(LLM 오류면 503, 검증 실패면 502). |
@@ -164,12 +187,13 @@
 | 백엔드 2단계(계획 API) | BE-Q22, BE-Q23, BE-Q24, BE-Q25, BE-Q29, BE-Q31, BE-Q32, BE-Q33 |
 | 백엔드 3단계(이어받기·포기·완료) | BE-Q34–BE-Q41 (임시 결정으로 구현. 2026-11-25 AWS 판정 T3–T7·T14·T16 통과, 임시 결정 자체의 확정은 남음) |
 | 백엔드 4단계(방문 기록·수신함) | BE-Q1, BE-Q42–BE-Q47 (임시 결정으로 구현. BE-Q46은 프론트엔드 담당의 계약 변경 승인 대기, BE-Q45는 프론트엔드 담당 결정. T1·T2·T17 AWS 판정 전) |
+| 백엔드 5단계(사진 파이프라인) | BE-Q2, BE-Q34·BE-Q42(해소), BE-Q49–BE-Q72 (임시 결정으로 구현. BE-Q51·BE-Q52·BE-Q65는 프론트엔드 담당 승인 대기, BE-Q70·BE-Q71·BE-Q72는 AWS 판정·측정 뒤. T8–T11·T15 AWS 판정 전) |
 | 공통 개선(단계 무관) | BE-Q48 (SDK 타임아웃·재시도 정책. AWS 측정 뒤 별도 spec·PR) |
 | 백엔드 6a(AI 레벨 0) 시작 전 | BE-Q6, BE-Q7·FE-Q6, BE-Q11, BE-Q8, BE-Q18, BE-Q21 |
 | 백엔드 6a(AI 레벨 0) 구현 | BE-Q73–BE-Q92 (결정·권장안·임시 구분은 8.1. 2026-11-26 개발 PC 검증까지, AWS 판정·T12 미검증. 공급자 관련 BE-Q6·BE-Q7·BE-Q9·BE-Q10·BE-Q12는 미결 유지) |
 | 백엔드 6b(에이전트 그래프) 시작 전 | BE-Q9, BE-Q19, BE-Q20, BE-Q10, BE-Q13·FE-Q7, BE-Q14, BE-Q26 |
 | 백엔드 6b(에이전트 그래프) 구현 | BE-Q93–BE-Q129 (결정·임시 구분은 8.1. 2026-11-26 개발 PC 검증까지, AWS 판정 T18–T22 전. 남은 임시: BE-Q105·106·108·109·114·121·124·125·126. 프론트 리뷰: BE-Q121·BE-Q124·BE-Q13·FE-Q7. **2026-11-27 실제 공급자 측정**: 스모크 5건 중 1건 FAILED로 중단(BE-Q129 결정 대기). 동시 5요청과 15×3 오프라인 평가는 미실행. 절차는 README 11.9절, 결과는 11.10절) |
-| 구현 중 | BE-Q1, BE-Q3·FE-Q1, BE-Q4, BE-Q2, FE-Q2, FE-Q4, FE-Q5 |
+| 구현 중 | BE-Q1, BE-Q3·FE-Q1, BE-Q4, FE-Q2, FE-Q4, FE-Q5 |
 | 리허설과 시범 운영 | BE-Q12, BE-Q5 |
 
 ## 8.4 프론트엔드와 백엔드가 함께 정해야 하는 질문

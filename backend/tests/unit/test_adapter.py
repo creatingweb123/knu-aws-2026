@@ -274,3 +274,86 @@ def test_inbox_read_is_not_detail_and_wrong_methods_404(adapter):
 def test_inbox_through_adapter_with_empty_table(adapter):
     resp = adapter.dispatch("GET", "/inbox", auth(floci_token()))
     assert resp.status == 200 and body(resp) == {"items": []}
+
+
+# ------------------------------------------------------------------ SQS 폴러 (5단계)
+
+
+class FakeSqs:
+    def __init__(self, messages):
+        self.messages = list(messages)
+        self.deleted, self.calls = [], []
+
+    def receive_message(self, **kw):
+        self.calls.append(kw)
+        return {"Messages": [self.messages.pop(0)]} if self.messages else {}
+
+    def delete_message(self, QueueUrl, ReceiptHandle):
+        self.deleted.append(ReceiptHandle)
+
+
+QUEUE = "http://aws:4566/000000000000/haru-photo-queue"
+
+
+def _msg(n=1, rh="rh-1"):
+    return {"MessageId": "m-1", "ReceiptHandle": rh, "Body": '{"Records": []}', "Attributes": {"ApproximateReceiveCount": str(n)}}
+
+
+def test_poller_builds_lambda_event_and_deletes_on_success():
+    seen = []
+    sqs = FakeSqs([_msg(2)])
+    poller = app.SqsPoller(sqs, QUEUE, lambda ev, ctx: seen.append((ev, ctx.get_remaining_time_in_millis())))
+    assert poller.poll_once() == 1
+    (ev, remaining) = seen[0]
+    (rec,) = ev["Records"]
+    assert rec["eventSource"] == "aws:sqs"
+    assert rec["attributes"]["ApproximateReceiveCount"] == "2"
+    assert rec["body"] == '{"Records": []}' and rec["receiptHandle"] == "rh-1" and rec["messageId"] == "m-1"
+    assert rec["eventSourceARN"].endswith(":haru-photo-queue")
+    assert 29_000 < remaining <= 30_000
+    assert sqs.deleted == ["rh-1"]
+    assert sqs.calls[0]["MaxNumberOfMessages"] == 1 and sqs.calls[0]["AttributeNames"] == ["All"]
+
+
+def test_poller_keeps_message_on_handler_exception(caplog):
+    def boom(ev, ctx):
+        raise RuntimeError("secret detail")
+
+    sqs = FakeSqs([_msg()])
+    caplog.set_level("WARNING", logger="haru.adapter")
+    assert app.SqsPoller(sqs, QUEUE, boom).poll_once() == 1
+    assert sqs.deleted == []
+    assert "photo_poller_handler_error type=RuntimeError" in caplog.text
+    assert "secret detail" not in caplog.text
+
+
+def test_poller_empty_receive():
+    sqs = FakeSqs([])
+    assert app.SqsPoller(sqs, QUEUE, lambda ev, ctx: None).poll_once() == 0
+    assert sqs.deleted == []
+
+
+@pytest.mark.parametrize(
+    "env",
+    [
+        {"STAGE": "dev", "PHOTO_QUEUE_URL": QUEUE},
+        {"STAGE": "local"},
+        {"STAGE": "local", "PHOTO_QUEUE_URL": ""},
+        {},
+    ],
+)
+def test_poller_off_conditions(env):
+    assert app.start_photo_poller(env, sqs=FakeSqs([])) is None
+
+
+def test_poller_starts_when_local_with_queue(monkeypatch):
+    monkeypatch.setattr(app, "_load_handler", lambda target: (lambda ev, ctx: None))
+    poller = app.start_photo_poller({"STAGE": "local", "PHOTO_QUEUE_URL": QUEUE}, sqs=FakeSqs([]))
+    try:
+        assert poller is not None and poller.queue_url == QUEUE
+    finally:
+        poller.stop.set()
+
+
+def test_photo_replace_route_is_dispatched():
+    assert "POST /claims/{claimId}/record/photo" in {rk for _, _, rk, _ in app._compile_routes(app.ROUTES)}

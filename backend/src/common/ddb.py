@@ -32,8 +32,9 @@ def table() -> Any:
 def use_table(t: Any) -> None:
     """이 실행 환경의 HaruTable 리소스를 바꾼다.
 
-    AiCardFunction이 자기 SDK 설정(짧은 타임아웃·제한된 재시도, BE-Q85)의 리소스를 꽂을 때만 쓴다.
-    다른 함수는 부르지 않으므로 기본 SDK 설정 그대로다(BE-Q48 미결 유지). 5단계 브랜치와 같은 함수다.
+    AiCardFunction(짧은 타임아웃·제한된 재시도, BE-Q85)과 사진 처리 Lambda(design "처리 Lambda 알고리즘")가
+    자기 SDK 설정의 리소스를 꽂을 때만 쓴다.
+    다른 함수는 부르지 않으므로 기본 SDK 설정 그대로다(BE-Q48 미결 유지).
     """
     global _table
     _table = t

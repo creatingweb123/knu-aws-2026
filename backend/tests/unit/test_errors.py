@@ -146,3 +146,12 @@ def test_reply_already_sent_body():
     body = json.loads(error_response(ApiError("REPLY_ALREADY_SENT")).get("body"))
     assert error_response(ApiError("REPLY_ALREADY_SENT"))["statusCode"] == 409
     assert body == {"error": {"code": "REPLY_ALREADY_SENT", "message": "이미 답장을 보냈어요."}}
+
+
+def test_emf_line_unit_for_photo_metrics():
+    """5단계: PhotoProcessingMs는 Milliseconds, 기본은 Count(BE-Q37 기존 3종 불변)."""
+    from common.metrics import PHOTO_FAILED, PHOTO_PROCESSING_MS, emf_line
+
+    ms = json.loads(emf_line(PHOTO_PROCESSING_MS, 1234, timestamp_ms=1, unit="Milliseconds"))
+    assert ms["_aws"]["CloudWatchMetrics"][0]["Metrics"] == [{"Name": "PhotoProcessingMs", "Unit": "Milliseconds"}] and ms["PhotoProcessingMs"] == 1234
+    assert json.loads(emf_line(PHOTO_FAILED, 1, timestamp_ms=1))["_aws"]["CloudWatchMetrics"][0]["Metrics"][0]["Unit"] == "Count"

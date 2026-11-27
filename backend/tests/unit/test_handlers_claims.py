@@ -111,15 +111,19 @@ def test_abandon_flow_and_errors():
     assert status == 404
 
 
-def test_record_validation():
+def test_record_validation(monkeypatch):
     pid = make_plan()
     _, b = call(plans.handler, "POST /plans/{planId}/claims", SUHYUN, path={"planId": pid})
     cid = b["claim"]["claimId"]
     for payload, key in [({"letter": ""}, "letter"), ({"letter": "가" * 1001}, "letter"), ({}, "letter"), (None, "body")]:
         status, body = call(claims.handler, "PUT /claims/{claimId}/record", SUHYUN, body=payload, path={"claimId": cid})
         assert status == 400 and key in body["error"]["details"], payload
+    # BE-Q34 해소(5단계): photo가 있으면 400이 아니라 업로드 URL을 준다
+    monkeypatch.setenv("PHOTO_BUCKET", "haru-photos-test")
     status, body = call(claims.handler, "PUT /claims/{claimId}/record", SUHYUN, body={"letter": "글", "photo": {"contentType": "image/jpeg", "size": 10}}, path={"claimId": cid})
-    assert status == 400 and set(body["error"]["details"]) == {"photo"}  # BE-Q34
+    assert status == 200 and body["upload"]["method"] == "PUT" and body["record"]["photoStatus"] == "UPLOAD_PENDING"
+    status, body = call(claims.handler, "PUT /claims/{claimId}/record", SUHYUN, body={"letter": "글", "photo": {"contentType": "image/gif", "size": 10}}, path={"claimId": cid})
+    assert status == 400 and set(body["error"]["details"]) == {"photo.contentType"}
 
 
 def test_complete_validation_and_record_required():

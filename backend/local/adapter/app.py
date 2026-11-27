@@ -6,6 +6,8 @@ API Gateway HTTP API + JWT authorizer 대신 쓴다. 하는 일:
    부르지 않고 계약 형식의 401 UNAUTHORIZED. 신뢰하는 키는 Floci User Pool JWKS와(STAGE=local일 때) dev JWT 공개키.
 3. STAGE=local에서만 POST /dev/token {userId, nickname} → {idToken} (자동화 테스트·프론트 dev-jwt 모드용).
 4. CORS: 허용 Origin(기본 http://localhost:5173)의 preflight OPTIONS는 인증 없이 204.
+5. STAGE=local이고 PHOTO_QUEUE_URL이 있으면 SQS 폴러 스레드가 Lambda 이벤트 소스 매핑(BatchSize 1)을 흉내 내
+   workers.photo_processor.handler를 부른다. 정상 반환이면 메시지를 지우고, 예외면 남겨 가시성 시간 뒤 다시 받게 한다.
 
 이 파일은 SAM 배포물에 들어가지 않는다(template.yaml CodeUri는 src/). 실제 API Gateway의 401 본문 형식은
 여기와 다르다(§2.4.4 1항). 토큰·본문은 로그에 남기지 않는다.
@@ -20,6 +22,7 @@ import logging
 import os
 import re
 import sys
+import threading
 import time
 import uuid
 from collections.abc import Callable
@@ -40,6 +43,8 @@ log = logging.getLogger("haru.adapter")
 DEV_KID = "haru-local-dev-jwt"
 DEV_TOKEN_TTL_SECONDS = 3600
 LAMBDA_TIMEOUT_MS = 27_000  # 남은 실행 시간 흉내(12초 규칙 확인용)
+PHOTO_LAMBDA_TIMEOUT_MS = 30_000  # template.yaml PhotoProcessorFunction Timeout
+PHOTO_HANDLER = "workers.photo_processor.handler"
 CORS_ALLOW_HEADERS = "Authorization,Content-Type,Idempotency-Key"
 CORS_ALLOW_METHODS = "GET,POST,PUT,OPTIONS"
 
@@ -293,6 +298,83 @@ class Adapter:
         return Response(int(result.get("statusCode", 200)), out_headers, data)
 
 
+class SqsPoller:
+    """로컬 전용 SQS → 사진 처리 Lambda 연결(실제 이벤트 소스 매핑이 아니다, BE-Q64 로컬 미지원 항목)."""
+
+    def __init__(
+        self,
+        sqs: Any,
+        queue_url: str,
+        handler: Callable[[dict[str, Any], Any], Any],
+        *,
+        wait_seconds: int = 5,
+        context_factory: Callable[[], Any] = lambda: FakeContext(PHOTO_LAMBDA_TIMEOUT_MS),
+    ) -> None:
+        self.sqs, self.queue_url, self.handler = sqs, queue_url, handler
+        self.wait_seconds = wait_seconds
+        self.context_factory = context_factory
+        self.stop = threading.Event()
+
+    @staticmethod
+    def to_event(msg: dict[str, Any], queue_url: str) -> dict[str, Any]:
+        attrs = dict(msg.get("Attributes") or {})
+        attrs.setdefault("ApproximateReceiveCount", "1")
+        return {
+            "Records": [
+                {
+                    "messageId": msg.get("MessageId", ""),
+                    "receiptHandle": msg.get("ReceiptHandle", ""),
+                    "body": msg.get("Body", ""),
+                    "attributes": attrs,
+                    "messageAttributes": {},
+                    "md5OfBody": msg.get("MD5OfBody", ""),
+                    "eventSource": "aws:sqs",
+                    "eventSourceARN": "arn:aws:sqs:local:000000000000:" + queue_url.rstrip("/").rsplit("/", 1)[-1],
+                    "awsRegion": os.environ.get("AWS_REGION", "ap-northeast-2"),
+                }
+            ]
+        }
+
+    def poll_once(self) -> int:
+        """메시지를 한 번 받아 처리한다. 처리한 메시지 수를 돌려준다."""
+        resp = self.sqs.receive_message(
+            QueueUrl=self.queue_url, WaitTimeSeconds=self.wait_seconds, MaxNumberOfMessages=1, AttributeNames=["All"]
+        )
+        msgs = resp.get("Messages") or []
+        for msg in msgs:
+            try:
+                self.handler(self.to_event(msg, self.queue_url), self.context_factory())
+            except Exception as e:  # noqa: BLE001 - Lambda 실패처럼 메시지를 남긴다
+                log.warning("photo_poller_handler_error type=%s", type(e).__name__)
+                continue
+            self.sqs.delete_message(QueueUrl=self.queue_url, ReceiptHandle=msg["ReceiptHandle"])
+        return len(msgs)
+
+    def run(self) -> None:
+        while not self.stop.is_set():
+            try:
+                self.poll_once()
+            except Exception as e:  # noqa: BLE001 - 큐 연결 오류는 잠시 쉬고 다시 시도
+                log.warning("photo_poller_error type=%s", type(e).__name__)
+                self.stop.wait(2)
+
+
+def start_photo_poller(env: dict[str, str] | None = None, sqs: Any = None) -> SqsPoller | None:
+    """STAGE=local이고 PHOTO_QUEUE_URL이 있을 때만 데몬 스레드로 폴러를 띄운다."""
+    env = os.environ if env is None else env
+    queue_url = env.get("PHOTO_QUEUE_URL")
+    if env.get("STAGE") != "local" or not queue_url:
+        return None
+    if sqs is None:
+        import boto3
+
+        sqs = boto3.client("sqs")
+    poller = SqsPoller(sqs, queue_url, _load_handler(PHOTO_HANDLER))
+    threading.Thread(target=poller.run, name="photo-poller", daemon=True).start()
+    log.info("photo_poller_started")
+    return poller
+
+
 def make_server(adapter: Adapter, host: str = "0.0.0.0") -> ThreadingHTTPServer:
     class Handler(BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.1"
@@ -330,6 +412,7 @@ def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s", stream=sys.stdout)
     config = Config.from_env()
     server = make_server(Adapter(config))
+    start_photo_poller()
     log.info("listening port=%s stage=%s dev_token=%s", config.port, config.stage, config.stage == "local")
     server.serve_forever()
 

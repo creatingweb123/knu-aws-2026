@@ -8,6 +8,11 @@
 스택 출력(ApiUrl, UserPoolId, UserPoolClientId)과 테이블 이름은 CloudFormation에서 읽는다.
 STACK_NAME이 없으면 모든 테스트를 건너뛴다. 테스트가 만든 사용자와 항목은 끝나면 지운다(`_cleanup`).
 정리에 실패한 대상은 `test-results/cleanup-failures-*.json`에 남기고 세션 끝에 오류로 알린다.
+
+5단계 사진 테스트: 버킷·큐·DLQ·알람·처리 함수 이름은 처음 쓸 때 `DescribeStackResource`로 읽는다(4단계 이전 스택에서도
+다른 테스트는 그대로 돈다). 사진을 올린 Claim은 업로드 전에 `register_photo_claim`으로 등록하고, `_cleanup`은 DynamoDB를
+지운 **뒤** 그 Claim의 `photos/original/{id}/`·`photos/processed/{id}/` prefix만 지운다. 30초 뒤 한 번 더 지우고 그때
+새로 생긴 객체는 `cleanup-late-objects-*.json`에 남긴다. 버킷 전체 삭제·큐 purge는 하지 않는다.
 """
 
 from __future__ import annotations
@@ -45,6 +50,19 @@ class Stack:
     created_ai_quota_pks: list[str] = field(default_factory=list)
     # 6b: 체크포인트 테이블 물리 이름(없는 스택이면 None). AI 세션 ID마다 스레드(thread_id = sessionId)를 지운다.
     checkpoint_table: str | None = None
+    # 사진을 올린 Claim. 업로드 전에 등록한다(응답을 못 받아도 prefix를 지우도록).
+    created_photo_claim_ids: list[str] = field(default_factory=list)
+    photo: dict[str, str] | None = None  # photo_resources()가 채운다
+
+
+PHOTO_RESOURCES = {
+    "bucket": "PhotoBucket",
+    "queue_url": "PhotoQueue",
+    "dlq_url": "PhotoDLQ",
+    "alarm": "PhotoDLQNotEmpty",
+    "function": "PhotoProcessorFunction",
+}
+CLEANUP_SECOND_PASS_S = 30
 
 
 def _boto(service: str, config=None):
@@ -58,6 +76,21 @@ def _cleanup_config():
     from botocore.config import Config
 
     return Config(retries={"max_attempts": 10, "mode": "adaptive"})
+
+
+def _selects_fault(markexpr: str) -> bool:
+    """`-m`이 fault를 직접 고른 경우만 True. `-m integration`만 주면 addopts의 `not fault`가 덮여 fault 테스트가 수집되므로."""
+    expr = " ".join(markexpr.split())
+    return "fault" in expr and "not fault" not in expr
+
+
+def pytest_collection_modifyitems(config, items):
+    if _selects_fault(config.getoption("markexpr") or ""):
+        return
+    skip = pytest.mark.skip(reason='장애·지연 주입 테스트는 -m "integration and fault"로만 실행한다(dev 주입 배포 전용)')
+    for item in items:
+        if item.get_closest_marker("fault"):
+            item.add_marker(skip)
 
 
 @pytest.fixture(scope="session")
@@ -124,11 +157,33 @@ def _delete_checkpoint_thread(table_name: str, thread_id: str, saver=None) -> No
     saver.delete_thread(thread_id)
 
 
-def _cleanup(s: Stack, idp=None, ddb=None, saver=None) -> None:
+def _photo_prefixes(claim_id: str) -> tuple[str, str]:
+    return f"photos/original/{claim_id}/", f"photos/processed/{claim_id}/"
+
+
+def _delete_prefix(s3, bucket: str, prefix: str) -> list[str]:
+    """prefix 아래 객체를 페이지로 읽어 하나씩 지운다. 지운 키를 돌려준다."""
+    deleted: list[str] = []
+    token: str | None = None
+    while True:
+        kwargs: dict[str, Any] = {"Bucket": bucket, "Prefix": prefix}
+        if token:
+            kwargs["ContinuationToken"] = token
+        page = s3.list_objects_v2(**kwargs)
+        for obj in page.get("Contents", []):
+            s3.delete_object(Bucket=bucket, Key=obj["Key"])
+            deleted.append(obj["Key"])
+        if not page.get("IsTruncated"):
+            return deleted
+        token = page["NextContinuationToken"]
+
+
+def _cleanup(s: Stack, idp=None, ddb=None, saver=None, s3=None, sleep=time.sleep) -> None:
     """테스트가 등록한 대상만 지운다(테이블 스캔 없음).
 
     대상마다 따로 시도해 하나가 실패해도 나머지를 계속한다. 실패는 삼키지 않고 모아서
     `cleanup-failures-*.json`에 남긴 뒤 RuntimeError로 알린다(세션 teardown 오류로 보인다. 개별 T 판정과는 별개).
+    사진 prefix는 DynamoDB 정리 뒤에 지운다. ClaimLookup·Record가 없으면 늦게 온 처리 Lambda는 무시 조건으로 끝난다.
     """
     idp = idp or _boto("cognito-idp", _cleanup_config())
     ddb = ddb or _boto("dynamodb", _cleanup_config())
@@ -160,6 +215,23 @@ def _cleanup(s: Stack, idp=None, ddb=None, saver=None) -> None:
     if s.checkpoint_table:  # 6b: 종료 커밋 뒤 이미 지워졌어도(BE-Q103) 남았을 수 있다(삭제 실패·중단 세션)
         for sid in dict.fromkeys(s.created_ai_session_ids):
             attempt("checkpoint_thread", sid, lambda sid=sid: _delete_checkpoint_thread(s.checkpoint_table, sid, saver))
+    photo_ids = list(dict.fromkeys(s.created_photo_claim_ids))
+    if photo_ids:
+        bucket = (s.photo or {}).get("bucket")
+        if not bucket:
+            failures.extend({"kind": "s3_prefix", "target": cid, "error": "PhotoBucketUnknown"} for cid in photo_ids)
+        else:
+            s3 = s3 or _boto("s3", _cleanup_config())
+            for cid in photo_ids:
+                for prefix in _photo_prefixes(cid):
+                    attempt("s3_prefix", prefix, lambda p=prefix: _delete_prefix(s3, bucket, p))
+            sleep(CLEANUP_SECOND_PASS_S)  # ClaimLookup을 읽은 직후 정리가 끼어든 지연 Lambda가 만든 처리본
+            late: list[str] = []
+            for cid in photo_ids:
+                for prefix in _photo_prefixes(cid):
+                    attempt("s3_prefix", prefix, lambda p=prefix: late.extend(_delete_prefix(s3, bucket, p)))
+            if late:
+                save_result("cleanup-late-objects", {"objects": late})
 
     if failures:
         path = save_result("cleanup-failures", {"failures": failures})
@@ -366,3 +438,102 @@ def function_env(stack_name: str, logical_id: str) -> dict[str, str]:
     cfn = _boto("cloudformation")
     name = cfn.describe_stack_resource(StackName=stack_name, LogicalResourceId=logical_id)["StackResourceDetail"]["PhysicalResourceId"]
     return _boto("lambda").get_function_configuration(FunctionName=name).get("Environment", {}).get("Variables", {})
+# ------------------------------------------------------------------ 5단계 사진 도우미
+
+
+def photo_resources(stack: Stack, cfn=None) -> dict[str, str]:
+    """사진 버킷·큐 URL·DLQ URL·알람 이름·처리 함수 이름. 처음 한 번만 읽는다."""
+    if stack.photo is None:
+        cfn = cfn or _boto("cloudformation")
+        stack.photo = {
+            k: cfn.describe_stack_resource(StackName=STACK_NAME, LogicalResourceId=logical)["StackResourceDetail"]["PhysicalResourceId"]
+            for k, logical in PHOTO_RESOURCES.items()
+        }
+    return stack.photo
+
+
+def register_photo_claim(stack: Stack, claim_id: str) -> None:
+    """업로드 전에 부른다. 정리 때 이 Claim의 사진 prefix만 지운다."""
+    photo_resources(stack)
+    stack.created_photo_claim_ids.append(claim_id)
+
+
+def upload_photo(upload: dict[str, Any], body: bytes, *, origin: str | None = None):
+    """presigned PUT. (status, 응답 헤더(소문자), S3 오류 코드 또는 None). URL은 결과에 남기지 않는다."""
+    import re
+
+    headers = dict(upload["headers"])
+    if origin:
+        headers["Origin"] = origin
+    req = urllib.request.Request(upload["url"], data=body, method=upload["method"], headers=headers)
+    try:
+        with urllib.request.urlopen(req, timeout=30) as r:
+            return r.status, {k.lower(): v for k, v in r.headers.items()}, None
+    except urllib.error.HTTPError as e:
+        raw = e.read().decode("utf-8", "replace")
+        m = re.search(r"<Code>([^<]+)</Code>", raw)
+        return e.code, {k.lower(): v for k, v in e.headers.items()}, (m.group(1) if m else None)
+
+
+def fetch(url: str) -> bytes:
+    with urllib.request.urlopen(url, timeout=30) as r:
+        return r.read()
+
+
+def photo_record(stack: Stack, plan_id: str, claim_id: str) -> dict[str, Any] | None:
+    return get_item(stack, f"PLAN#{plan_id}", f"RECORD#{claim_id}")
+
+
+def wait_record(stack: Stack, plan_id: str, claim_id: str, pred, *, timeout: float = 60.0, interval: float = 0.2,
+                sleep=time.sleep, clock=time.monotonic, read=None) -> tuple[dict[str, Any] | None, list[str]]:
+    """ConsistentRead 폴링. (조건을 만족한 Record 또는 None, 관측한 photoStatus 열(연속 중복 제거))."""
+    read = read or (lambda: photo_record(stack, plan_id, claim_id))
+    seen: list[str] = []
+    deadline = clock() + timeout
+    while True:
+        rec = read()
+        st = (rec or {}).get("photoStatus") or "NONE"
+        if rec and rec.get("deliveredAt"):
+            st += "+delivered"
+        if not seen or seen[-1] != st:
+            seen.append(st)
+        if rec is not None and pred(rec):
+            return rec, seen
+        if clock() >= deadline:
+            return None, seen
+        sleep(interval)
+
+
+def processed_keys(stack: Stack, claim_id: str, s3=None) -> list[str]:
+    s3 = s3 or _boto("s3")
+    resp = s3.list_objects_v2(Bucket=photo_resources(stack)["bucket"], Prefix=_photo_prefixes(claim_id)[1])
+    return sorted(o["Key"] for o in resp.get("Contents", []))
+
+
+def _settled(rec: dict[str, Any] | None) -> bool:
+    return rec is not None and (bool(rec.get("deliveredAt")) or rec.get("photoStatus") in ("FAILED", "DISCARDED"))
+
+
+def wait_photo_settled(stack: Stack, plan_id: str, claim_id: str, *, stable_s: float = 30.0, timeout_s: float = 300.0,
+                       interval: float = 2.0, sleep=time.sleep, clock=time.monotonic, read=None, list_processed=None) -> bool:
+    """정리 전 대기. Record가 전달·FAILED·DISCARDED이고 stable_s 동안 Record와 처리본 목록이 바뀌지 않으면 True.
+
+    시간 안에 안 되면 `cleanup_after_unsettled`를 결과 파일에 남기고 False(정리 대상에서 빼지 않는다).
+    """
+    read = read or (lambda: photo_record(stack, plan_id, claim_id))
+    list_processed = list_processed or (lambda: processed_keys(stack, claim_id))
+    deadline = clock() + timeout_s
+    last: tuple[Any, ...] | None = None
+    since = clock()
+    while True:
+        rec = read()
+        snap = (repr(sorted((rec or {}).items())), tuple(list_processed()))
+        now = clock()
+        if snap != last:
+            last, since = snap, now
+        elif _settled(rec) and now - since >= stable_s:
+            return True
+        if now >= deadline:
+            save_result("cleanup_after_unsettled", {"claimId": claim_id, "photoStatus": (rec or {}).get("photoStatus")})
+            return False
+        sleep(interval)

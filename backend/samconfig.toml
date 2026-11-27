@@ -16,7 +16,7 @@ region = "ap-northeast-2"
 capabilities = "CAPABILITY_IAM"
 confirm_changeset = true
 resolve_s3 = true
-# CloudFront 도메인은 7단계에서 추가한다(요구사항 12.6). LLM 공급자 값은 BE-Q6 확정 전까지 넣지 않는다.
+# CloudFront 도메인은 7단계에서 추가한다(요구사항 12.6). FaultInject·UploadIfNoneMatch는 넣지 않는다(BE-Q59·BE-Q65). LLM 공급자 값은 BE-Q6 확정 전까지 넣지 않는다.
 parameter_overrides = "AllowedOrigins=http://localhost:5173 Stage=dev"
 
 [demo.deploy.parameters]

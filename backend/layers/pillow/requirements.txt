@@ -1,0 +1,2 @@
+# PhotoProcessorFunction 전용 레이어(BE-PHOTO-05). sam build --use-container로 Lambda 빌드 이미지(python3.12, x86_64)에서 빌드한다.
+Pillow==13.0.0

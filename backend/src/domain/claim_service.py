@@ -16,8 +16,9 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from boto3.dynamodb.conditions import Key
+from botocore.exceptions import ClientError
 
-from common import ddb, metrics
+from common import ddb, metrics, s3
 from common.auth import User
 from common.errors import (
     ALREADY_CLAIMED,
@@ -37,6 +38,7 @@ from domain.plan_service import CLAIMED, COMPLETED, OPEN, _get, plan_update, sho
 ACTIVE, ABANDONED, EXPIRED = "ACTIVE", "ABANDONED", "EXPIRED"
 TEXT_ONLY, WITH_PHOTO = "TEXT_ONLY", "WITH_PHOTO"
 PHOTO_NONE, PHOTO_PROCESSING, PHOTO_READY, PHOTO_DISCARDED = "NONE", "PROCESSING", "READY", "DISCARDED"
+PHOTO_UPLOAD_PENDING, PHOTO_FAILED = "UPLOAD_PENDING", "FAILED"
 MAX_ATTEMPTS = 3
 GSI2 = "GSI2"
 
@@ -220,17 +222,13 @@ def abandon(claim_id: str, user: User, now: datetime | None = None) -> dict[str,
 
 
 # ---------------------------------------------------------------------------
-# 방문 기록 저장 (글만, 3단계 최소 구현)
+# 방문 기록 저장 (3단계 글, 5단계 사진 업로드 URL)
 # ---------------------------------------------------------------------------
 
 
-def put_record(claim_id: str, user: User, letter: str, now: datetime | None = None) -> dict[str, Any]:
-    """Current_Claim이고 ACTIVE일 때만 글을 쓴다. 완료 전까지 덮어쓸 수 있다."""
-    now_iso = iso_utc(now or utc_now())
-    lookup = _lookup(claim_id, user)
-    plan_id = lookup["planId"]
-    table = _table_name()
-    items = [
+def _active_claim_checks(table: str, plan_id: str, claim_id: str) -> list[dict[str, Any]]:
+    """기록 쓰기가 Current_Claim이고 ACTIVE일 때만 커밋되게 하는 두 ConditionCheck(3단계 put_record 그대로)."""
+    return [
         {
             "ConditionCheck": {
                 "TableName": table,
@@ -249,32 +247,63 @@ def put_record(claim_id: str, user: User, letter: str, now: datetime | None = No
                 "ExpressionAttributeValues": {":active": ACTIVE},
             }
         },
+    ]
+
+
+def put_record(claim_id: str, user: User, letter: str, now: datetime | None = None) -> dict[str, Any]:
+    """Current_Claim이고 ACTIVE일 때만 글을 쓴다. 완료 전까지 덮어쓸 수 있다. 사진 속성은 건드리지 않는다(3단계, BE-REC-03)."""
+    return _write_record(claim_id, user, letter, None, now)[0]
+
+
+def put_record_with_photo(
+    claim_id: str, user: User, letter: str, photo: Any, now: datetime | None = None
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """(Record, upload). 글과 함께 새 원본 키를 photoKey로, photoStatus를 UPLOAD_PENDING으로 쓰고 processedKey·photoError를
+    지운다(BE-REC-02). presigned PUT은 트랜잭션이 성공한 뒤에만 만든다(Requirement 2.4)."""
+    record, upload = _write_record(claim_id, user, letter, photo, now)
+    assert upload is not None
+    return record, upload
+
+
+def _write_record(
+    claim_id: str, user: User, letter: str, photo: Any, now: datetime | None
+) -> tuple[dict[str, Any], dict[str, Any] | None]:
+    now = now or utc_now()
+    now_iso = iso_utc(now)
+    lookup = _lookup(claim_id, user)
+    plan_id = lookup["planId"]
+    table = _table_name()
+    names = {
+        "#letter": "letter",
+        "#upd": "updatedAt",
+        "#cid": "claimId",
+        "#pid": "planId",
+        "#author": "authorId",
+        "#ps": "photoStatus",
+        "#delivered": "deliveredAt",
+    }
+    values: dict[str, Any] = {":letter": letter, ":now": now_iso, ":cid": claim_id, ":pid": plan_id, ":me": user.id}
+    key = None
+    if photo is None:
+        update = "SET #letter = :letter, #upd = :now, #cid = :cid, #pid = :pid, #author = :me, #ps = if_not_exists(#ps, :none)"
+        values[":none"] = PHOTO_NONE
+    else:
+        key = s3.new_original_key(claim_id, photo.contentType)
+        update = (
+            "SET #letter = :letter, #upd = :now, #cid = :cid, #pid = :pid, #author = :me, #pkey = :key, #ps = :pending"
+            " REMOVE #proc, #perr"
+        )
+        names.update({"#pkey": "photoKey", "#proc": "processedKey", "#perr": "photoError"})
+        values.update({":key": key, ":pending": PHOTO_UPLOAD_PENDING})
+    items = _active_claim_checks(table, plan_id, claim_id) + [
         {
             "Update": {
                 "TableName": table,
                 "Key": _record_key(plan_id, claim_id),
-                "UpdateExpression": (
-                    "SET #letter = :letter, #upd = :now, #cid = :cid, #pid = :pid, #author = :me,"
-                    " #ps = if_not_exists(#ps, :none)"
-                ),
+                "UpdateExpression": update,
                 "ConditionExpression": "attribute_not_exists(#delivered)",
-                "ExpressionAttributeNames": {
-                    "#letter": "letter",
-                    "#upd": "updatedAt",
-                    "#cid": "claimId",
-                    "#pid": "planId",
-                    "#author": "authorId",
-                    "#ps": "photoStatus",
-                    "#delivered": "deliveredAt",
-                },
-                "ExpressionAttributeValues": {
-                    ":letter": letter,
-                    ":now": now_iso,
-                    ":cid": claim_id,
-                    ":pid": plan_id,
-                    ":me": user.id,
-                    ":none": PHOTO_NONE,
-                },
+                "ExpressionAttributeNames": names,
+                "ExpressionAttributeValues": values,
             }
         },
     ]
@@ -285,7 +314,88 @@ def put_record(claim_id: str, user: User, letter: str, now: datetime | None = No
     record = _get(f"PLAN#{plan_id}", f"RECORD#{claim_id}")
     if record is None:  # 방금 썼으므로 생기지 않아야 한다
         raise ApiError(TRY_AGAIN)
-    return record
+    upload = s3.presign_put(key, photo.contentType, photo.size, now) if photo is not None else None
+    return record, upload
+
+
+def replace_photo(claim_id: str, user: User, photo: Any, now: datetime | None = None) -> dict[str, Any]:
+    """POST /claims/{claimId}/record/photo: 새 원본 키와 업로드 URL. 글은 바꾸지 않는다(Requirement 3).
+
+    판정 순서: 이어받기가 끝났으면 409 CLAIM_NOT_ACTIVE, Record가 없으면 400 RECORD_REQUIRED(BE-Q52 권장안),
+    전달된 Record면 409. 응답은 {upload}만이다(BE-Q51 권장안, 핸들러).
+    """
+    now = now or utc_now()
+    lookup = _lookup(claim_id, user)
+    plan_id = lookup["planId"]
+    key = s3.new_original_key(claim_id, photo.contentType)
+    table = _table_name()
+    items = _active_claim_checks(table, plan_id, claim_id) + [
+        {
+            "Update": {
+                "TableName": table,
+                "Key": _record_key(plan_id, claim_id),
+                "UpdateExpression": "SET #pkey = :key, #ps = :pending REMOVE #proc, #perr",
+                "ConditionExpression": "attribute_exists(PK) AND attribute_not_exists(#delivered)",
+                "ExpressionAttributeNames": {
+                    "#pkey": "photoKey",
+                    "#ps": "photoStatus",
+                    "#proc": "processedKey",
+                    "#perr": "photoError",
+                    "#delivered": "deliveredAt",
+                },
+                "ExpressionAttributeValues": {":key": key, ":pending": PHOTO_UPLOAD_PENDING},
+            }
+        },
+    ]
+    try:
+        ddb.transact_with_retry(items)
+    except ddb.ConditionFailed:
+        plan = _get(f"PLAN#{plan_id}")
+        claim = _get(f"PLAN#{plan_id}", f"CLAIM#{claim_id}")
+        active = (
+            plan is not None and plan.get("status") == CLAIMED and plan.get("currentClaimId") == claim_id
+            and claim is not None and claim.get("status") == ACTIVE
+        )
+        if not active:
+            raise _stale() from None
+        if _get(f"PLAN#{plan_id}", f"RECORD#{claim_id}") is None:
+            raise ApiError(RECORD_REQUIRED) from None
+        raise _stale() from None  # 전달된 Record
+    return s3.presign_put(key, photo.contentType, photo.size, now)
+
+
+def photo_status_update(
+    plan_id: str, claim_id: str, *, key: str, to: str, allowed_from: tuple[str, ...], error: str | None = None
+) -> bool:
+    """사진 상태 단건 조건부 갱신(처리 Lambda·운영자 복구 공용). 조건이 맞아 썼으면 True, 조건 실패면 False.
+
+    조건: photoKey = :key AND photoStatus IN (allowed_from) AND attribute_not_exists(deliveredAt).
+    그 밖의 오류는 그대로 올린다.
+    """
+    names = {"#pkey": "photoKey", "#ps": "photoStatus", "#delivered": "deliveredAt"}
+    values: dict[str, Any] = {":key": key, ":to": to}
+    placeholders = []
+    for i, st in enumerate(allowed_from):
+        values[f":from{i}"] = st
+        placeholders.append(f":from{i}")
+    update = "SET #ps = :to"
+    if error is not None:
+        update += ", #perr = :err"
+        names["#perr"] = "photoError"
+        values[":err"] = error
+    try:
+        ddb.table().update_item(
+            Key=_record_key(plan_id, claim_id),
+            UpdateExpression=update,
+            ConditionExpression=f"#pkey = :key AND #ps IN ({', '.join(placeholders)}) AND attribute_not_exists(#delivered)",
+            ExpressionAttributeNames=names,
+            ExpressionAttributeValues=values,
+        )
+    except ClientError as e:
+        if e.response.get("Error", {}).get("Code") == "ConditionalCheckFailedException":
+            return False
+        raise
+    return True
 
 
 # ---------------------------------------------------------------------------

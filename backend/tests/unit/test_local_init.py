@@ -4,6 +4,7 @@ Validates: Requirements 13.2, 13.3, 13.11
 """
 
 import importlib.util
+import json
 from pathlib import Path
 
 import pytest
@@ -83,9 +84,56 @@ class FakeIdp:
         self.passwords[(UserPoolId, Username)] = (Password, Permanent)
 
 
+class FakeSqs:
+    def __init__(self):
+        self.queues, self.created = {}, []
+
+    def _url(self, name):
+        return f"http://localhost:4566/000000000000/{name}"
+
+    def get_queue_url(self, QueueName):
+        if QueueName not in self.queues:
+            raise err("AWS.SimpleQueueService.NonExistentQueue")
+        return {"QueueUrl": self._url(QueueName)}
+
+    def create_queue(self, QueueName, Attributes):
+        self.queues[QueueName] = dict(Attributes)
+        self.created.append(QueueName)
+        return {"QueueUrl": self._url(QueueName)}
+
+    def set_queue_attributes(self, QueueUrl, Attributes):
+        self.queues[QueueUrl.rsplit("/", 1)[1]].update(Attributes)
+
+    def get_queue_attributes(self, QueueUrl, AttributeNames):
+        return {"Attributes": {"QueueArn": f"arn:aws:sqs:ap-northeast-2:000000000000:{QueueUrl.rsplit('/', 1)[1]}"}}
+
+
+class FakeS3:
+    def __init__(self):
+        self.buckets, self.created = {}, []
+
+    def head_bucket(self, Bucket):
+        if Bucket not in self.buckets:
+            raise err("404")
+
+    def create_bucket(self, Bucket, CreateBucketConfiguration):
+        self.buckets[Bucket] = {"location": CreateBucketConfiguration["LocationConstraint"]}
+        self.created.append(Bucket)
+
+    def put_bucket_cors(self, Bucket, CORSConfiguration):
+        self.buckets[Bucket]["cors"] = CORSConfiguration
+
+    def put_bucket_lifecycle_configuration(self, Bucket, LifecycleConfiguration):
+        self.buckets[Bucket]["lifecycle"] = LifecycleConfiguration
+
+    def put_bucket_notification_configuration(self, Bucket, NotificationConfiguration):
+        self.buckets[Bucket]["notification"] = NotificationConfiguration
+
+
 def test_fresh_run_creates_everything(init, capsys):
     ddb, idp = FakeDdb(), FakeIdp()
-    values = init.main(ddb, idp)
+    sqs, s3 = FakeSqs(), FakeS3()
+    values = init.main(ddb, idp, sqs, s3)
 
     haru = ddb.tables["HaruTable"]
     assert {g["IndexName"] for g in haru["GlobalSecondaryIndexes"]} == {"GSI1", "GSI2"}
@@ -110,6 +158,9 @@ def test_fresh_run_creates_everything(init, capsys):
         "LOCAL_USER_POOL_CLIENT_ID": "haruLocalWebClient",
         "LOCAL_JWT_ISSUER": "http://localhost:4566/ap-northeast-2_haruLocal",
         "LOCAL_JWKS_URL": "http://aws:4566/ap-northeast-2_haruLocal/.well-known/jwks.json",
+        "PHOTO_BUCKET": "haru-photos-local",
+        "PHOTO_QUEUE_URL": "http://localhost:4566/000000000000/haru-photo-queue",
+        "PHOTO_DLQ_URL": "http://localhost:4566/000000000000/haru-photo-dlq",
     }
     out = capsys.readouterr().out
     for k, v in values.items():
@@ -120,22 +171,24 @@ def test_fresh_run_creates_everything(init, capsys):
 
 def test_second_run_skips_existing(init):
     ddb, idp = FakeDdb(), FakeIdp()
-    init.main(ddb, idp)
+    sqs, s3 = FakeSqs(), FakeS3()
+    init.main(ddb, idp, sqs, s3)
     ddb.created.clear()
-    init.main(ddb, idp)
+    init.main(ddb, idp, sqs, s3)
     assert ddb.created == []
     assert len(idp.pools) == 1 and len(idp.clients) == 1 and len(idp.users) == 3
 
 
 def test_failed_step_exits_with_step_name(init, capsys):
     ddb, idp = FakeDdb(), FakeIdp()
+    sqs, s3 = FakeSqs(), FakeS3()
 
     def boom(**kw):
         raise err("InvalidParameterException")
 
     idp.create_user_pool_client = boom
     with pytest.raises(SystemExit) as exc:
-        init.main(ddb, idp)
+        init.main(ddb, idp, sqs, s3)
     assert exc.value.code == 1
     assert "FAILED step=ensure_user_pool_client" in capsys.readouterr().out
     assert not init.DONE_MARKER.exists()
@@ -143,10 +196,11 @@ def test_failed_step_exits_with_step_name(init, capsys):
 
 def test_override_not_honored_warns_and_reuses_pool(init, capsys):
     ddb, idp = FakeDdb(), FakeIdp(honor_override=False)
-    first = init.main(ddb, idp)
+    sqs, s3 = FakeSqs(), FakeS3()
+    first = init.main(ddb, idp, sqs, s3)
     assert first["LOCAL_USER_POOL_ID"] == "ap-northeast-2_random123"
     assert "WARNING" in capsys.readouterr().out
-    init.main(ddb, idp)  # 다음 실행은 이름으로 기존 풀을 찾아 새로 만들지 않는다
+    init.main(ddb, idp, sqs, s3)  # 다음 실행은 이름으로 기존 풀을 찾아 새로 만들지 않는다
     assert len(idp.pools) == 1
 
 
@@ -161,3 +215,66 @@ def test_env_example_matches_init_defaults(init):
     assert env["SEED_PASSWORD"] == init.SEED_PASSWORD
     assert [(env["SEED_JIYEON_EMAIL"], env["SEED_JIYEON_NICKNAME"])] == init.SEED_USERS[:1]
     assert env["LOCAL_JWT_ISSUER"] == f"{init.PUBLIC_BASE}/{init.POOL_ID}"
+
+
+def test_photo_resources_match_template(init, capsys):
+    ddb, idp = FakeDdb(), FakeIdp()
+    sqs, s3 = FakeSqs(), FakeS3()
+    init.main(ddb, idp, sqs, s3)
+
+    assert sqs.queues["haru-photo-dlq"] == {"MessageRetentionPeriod": "1209600"}
+    q = sqs.queues["haru-photo-queue"]
+    assert q["VisibilityTimeout"] == "180"
+    assert json.loads(q["RedrivePolicy"]) == {"deadLetterTargetArn": "arn:aws:sqs:ap-northeast-2:000000000000:haru-photo-dlq", "maxReceiveCount": 3}
+
+    b = s3.buckets["haru-photos-local"]
+    assert b["location"] == "ap-northeast-2"
+    (rule,) = b["cors"]["CORSRules"]
+    assert rule["AllowedOrigins"] == ["http://localhost:5173"]
+    assert rule["AllowedMethods"] == ["PUT", "GET"]
+    assert rule["AllowedHeaders"] == ["Content-Type"]
+    rules = {r["ID"]: r for r in b["lifecycle"]["Rules"]}
+    assert rules["ExpireOriginals"]["Filter"] == {"Prefix": "photos/original/"}
+    assert rules["ExpireOriginals"]["Expiration"] == {"Days": 7}
+    assert rules["AbortIncompleteUploads"]["AbortIncompleteMultipartUpload"] == {"DaysAfterInitiation": 1}
+    (qc,) = b["notification"]["QueueConfigurations"]
+    assert qc["QueueArn"].endswith(":haru-photo-queue")
+    assert qc["Events"] == ["s3:ObjectCreated:*"]
+    assert qc["Filter"]["Key"]["FilterRules"] == [{"Name": "prefix", "Value": "photos/original/"}]
+
+    out = capsys.readouterr().out
+    for step in ("create_photo_dlq", "create_photo_queue", "create_photo_bucket", "put_photo_notification"):
+        assert f"ok step={step}" in out
+
+
+def test_photo_steps_idempotent(init):
+    ddb, idp = FakeDdb(), FakeIdp()
+    sqs, s3 = FakeSqs(), FakeS3()
+    init.main(ddb, idp, sqs, s3)
+    sqs.queues["haru-photo-queue"]["VisibilityTimeout"] = "30"  # 이전 실행에서 다른 값으로 남은 경우
+    sqs.created.clear()
+    s3.created.clear()
+    init.main(ddb, idp, sqs, s3)
+    assert sqs.created == [] and s3.created == []
+    assert sqs.queues["haru-photo-queue"]["VisibilityTimeout"] == "180"
+
+
+def test_cors_allows_if_none_match_only_when_switch_on(init, monkeypatch):
+    monkeypatch.setenv("PHOTO_UPLOAD_IF_NONE_MATCH", "true")
+    s3 = FakeS3()
+    init.create_photo_bucket(s3)
+    assert s3.buckets["haru-photos-local"]["cors"]["CORSRules"][0]["AllowedHeaders"] == ["Content-Type", "If-None-Match"]
+
+
+def test_photo_step_failure_exits(init, capsys):
+    ddb, idp = FakeDdb(), FakeIdp()
+    sqs, s3 = FakeSqs(), FakeS3()
+
+    def boom(**kw):
+        raise err("InvalidArgument")
+
+    s3.put_bucket_notification_configuration = boom
+    with pytest.raises(SystemExit):
+        init.main(ddb, idp, sqs, s3)
+    assert "FAILED step=put_photo_notification" in capsys.readouterr().out
+    assert not init.DONE_MARKER.exists()

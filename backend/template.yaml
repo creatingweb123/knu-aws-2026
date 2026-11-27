@@ -1,19 +1,29 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Transform: AWS::Serverless-2016-10-31
 Description: >-
-  이어온 하루 백엔드 1–4단계와 6a·6b단계 (HttpApi + JWT authorizer, Cognito, HaruTable, /me, /plans, /claims, /inbox,
-  AI 하루 카드 /ai/card-sessions, 레벨 0과 6b 에이전트·체크포인트 테이블). CloudFront·웹 버킷·사진은 이후 단계에서 추가한다.
+  이어온 하루 백엔드 1–5단계와 6a·6b단계 (HttpApi + JWT authorizer, Cognito, HaruTable, /me, /plans, /claims, /inbox,
+  사진 파이프라인, AI 하루 카드 /ai/card-sessions, 레벨 0과 6b 에이전트·체크포인트 테이블). CloudFront·웹 버킷은 이후 단계에서 추가한다.
 
 Parameters:
   AllowedOrigins:
     Type: CommaDelimitedList
     Default: http://localhost:5173
-    Description: API CORS 허용 Origin. CloudFront 도메인은 7단계에서 추가한다(BE-INFRA-03).
+    Description: API CORS 허용 Origin. CloudFront 도메인은 7단계에서 추가한다(BE-INFRA-03). 사진 버킷 CORS도 같은 값을 쓴다.
   Stage:
     Type: String
     AllowedValues: [dev, demo]
     Default: demo
-    Description: samconfig.toml의 dev/demo가 명시한다. 기본을 demo로 두어 Fake 모델이 기본 차단된다(BE-Q86, 5단계와 같은 정의).
+    Description: samconfig.toml의 dev/demo가 명시한다. 기본을 demo로 두어 장애 주입(BE-Q59)과 Fake 모델(BE-Q86)이 기본 차단된다.
+  FaultInject:
+    Type: String
+    AllowedValues: ["", photo, photo-slow]
+    Default: ""
+    Description: dev 전용 장애·지연 주입(T9, T10·T15). Stage=dev이고 실제 스택 이름이 haru-dev일 때만 함수에 들어간다.
+  UploadIfNoneMatch:
+    Type: String
+    AllowedValues: ["false", "true"]
+    Default: "false"
+    Description: presigned PUT에 If-None-Match:* 서명(BE-Q65). 프론트엔드 승인 전에는 false를 유지한다.
   # --- AI 하루 카드 (6a, docs/03 §3.2 설정 키). 공급자·모델 값은 BE-Q6 확정 전까지 빈 값이다(samconfig에 넣지 않는다).
   LlmProvider:
     Type: String
@@ -86,6 +96,9 @@ Conditions:
   IsDev: !Equals [!Ref Stage, dev]
   # Rules는 파라미터 값만 검사하므로 실제 스택 이름까지 확인한다(BE-Q86, 5단계 BE-Q59와 같은 방식). 이름은 samconfig dev stack_name과 같다.
   FakeAllowed: !And [!Condition IsDev, !Equals [!Ref "AWS::StackName", haru-dev]]
+  # 5단계 사진 장애 주입(BE-Q59). FakeAllowed와 같은 조건이다.
+  FaultAllowed: !And [!Condition IsDev, !Equals [!Ref "AWS::StackName", haru-dev]]
+  UseIfNoneMatch: !Equals [!Ref UploadIfNoneMatch, "true"]
   HasLlmKeyParam: !Not [!Equals [!Ref LlmApiKeyParam, ""]]
   LlmIsFake: !Equals [!Ref LlmProvider, fake]
   HasLlmRegion: !Not [!Equals [!Ref LlmRegion, ""]]
@@ -99,6 +112,10 @@ Rules:
     Assertions:
       - Assert: !Or [!Equals [!Ref Stage, dev], !Equals [!Ref AiFaultInject, ""]]
         AssertDescription: AiFaultInject는 Stage=dev에서만 쓸 수 있다(BE-Q107).
+  FaultInjectOnlyInDev:
+    Assertions:
+      - Assert: !Or [!Equals [!Ref Stage, dev], !Equals [!Ref FaultInject, ""]]
+        AssertDescription: FaultInject는 Stage=dev에서만 쓸 수 있다(BE-Q59).
 
 Globals:
   Function:
@@ -268,6 +285,15 @@ Resources:
               # 포기·기록·완료 트랜잭션(Update·Put·ConditionCheck)과 ConsistentRead 읽기. Query는 쓰지 않는다.
               Action: [dynamodb:GetItem, dynamodb:PutItem, dynamodb:UpdateItem, dynamodb:ConditionCheckItem]
               Resource: !GetAtt HaruTable.Arn
+            - Effect: Allow
+              # 원본 업로드 presigned PUT 서명용(서명한 역할의 권한으로 실행된다, Requirement 11.1)
+              Action: [s3:PutObject]
+              Resource: !Sub arn:${AWS::Partition}:s3:::${AWS::StackName}-photos-${AWS::AccountId}/photos/original/*
+      Environment:
+        Variables:
+          PHOTO_BUCKET: !Sub ${AWS::StackName}-photos-${AWS::AccountId}
+          PUBLIC_S3_ENDPOINT: ""
+          PHOTO_UPLOAD_IF_NONE_MATCH: !If [UseIfNoneMatch, "true", "false"]
       Events:
         AbandonClaim:
           Type: HttpApi
@@ -275,6 +301,9 @@ Resources:
         PutRecord:
           Type: HttpApi
           Properties: { ApiId: !Ref HttpApi, Path: "/claims/{claimId}/record", Method: PUT }
+        ReplacePhoto:
+          Type: HttpApi
+          Properties: { ApiId: !Ref HttpApi, Path: "/claims/{claimId}/record/photo", Method: POST }
         CompleteClaim:
           Type: HttpApi
           Properties: { ApiId: !Ref HttpApi, Path: "/claims/{claimId}/complete", Method: POST }
@@ -389,6 +418,14 @@ Resources:
               # 수신함 Query·상세 GetItem(InboxItem·Plan·Record)과 read·reply 조건부 UpdateItem. GSI는 쓰지 않는다.
               Action: [dynamodb:GetItem, dynamodb:Query, dynamodb:UpdateItem]
               Resource: !GetAtt HaruTable.Arn
+            - Effect: Allow
+              # 수신함 상세 photoUrl presigned GET 서명용(전달된 처리본만, Requirement 11.2)
+              Action: [s3:GetObject]
+              Resource: !Sub arn:${AWS::Partition}:s3:::${AWS::StackName}-photos-${AWS::AccountId}/photos/processed/*
+      Environment:
+        Variables:
+          PHOTO_BUCKET: !Sub ${AWS::StackName}-photos-${AWS::AccountId}
+          PUBLIC_S3_ENDPOINT: ""
       Events:
         ListInbox:
           Type: HttpApi
@@ -402,6 +439,174 @@ Resources:
         ReplyInboxItem:
           Type: HttpApi
           Properties: { ApiId: !Ref HttpApi, Path: "/inbox/{itemId}/reply", Method: POST }
+
+  # ---------------------------------------------------------------- 5단계 사진 파이프라인 (docs/02 §2.7)
+  # 순환 의존성 회피(BE-PHOTO-09): 큐 정책은 버킷 ARN을 문자열로 쓰고, 버킷은 큐 정책 뒤에 만든다.
+  PhotoDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      MessageRetentionPeriod: 1209600 # 14일(BE-Q53)
+      SqsManagedSseEnabled: true
+
+  PhotoQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      VisibilityTimeout: 180 # 6 × PhotoProcessorFunction Timeout(30초)
+      SqsManagedSseEnabled: true
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt PhotoDLQ.Arn
+        maxReceiveCount: 3
+
+  PhotoQueuePolicy:
+    Type: AWS::SQS::QueuePolicy
+    Properties:
+      Queues: [!Ref PhotoQueue]
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: s3.amazonaws.com }
+            Action: sqs:SendMessage
+            Resource: !GetAtt PhotoQueue.Arn
+            Condition:
+              ArnEquals: { "aws:SourceArn": !Sub "arn:${AWS::Partition}:s3:::${AWS::StackName}-photos-${AWS::AccountId}" }
+              StringEquals: { "aws:SourceAccount": !Ref AWS::AccountId }
+
+  PhotoBucket:
+    Type: AWS::S3::Bucket
+    DependsOn: PhotoQueuePolicy
+    Properties:
+      BucketName: !Sub ${AWS::StackName}-photos-${AWS::AccountId}
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        IgnorePublicAcls: true
+        BlockPublicPolicy: true
+        RestrictPublicBuckets: true
+      OwnershipControls:
+        Rules: [{ ObjectOwnership: BucketOwnerEnforced }]
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault: { SSEAlgorithm: AES256 }
+      CorsConfiguration:
+        CorsRules:
+          - AllowedOrigins: !Ref AllowedOrigins
+            AllowedMethods: [PUT, GET]
+            AllowedHeaders: !If [UseIfNoneMatch, [Content-Type, If-None-Match], [Content-Type]]
+            MaxAge: 3000
+      LifecycleConfiguration:
+        Rules:
+          - Id: ExpireOriginals
+            Status: Enabled
+            Prefix: photos/original/
+            ExpirationInDays: 7
+          - Id: AbortIncompleteUploads
+            Status: Enabled
+            Prefix: photos/
+            AbortIncompleteMultipartUpload: { DaysAfterInitiation: 1 }
+      NotificationConfiguration:
+        QueueConfigurations:
+          - Event: s3:ObjectCreated:*
+            Queue: !GetAtt PhotoQueue.Arn
+            Filter:
+              S3Key:
+                Rules: [{ Name: prefix, Value: photos/original/ }]
+
+  PhotoBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref PhotoBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: "*"
+            Action: s3:*
+            Resource: [!GetAtt PhotoBucket.Arn, !Sub "${PhotoBucket.Arn}/*"]
+            Condition: { Bool: { "aws:SecureTransport": "false" } }
+          - !If
+            - UseIfNoneMatch
+            - Sid: DenyOriginalPutWithoutIfNoneMatch
+              Effect: Deny
+              Principal: "*"
+              Action: s3:PutObject
+              Resource: !Sub "${PhotoBucket.Arn}/photos/original/*"
+              Condition: { "Null": { "s3:if-none-match": "true" } }
+            - !Ref AWS::NoValue
+
+  PillowLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      ContentUri: layers/pillow/
+      CompatibleRuntimes: [python3.12]
+      CompatibleArchitectures: [x86_64]
+    Metadata:
+      BuildMethod: python3.12
+      BuildArchitecture: x86_64
+
+  PhotoProcessorFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: workers.photo_processor.handler
+      Timeout: 30
+      MemorySize: 1024
+      Architectures: [x86_64]
+      Layers: [!Ref PillowLayer]
+      Policies:
+        - Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              # complete_claim(트랜잭션 Update 3·Put 1, ConditionCheck 없음)와 상태 전이·조회. index/*·Query 없음
+              Action: [dynamodb:GetItem, dynamodb:PutItem, dynamodb:UpdateItem]
+              Resource: !GetAtt HaruTable.Arn
+            - Effect: Allow
+              Action: [s3:GetObject]
+              Resource: !Sub arn:${AWS::Partition}:s3:::${AWS::StackName}-photos-${AWS::AccountId}/photos/original/*
+            - Effect: Allow
+              Action: [s3:PutObject, s3:DeleteObject]
+              Resource: !Sub arn:${AWS::Partition}:s3:::${AWS::StackName}-photos-${AWS::AccountId}/photos/processed/*
+            - Effect: Allow
+              # 이벤트 소스 매핑이 쓰는 권한을 이 큐로만 준다. SAM의 SQS 이벤트는 AWSLambdaSQSQueueExecutionRole(Resource *)을
+              # 붙이므로 쓰지 않고 아래 PhotoProcessorQueueMapping을 직접 둔다(Requirement 11.3)
+              Action: [sqs:ReceiveMessage, sqs:DeleteMessage, sqs:GetQueueAttributes]
+              Resource: !GetAtt PhotoQueue.Arn
+      Environment:
+        Variables:
+          PHOTO_BUCKET: !Sub ${AWS::StackName}-photos-${AWS::AccountId}
+          FAULT_INJECT: !If [FaultAllowed, !Ref FaultInject, ""]
+          FAULT_INJECT_ALLOWED: !If [FaultAllowed, "true", "false"]
+          FAULT_DELAY_S: "5"
+          PHOTO_SDK_CONNECT_TIMEOUT_S: "2"
+          PHOTO_SDK_READ_TIMEOUT_S: "5"
+          PHOTO_SDK_MAX_ATTEMPTS: "2"
+          PHOTO_RESERVE_MS: "5000"
+          PRE_READ_MS: "7000"
+          PRE_PROCESS_MS: "12000"
+          PRE_UPLOAD_MS: "7000"
+          PRE_COMPLETE_MS: "10000"
+
+  PhotoProcessorQueueMapping:
+    Type: AWS::Lambda::EventSourceMapping
+    Properties:
+      FunctionName: !Ref PhotoProcessorFunction
+      EventSourceArn: !GetAtt PhotoQueue.Arn
+      BatchSize: 1
+      Enabled: true
+
+  PhotoDLQNotEmpty:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: PhotoDLQ에 메시지가 있다(T9). 런북 backend/README.md "사진 DLQ 복구"를 따른다.
+      Namespace: AWS/SQS
+      MetricName: ApproximateNumberOfMessagesVisible
+      Dimensions: [{ Name: QueueName, Value: !GetAtt PhotoDLQ.QueueName }]
+      Statistic: Maximum
+      Period: 60
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      # 알림 대상은 두지 않는다(BE-Q62)
 
   PreSignUpFunction:
     Type: AWS::Serverless::Function

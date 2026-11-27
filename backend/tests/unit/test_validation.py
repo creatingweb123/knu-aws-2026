@@ -207,3 +207,50 @@ def test_reply_invalid(body, key, message):
     assert set(details) == {key}
     if message:
         assert details[key] == message
+
+
+# ---------------------------------------------------------------- 사진 (5단계, Requirement 2.6, 3.5, BE-Q50)
+
+from common.validation import PhotoRequest, RecordPut  # noqa: E402
+
+
+@pytest.mark.parametrize("ct", ["image/jpeg", "image/png"])
+@pytest.mark.parametrize("size", [1, 10_485_760])
+def test_photo_valid(ct, size):
+    assert RecordPut.model_validate({"letter": "글", "photo": {"contentType": ct, "size": size}}).photo.size == size
+    assert PhotoRequest.model_validate({"contentType": ct, "size": size}).contentType == ct
+
+
+@pytest.mark.parametrize(
+    "photo,key",
+    [
+        ({"contentType": "image/gif", "size": 10}, "photo.contentType"),
+        ({"contentType": "image/jpeg", "size": 0}, "photo.size"),
+        ({"contentType": "image/jpeg", "size": 10_485_761}, "photo.size"),
+        ({"contentType": "image/jpeg", "size": True}, "photo.size"),
+        ({"contentType": "image/jpeg", "size": 1.5}, "photo.size"),
+        ({"contentType": "image/jpeg", "size": "10"}, "photo.size"),
+        ({"contentType": "image/jpeg"}, "photo.size"),
+        ("사진", "photo"),
+        ([], "photo"),
+    ],
+)
+def test_record_put_photo_invalid(photo, key):
+    with pytest.raises(ValidationError) as exc:
+        RecordPut.model_validate({"letter": "글", "photo": photo})
+    assert key in to_details(exc.value)
+
+
+def test_record_put_photo_null_is_text_only():
+    assert RecordPut.model_validate({"letter": "글", "photo": None}).photo is None
+    assert RecordPut.model_validate({"letter": "글"}).photo is None
+
+
+@pytest.mark.parametrize(
+    "body,key",
+    [({"contentType": "text/plain", "size": 1}, "contentType"), ({"contentType": "image/png", "size": -1}, "size"), (None, "body"), ([], "body")],
+)
+def test_photo_request_invalid(body, key):
+    with pytest.raises(ValidationError) as exc:
+        PhotoRequest.model_validate(body)
+    assert key in to_details(exc.value)
