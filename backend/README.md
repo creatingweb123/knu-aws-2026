@@ -360,7 +360,8 @@ T10 실패 내용(`T10-text-only-during-processing-20261127T173623.json`): `PROC
 - `haru-demo` 배포(`AgentMode=agent`, 11.13절 결정), `seed.py`, 90초 시연 리허설.
 - 데모 전 `PhotoDLQ` 비우기: T9 테스트 메시지가 남아 `PhotoDLQNotEmpty` 알람이 ALARM이다(12.3절 런북).
 - 계정 비용: 이번 달 실제 $239.84로 월 $200 예산을 넘었다(계정 전체, docs/08 BE-Q131). 계정 관리자에게 원인 확인.
-- `main`의 `ad58f3f`(일반화, 선택지 `장소에서 빼기`)·`cf0220e`(화면 개편)는 아직 `haru-dev`에 배포하지 않았다.
+- `main`의 `ad58f3f`(일반화, 선택지 `장소에서 빼기`)·`cf0220e`(화면 개편)는 아직 `haru-dev`에 배포하지 않았다. 22:21부터 다시 배포 중이다(배포 J: `agent` → 판정 → 배포 K: `pipeline` 복원).
+- **전체 단위 테스트가 AWS 담당 PC(Windows)에서 멈춘다**(개발 담당 확인 필요). 2026-11-27 22:21–22:47 `pytest tests/unit -q`가 약 18%(약 350건) 지점에서 25분 동안 진행하지 않아 끝냈다. AWS 자격 증명을 뺀 환경(`AWS_ACCESS_KEY_ID=testing`)에서도 같은 지점이라, 앞의 "환경 메모"에 적은 `AWS_PROFILE` 원인 추정은 맞지 않는다. 어느 테스트에서 멈추는지는 아직 확인하지 않았다(`pytest -v --timeout`으로 찾을 수 있다). 그래서 배포 전 단위 테스트는 템플릿·바뀐 AI 문구 관련 파일만 돌린다. 프론트 `vitest`·`npm run build`는 통과했다.
 - 정리: 사진·웹 버킷을 비운 뒤 `sam delete --stack-name haru-dev`.
 
 ## 4. AWS에서만 확인되는 것 (1·2단계 해당분, docs/02 §2.4.4)
