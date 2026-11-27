@@ -44,11 +44,12 @@ AWS 계정 없이 개발한 백엔드를 AWS 담당이 배포·판정할 수 있
 | 단위 테스트 | `pytest tests/unit` **1505건 통과, 1건 skip, 2건 deselect**(2026-11-27, `17486ed`). skip 1건은 리눅스 전용 `/proc/self/fd` 검사(`tests/unit/test_ai_cancel.py`, macOS에서 skip된다). deselect 2건은 `slow` 표시 40MP 메모리 측정이며 `pytest -m slow tests/unit`로 따로 돈다. 병합 전 기록 1154건은 Bedrock 전환 커밋 `2b9af27`(4·5단계 병합 전) 기준 값이고 병합 뒤 건수가 아니다. 단계 브랜치 시점 건수(10.1·11.1·12.1절)는 그 브랜치 기준이라 이 값과 직접 비교하지 않는다 |
 | SAM | 1–3단계: `cfn-lint` 0건, `sam validate --lint`, `sam build` 성공. 2026-11-25 `haru-dev` 배포(3.1절). 4단계: `sam validate --lint`·`sam build` 확인(2026-11-25, 브랜치 미기록), 배포 안 함. 5단계: `cfn-lint` 0건, `sam validate --lint`, `sam build --use-container` 성공(Pillow 레이어, 12.1·12.2절), 배포 안 함. 6a·6b단계: `cfn-lint` 0건, `sam validate --lint`, `sam build --use-container` 성공(10.1·11.1절), 배포 안 함. Bedrock 전환: `cfn-lint` 통과(`2b9af27` 커밋 메시지). 병합 뒤 `17486ed` 템플릿의 검사·빌드 기록은 없다(병합 뒤 미확인) |
 | 로컬 환경(Docker) | 1–3단계 `pytest -m local tests/local` 16건 통과(2026-11-25, 5.1절). 4단계 23건 통과(5.4절, 기록 기준 브랜치 `feat/be-4-record-inbox`, 커밋 전 작업 트리). 5단계 28건 통과·8건 사유 skip(5.5절, `feat/be-5-photo-pipeline` `cfc65a7`). 6a 기존 16건과 새 7건 통과(10.1절). 6b 기본 `pipeline`에서 기존 23건, `agent` 모드에서 새 9건 통과(11.1절). 모두 `llmMode: fake`이고 판정 근거가 아니다(BE-Q15). 병합 뒤 `17486ed`에서 로컬 통합 테스트를 다시 돌린 기록은 없다(병합 뒤 미확인) |
-| AWS 판정(1–3단계) | T1·T13·T3·T4·T5·T6·T7·T14·T16과 가입 확인(1.5·14.4) **15건 모두 통과**(2026-11-25, `haru-dev`, AWS 담당). 첫 실행에서 T1 액세스 토큰 1건이 실패해 `common/auth.py`를 고친 뒤 다시 통과했다(3.1절). 기록 브랜치 `fix/be-3-aws-verify`(`e80b890`). `17486ed`에서는 병합 뒤 미확인 |
-| AWS 판정(4·5단계) | 4단계 T1 확장·T2·T17: 테스트 작성, 미실행(3.3절, 기준 브랜치 `feat/be-4-record-inbox`, 5.4절). 5단계 T8·T9·T10·T11·T15, 재업로드, IAM·CORS, 주입 차단: 테스트 작성과 수집만 하고 미실행(3.4절, `feat/be-5-photo-pipeline` `40a767f`, 12.1절). 둘 다 AWS 배포 전이다 |
-| AWS 판정(6a·6b·Bedrock) | 6a: `tests/integration/test_ai.py`를 `feat/be-6a-ai-pipeline` `7d518ed`에서 작성·수집만 했고 미실행(10.1·10.3절). 6b: T18–T22를 `feat/be-6b-ai-agent` `82275e7`에서 작성·수집만 했고 미실행(11.1·11.4절). `bedrock` 경로: `feat/be-bedrock` `2b9af27`은 AWS 통합 테스트를 바꾸지 않았고(단위 테스트 `test_ai_bedrock.py`와 `test_template.py`만) 배포·판정은 미실행. 모두 AWS 배포 전이다 |
+| AWS 판정(1–3단계) | T1·T13·T3·T4·T5·T6·T7·T14·T16과 가입 확인(1.5·14.4) **15건 모두 통과**(2026-11-25, `haru-dev`, AWS 담당). 첫 실행에서 T1 액세스 토큰 1건이 실패해 `common/auth.py`를 고친 뒤 다시 통과했다(3.1절). 기록 브랜치 `fix/be-3-aws-verify`(`e80b890`). **2026-11-27 새 계정에서 `17486ed`로 회귀 통과**(T3·T4·T5·T14·T6·T7·T16·T13·가입, 3.5절) |
+| AWS 계정 | **2026-11-27 새 계정으로 옮겼다.** 이전 계정의 `haru-dev`와 SAM 관리 스택·버킷, SSM 키, 로그 그룹은 지웠다. 3.1절의 출력값은 이전 계정 값이라 더 쓰지 않는다. 현재 출력값과 배포 파라미터는 3.5절 |
+| AWS 판정(4·5단계) | **2026-11-27 새 계정 `haru-dev`(`17486ed`)에서 실행(3.5절)**. 4단계 T1 확장·T2·T17 통과. 5단계 T8·T11·재업로드·주입 차단 통과, T10·T15는 기본 배포에서 미검증이었고 `FaultInject=photo-slow` 지연 판정(`test_T10_T15_with_delay`)으로 통과. IAM·CORS 1건 실패(테스트가 만든 만료 URL이 307, 3.5절). T9는 3.5절 |
+| AWS 판정(6a·6b·Bedrock) | 6a: `tests/integration/test_ai.py`를 `feat/be-6a-ai-pipeline` `7d518ed`에서 작성·수집만 했고 미실행(10.1·10.3절). 6b: T18–T22를 `feat/be-6b-ai-agent` `82275e7`에서 작성·수집만 했고 미실행(11.1·11.4절). `bedrock` 경로: `feat/be-bedrock` `2b9af27`은 AWS 통합 테스트를 바꾸지 않았고(단위 테스트 `test_ai_bedrock.py`와 `test_template.py`만) 배포·판정은 미실행. 모두 AWS 배포 전이다. **2026-11-27 새 계정**: `LlmProvider=bedrock`, `LlmModel=global.anthropic.claude-haiku-5-5`로 배포했다. `AgentMode=agent`에서 T20 통과. T18·T19·T22는 테스트가 `bedrock`을 실제 공급자로 보지 않아 skip됐고(테스트 수정 뒤 재판정), T21·T12는 3.5절 |
 | LLM 공급자 | 기본 `bedrock`(Amazon Bedrock Converse). `openai_compat`(AWS는 SSM SecureString 키, 로컬은 `.env`의 `LLM_API_KEY`)과 `fake`(AWS는 `Stage=dev`이고 스택 `haru-dev`일 때만, 로컬 `docker-compose.yml` 기본값)는 선택 경로로 유지한다. 운영 공급자·모델은 미결(BE-Q6)이다. 개발·검증용으로는 GPT-6 Luna 게이트웨이를 썼다(10.11절). 배포 전 확인은 10.2절 |
-| 다음 단계 조건 | T3–T7이 AWS에서 통과해야 4단계를 시작한다(docs/07 §7.2). **2026-11-25 충족**. 4단계 이후 PR마다 `tests/integration/test_concurrency.py`를 다시 돌린다(docs/07 §7.2). 4·5단계 병합(`8f4c288`, `17486ed`) 뒤 AWS 통합 회귀(`test_concurrency.py` 재실행, 10.8절 작업 22)는 미실행이다(아직 실행하지 않았다) |
+| 다음 단계 조건 | T3–T7이 AWS에서 통과해야 4단계를 시작한다(docs/07 §7.2). **2026-11-25 충족**. 4단계 이후 PR마다 `tests/integration/test_concurrency.py`를 다시 돌린다(docs/07 §7.2). 4·5단계 병합(`8f4c288`, `17486ed`) 뒤 AWS 통합 회귀(`test_concurrency.py` 재실행, 10.8절 작업 22)는 **2026-11-27 새 계정에서 `17486ed`로 통과**했다(3.5절). 7단계 병합(`06e95d2`) 뒤에는 아직 다시 돌리지 않았다 |
 | PR | GitHub PR 상태(`gh pr list`, 2026-11-27 확인): #2 MERGED(`docs/monorepo-stage1-2-spec`), #1·#3–#8 CLOSED. #1·#3–#8은 GitHub에서 CLOSED(병합 없이 닫힘) 상태다. 이 브랜치들의 내용은 `main`의 병합 커밋이나 이력으로 들어왔다: 4단계 `8f4c288`, 5단계 `17486ed`, Bedrock 전환 `bef1702`, 프론트엔드 `33aea80`. 1–3단계와 6a·6b단계는 병합 커밋 없이 이력에 있고, 6b단계 브랜치의 PR은 #1–#8 목록에 없다. 2026-11-26 기준 열림 상태는 8절에 있다 |
 
 AWS에서만 확인되는 것은 4절, 로컬 환경 구동 기록과 절차는 5절, 테스트 데이터 정리 보완은 3.2절, 4·5단계 판정 실행표는 3.3·3.4절, 6a는 10절, 6b는 11절, 5단계는 12절, PR 순서는 8절에 있다. 8·10.8·11.1·12.1절은 각 작업 시점의 기록이라 이 표와 다를 수 있다.
@@ -113,6 +114,8 @@ pytest -m integration tests/integration -v
 - `STACK_NAME`이 없으면 모두 건너뛴다.
 
 ### 3.1 판정 기록 (2026-11-25, AWS 담당)
+
+> 이전 AWS 계정의 기록이다. 그 계정의 `haru-dev`는 2026-11-27 지웠고, 아래 출력값은 더 이상 동작하지 않는다. 새 계정의 기록은 3.5절.
 
 배포
 
@@ -238,6 +241,92 @@ aws lambda get-function-configuration --function-name <PhotoProcessorFunction> -
 - `pytest -m integration`만 주면 `fault` 테스트도 수집되지만 실행하지 않고 skip한다(`-m "integration and fault"`로만 돈다). `fault` 테스트는 처리 함수의 `FAULT_INJECT`가 기대값이 아니면 skip한다(잘못된 배포에서 판정하지 않는다).
 - 주입 배포 뒤에는 반드시 복원 배포를 한다. `demo` 스택(`haru-demo`)은 `Stage`·`FaultInject`를 무엇으로 넘겨도 함수에 주입 값이 들어가지 않는다(BE-Q59). 변경 세트로 `haru-demo`에 `Stage=demo FaultInject=photo`를 넘겨 `Rules`가 거부하는지는 AWS 담당이 수동으로 한 번 확인한다(실행하지 않고 변경 세트만 만든다).
 - `GET /claims/{claimId}/record`로 사진 상태를 폴링하는 사례는 묶음 B(BE-Q46)가 이 브랜치에 들어온 뒤 더한다(작업 17). 지금은 DynamoDB 직접 조회로 판정한다(BE-Q38).
+
+### 3.5 새 계정 판정 기록 (2026-11-27, AWS 담당)
+
+배포
+
+| 항목 | 값 |
+|---|---|
+| 계정·리전 | 새 AWS 계정, `ap-northeast-2`. 배포 주체는 IAM 사용자(MFA 등록, `AdministratorAccess`). Budgets 월 알림 $200 |
+| 코드 | `main` `17486ed`(1–5단계, 6a·6b 코드, Bedrock 전환 병합본) |
+| 스택 | `haru-dev`, `CREATE_COMPLETE`(16:11). 변경 세트 47개 항목 모두 추가(삭제·수정·교체 없음) |
+| 파라미터 | `AllowedOrigins=http://localhost:5173 Stage=dev LlmProvider=bedrock LlmModel=global.anthropic.claude-haiku-5-5 LlmProviderLabel=AmazonBedrock LlmTemperature=""`. `AgentMode`는 기본값 `pipeline`, `FaultInject`·`AiFaultInject`는 빈 값 |
+| 빌드 | `sam validate --lint` 통과, `sam build --use-container` 성공(Pillow 레이어, AiCardFunction은 `ai-requirements.lock` 해시로 설치) |
+| 단위 테스트 | **이번 배포 전에는 끝까지 돌리지 않았다.** 도중에 멈춰 중단했고, 사용자 결정으로 건너뛰었다(아래 "환경 메모") |
+| 출력값 | `ApiUrl` `https://44v7y11022.execute-api.ap-northeast-2.amazonaws.com`, `UserPoolId` `ap-northeast-2_aDKSKKc5G`, `UserPoolClientId` `2pphg94f4thbgfmgetjippendf` (비밀 아님. 스택을 다시 만들면 바뀐다) |
+
+Bedrock 모델(Claude Haiku 5.5) 확인
+
+- 서울 리전 카탈로그에서 모델 ID `anthropic.claude-haiku-5-5`는 추론 프로필로만 호출된다. `apac.` 프로필은 없고 `global.` 프로필만 있다. **Global 교차 리전 추론이라 사연이 국외 리전에서 처리될 수 있다**(BE-Q7 동의 문구에 반영 필요).
+- **이 모델은 `temperature`를 거부한다**(`ValidationException: temperature is deprecated for this model`). 템플릿 기본값 `LlmTemperature=0`으로 배포하면 AI 요청이 모두 실패하므로 `LlmTemperature=""`를 넘긴다. 코드는 빈 값이면 `temperature`를 보내지 않는다(`agent/llm.py`).
+- Converse API 직접 호출(temperature 없음): 일반 질문 1.34초, 도구 호출 0.83초(`toolChoice` 없음), 0.79초(`toolChoice: any`). 모두 도구를 정확히 호출했다. AI 경로의 AWS 판정은 하지 않았다(아래 "남은 일").
+
+판정 결과 (`pytest -m "integration and not fault" tests/integration`, 16:11–16:18, 22 passed, 1 failed, 10 skipped)
+
+| T | 결과 | 근거 로그 |
+|---|---|---|
+| T1 (4단계 확장, 액세스 토큰 포함) | 통과 (3건) | `T1-authz-*.json`, `T1-access-token-*.json` |
+| T2 역할별 권한 | 통과 | `T2-role-access-*.json` |
+| T3·T4·T5·T14 | 통과 | `T3-concurrent-claims-*.json`, `T4-same-user-*.json`, `T5-concurrent-complete-*.json` |
+| T6·T7·T16 | 통과 | |
+| T13·가입 | 통과 (5건) | `T13-sequential-*.json`, `T13-concurrent-*.json` |
+| T17 | 통과 (2건) | `T17-reply-twice-*.json`, `T17-concurrent-replies-*.json` |
+| T8·T11 | 통과 | `T8-corrupt-image-*.json`, `T11-gps-stripped-*.json` |
+| 재업로드·주입 차단 | 통과 | `photo-reupload-*.json`, `photo-fault-blocked-*.json` |
+| IAM·CORS | **실패** | `photo-iam-and-cors-*.json`. 아래 설명 |
+| T10·T15 | **미검증(skip)**. `processing_not_observed`. 16:23에 다시 돌려도 같다 | `T10-*.json`, `T15-*.json`. 3.4절 규칙대로 지연 주입 판정이 필요하다 |
+| AI 경로(T18–T20, T22, Fake 경로) | skip. 이 배포는 `AgentMode=pipeline`, `LlmProvider=bedrock`이라 대상이 아니다 | |
+
+IAM·CORS 실패 내용(같은 결과로 16:23에 한 번 더 확인)
+
+- 앱이 만든 presigned URL은 모두 기대대로다. preflight 200(`allow-origin: http://localhost:5173`), 서명 길이 불일치 403 `SignatureDoesNotMatch`, 정상 업로드 200, presigned GET 6,700바이트.
+- 실패는 **테스트가 직접 만든 만료 URL**(`_boto("s3").generate_presigned_url`, 1초)이 403 대신 **307 `TemporaryRedirect`**를 받은 것이다.
+- 원인 추정(미확인): 새로 만든 버킷에 리전 지정 없는 주소로 요청하면, S3가 버킷 주소를 전파하는 동안 307로 리다이렉트할 수 있다. 제품 경로가 아니라 테스트 헬퍼의 주소 문제일 가능성이 크다. 몇 시간 뒤 다시 돌리거나, 테스트가 서울 리전 엔드포인트(`https://s3.ap-northeast-2.amazonaws.com`)로 서명하게 고친다(개발 담당).
+
+환경 메모 (Windows, AWS 담당 PC)
+
+- `src/ai-requirements.lock`은 manylinux 해시라 Windows venv에 그대로 설치되지 않는다. 로컬 단위 테스트용으로는 `pip install -r requirements-dev.txt -r src/ai-requirements.in -r local/adapter/requirements.txt`로 같은 버전을 설치했다. Lambda 빌드는 컨테이너에서 lock 파일을 쓰므로 영향이 없다.
+- 단위 테스트는 AI 의존성 설치 뒤 약 18%(260여 건) 지점에서 15분 넘게 진행하지 않아 중단했다. 그때 `AWS_PROFILE`이 켜져 있었다. 어느 테스트에서 멈췄는지는 기록하지 못했다(원인 미확인).
+
+#### 주입·에이전트 판정 (16:35–16:55, `17486ed`)
+
+배포 A `FaultInject=photo-slow AgentMode=agent`, 배포 B `FaultInject=photo AiFaultInject=ai-slow AgentMode=agent`. 두 변경 세트 모두 함수 3개(`AiCardFunction`, `PhotoProcessorFunction`, `HttpApi`) 수정뿐이었다. 함수 환경 값을 배포마다 확인했다(`LLM_PROVIDER=bedrock`, `LLM_TEMPERATURE=""`).
+
+| T | 결과 | 근거·설명 |
+|---|---|---|
+| T10·T15 (`test_T10_T15_with_delay`, `photo-slow`) | **통과** | 기본 배포에서 미검증이던 두 사례의 최종 판정(3.4절 규칙) |
+| T20 (같은 턴 5회 동시) | **통과** | `T20-*.json` |
+| T21 (`ai-slow`) | **통과** | 모든 응답 30초 안 |
+| T9 (`photo`) | **테스트 실패, 동작은 기대대로** | `T9-dlq-20261127T165427.json`: `FAILED RETRY_EXHAUSTED`, 알람 `ALARM`, 테스트 메시지 1건 삭제. `inDlq: false`는 첫 DLQ 조회(120초)가 메시지 이동보다 먼저 끝나서다. 큐 가시성 시간이 180초라 세 번째 수신 뒤 DLQ로 옮겨지기까지 120초를 넘는다(추정). 테스트 대기 시간을 늘려야 한다(개발 담당) |
+| T18·T19·T22 | **skip, 미검증** | 테스트가 `openai_compat`만 실제 공급자로 봐서 `bedrock` 함수를 Fake로 판단했다. `tests/integration/test_ai.py`의 `_real_only`·`_llm_mode`가 `bedrock`도 실제 공급자로 보도록 고쳤다. 7단계 배포에서 다시 판정한다 |
+
+배포 C(복원)는 실행되지 않았다. 주입 파라미터를 빼고 `sam deploy`를 하면 **이전 값이 유지된다**(UsePreviousValue). 그래서 "바뀐 것 없음"으로 끝났고 스택은 주입 상태로 남았다. 끄려면 `FaultInject="" AiFaultInject=""`를 명시한다. 이후 배포는 이렇게 했다.
+
+#### 7단계 배포 (`06e95d2`, 17:07–17:32)
+
+| 시각 | 단계 | 결과 |
+|---|---|---|
+| 17:05 | 프론트엔드 빌드(`npm ci`, `npm run build`, Node 22.17.1) | 성공. `frontend/.env.production.local`은 스택 출력으로 만든 공개 값만 담고 gitignore 대상 |
+| 17:07 | `sam build --use-container --build-dir .aws-sam/build7` | 성공 |
+| 17:10 | 배포 F(7단계 + `AgentMode=agent`, 주입 끔) | **실패 후 롤백**(`UPDATE_ROLLBACK_COMPLETE`) |
+| 17:20 | 템플릿 수정 후 다시 빌드, 웹·템플릿 단위 테스트 76건 통과 | |
+| 17:32 | 배포 F 재시도 | **`UPDATE_COMPLETE`**. 추가 11개(웹 버킷·OAC·CloudFront·알람 5종·대시보드·`GET /record` 권한), 수정 13개, 삭제·교체 없음. 함수 환경 `FAULT_INJECT=""` 확인 |
+| 17:32 | `deploy_web.py --apply --prune` | 7개 업로드, 무효화 `I6X4FL37TS5WOK8688GVSVY1AQ` |
+
+**롤백 원인과 수정**: `WebDistribution`이 `The specified response headers policy does not exist. (Status Code: 404)`로 실패했다. 템플릿의 `Managed-SecurityHeadersPolicy` ID `67f7725c-6f97-48c1-86a6-d8d6b5fc7a49`가 틀렸다. `aws cloudfront list-response-headers-policies --type managed`로 확인한 실제 ID는 `67f7725c-6f97-4210-82d7-5512b31e9d03`이다. `template.yaml` 두 곳을 고치고, `tests/unit/test_web_infra.py`에 이 ID 검사를 더했다. 캐시 정책 ID 두 개는 맞았다. 롤백 중에는 스택이 배포 B의 주입 상태로 돌아가 있었다.
+
+7단계 출력값(비밀 아님): 웹 주소 `https://da83p51l0pi6n.cloudfront.net`, `DistributionId` `E38ZPOZ2YYKHXG`, `WebBucketName` `haru-dev-web-963701985499`. API·Cognito 값은 위와 같다. Budgets 파라미터(`BudgetMonthlyUsd`, `BudgetNotificationEmail`)는 비웠다. 이 계정에 이미 월 $200 예산이 있다.
+
+7단계 판정(`integration and not fault`를 AI·사진·나머지 세 묶음으로 동시 실행)과 복원 배포 G(`AgentMode=pipeline`, 주입 끔)는 이 기록을 쓸 때 진행 중이었다.
+
+남은 일
+
+- 7단계 판정 결과 기록(회귀, `GET /record` 스냅샷, `test_web.py`, T18·T19·T22) → 복원 배포 G 확인.
+- T12: 지금 테스트는 `openai_compat` 무효 키 방식이라 Bedrock에 맞지 않는다. 인계 문서(`.kiro/specs/backend-stage7-ops/aws-handoff.md` 4절 9번)의 Bedrock 방식(잘못된 모델 ID·권한)으로 테스트를 바꾼다(개발 담당).
+- T9 테스트 대기 시간, IAM·CORS 만료 URL 307(위 설명): 테스트 코드 수정(개발 담당).
+- `haru-demo` 배포, `seed.py`, 90초 시연 리허설.
+- 정리: 사진·웹 버킷을 비운 뒤 `sam delete --stack-name haru-dev`.
 
 ## 4. AWS에서만 확인되는 것 (1·2단계 해당분, docs/02 §2.4.4)
 
