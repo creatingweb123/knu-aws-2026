@@ -66,9 +66,12 @@ def read_env(path: str) -> dict[str, str]:
         k, v = line.split("=", 1)
         if k.strip().startswith("LLM_"):
             env[k.strip()] = v.strip().strip('"').strip("'")
-    if env.get("LLM_PROVIDER", "openai_compat") != "fake" and not env.get("LLM_API_KEY"):
+    env.setdefault("LLM_PROVIDER", "bedrock")
+    if env["LLM_PROVIDER"] == "openai_compat" and not env.get("LLM_API_KEY"):
         raise SystemExit("LLM_API_KEY가 비어 있다. .env에 직접 넣는다(출력하지 않는다).")
-    env.setdefault("LLM_PROVIDER", "openai_compat")
+    if env["LLM_PROVIDER"] == "bedrock":
+        # 자격 증명은 셸의 AWS 프로필·환경 변수(boto3 기본 체인)를 쓴다. 리전은 .env의 LLM_REGION 또는 셸의 AWS_REGION
+        env.setdefault("LLM_REGION", os.environ.get("AWS_REGION", "") or os.environ.get("AWS_DEFAULT_REGION", ""))
     env["LLM_MAX_RETRIES"] = "0"
     return env
 
@@ -497,7 +500,7 @@ def main() -> int:
         mode = "fake"
     elif args.env_file:
         pipe_env = agent_env = read_env(args.env_file)
-        mode = "fake" if pipe_env.get("LLM_PROVIDER") == "fake" else "openai_compat"
+        mode = pipe_env.get("LLM_PROVIDER", "bedrock")
     else:
         raise SystemExit("--env-file 또는 --fake가 필요하다")
     settings = llm.load_settings(pipe_env)

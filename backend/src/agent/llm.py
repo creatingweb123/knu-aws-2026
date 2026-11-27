@@ -1,5 +1,11 @@
 """LLM 클라이언트 (Requirement 7, design §11–§14, BE-AI-02, BE-AI-05).
 
+- LLM_PROVIDER=bedrock(기본): Amazon Bedrock Converse API(langchain-aws ChatBedrockConverse).
+  인증은 Lambda 실행 역할(IAM)이라 API 키·SSM을 쓰지 않는다. LLM_MODEL은 Bedrock 모델 ID 또는 추론 프로필 ID,
+  LLM_REGION(없으면 AWS_REGION)이 호출 리전이다. botocore 재시도는 끄고(total_max_attempts=1) connect/read 타임아웃을
+  명시한다. bedrock-runtime 클라이언트는 (리전, 타임아웃)별로 한 번 만들어 재사용한다(boto3 클라이언트는 스레드 안전).
+  ChatBedrockConverse의 비동기 호출은 동기 boto3 호출을 실행기 스레드에서 돌리므로 wait_for가 끊어도 그 스레드는
+  read 타임아웃까지 남을 수 있다(응답은 버린다). LLM_EXTRA_BODY는 additionalModelRequestFields로 보낸다.
 - LLM_PROVIDER=openai_compat: ChatOpenAI(Chat Completions, use_responses_api=False, max_retries=0, timeout 명시).
   호출마다 httpx.AsyncClient를 만들어 넘기고 닫는다(모듈 전역 모델을 asyncio.run 사이에 재사용하면
   "Event loop is closed"가 난다, 설계 단계에서 확인).
@@ -26,9 +32,10 @@ from botocore.config import Config
 
 _log = logging.getLogger("haru.ai")
 
-FAKE, OPENAI_COMPAT = "fake", "openai_compat"
+FAKE, OPENAI_COMPAT, BEDROCK = "fake", "openai_compat", "bedrock"
+PROVIDERS = (FAKE, OPENAI_COMPAT, BEDROCK)
 DEV_STACK = "haru-dev"
-QUIET_LOGGERS = ("openai", "httpx", "httpcore", "langchain", "langchain_core", "langchain_openai", "langgraph", "langsmith",
+QUIET_LOGGERS = ("openai", "httpx", "httpcore", "langchain", "langchain_core", "langchain_openai", "langchain_aws", "langgraph", "langsmith",
                  "langgraph_checkpoint_aws",
                  # DEBUG에서 PutItem 요청·응답 본문(사연·카드)을 그대로 찍는다(6a 구현 중 test_ai_logging에서 확인)
                  "boto3", "botocore", "urllib3")
@@ -80,6 +87,7 @@ class LlmSettings:
     tool_choice: str = ""             # 6b bind_tools용으로 보관만 한다
     parallel_tool_calls: str = ""     # 6b bind_tools용으로 보관만 한다
     provider_label: str = ""
+    region: str = ""                  # bedrock 전용(LLM_REGION, 없으면 AWS_REGION)
     fake_scenario: str = "happy"
     error: str | None = field(default=None)  # 설정 오류 사유 코드(있으면 호출 때 CONFIG)
 
@@ -89,7 +97,7 @@ class LlmSettings:
 
     @property
     def mode(self) -> str:
-        return self.provider if self.provider in (FAKE, OPENAI_COMPAT) else "invalid"
+        return self.provider if self.provider in PROVIDERS else "invalid"
 
 
 def fake_allowed(env: Mapping[str, str]) -> bool:
@@ -105,7 +113,7 @@ def fake_allowed(env: Mapping[str, str]) -> bool:
 def load_settings(env: Mapping[str, str] | None = None) -> LlmSettings:
     """환경 변수에서 설정을 읽는다. 오류는 예외가 아니라 error 사유로 담아 호출 때 CONFIG(→ 503)로 처리한다."""
     env = os.environ if env is None else env
-    provider = env.get("LLM_PROVIDER", OPENAI_COMPAT)
+    provider = env.get("LLM_PROVIDER", BEDROCK)
     base: dict[str, Any] = {
         "provider": provider,
         "base_url": env.get("LLM_BASE_URL", ""),
@@ -114,6 +122,7 @@ def load_settings(env: Mapping[str, str] | None = None) -> LlmSettings:
         "tool_choice": env.get("LLM_TOOL_CHOICE", ""),
         "parallel_tool_calls": env.get("LLM_PARALLEL_TOOL_CALLS", ""),
         "provider_label": env.get("LLM_PROVIDER_LABEL", ""),
+        "region": env.get("LLM_REGION", "") or env.get("AWS_REGION", "") or env.get("AWS_DEFAULT_REGION", ""),
         "fake_scenario": env.get("FAKE_LLM_SCENARIO", "happy") or "happy",
     }
     error = None
@@ -137,11 +146,13 @@ def load_settings(env: Mapping[str, str] | None = None) -> LlmSettings:
         else:
             base["extra_body"] = extra
     if error is None:
-        if provider not in (FAKE, OPENAI_COMPAT):
+        if provider not in PROVIDERS:
             error = "CONFIG_PROVIDER"
         elif provider == FAKE and not fake_allowed(env):
             error = "CONFIG_FAKE_NOT_ALLOWED"
         elif provider == OPENAI_COMPAT and (not base["base_url"] or not base["model"]):
+            error = "CONFIG_ENDPOINT"
+        elif provider == BEDROCK and (not base["model"] or not base["region"]):
             error = "CONFIG_ENDPOINT"
         elif base.get("max_retries", 0) != 0:
             error = "CONFIG_RETRIES"  # 6a는 재시도 0만 허용한다(27초·12초 규칙)
@@ -200,32 +211,95 @@ def api_key(settings: LlmSettings, env: Mapping[str, str] | None = None) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Bedrock 런타임 클라이언트 ((리전, 타임아웃)별 캐시)
+# ---------------------------------------------------------------------------
+
+_bedrock_clients: dict[tuple[str, float, float], Any] = {}
+
+
+def bedrock_client(settings: LlmSettings) -> Any:
+    """재시도 없는 bedrock-runtime 클라이언트. 호출 1회 상한은 _call의 wait_for가 맡는다."""
+    key = (settings.region, settings.connect_s, settings.read_s)
+    client = _bedrock_clients.get(key)
+    if client is None:
+        import boto3
+
+        cfg = Config(connect_timeout=settings.connect_s, read_timeout=settings.read_s,
+                     retries={"mode": "standard", "total_max_attempts": 1})
+        # 엔드포인트를 명시한다. 로컬 compose의 AWS_ENDPOINT_URL(Floci 에뮬레이터)이 Bedrock 호출을 가로채지 않게.
+        client = _bedrock_clients[key] = boto3.client(
+            "bedrock-runtime", region_name=settings.region, config=cfg,
+            endpoint_url=f"https://bedrock-runtime.{settings.region}.amazonaws.com")
+    return client
+
+
+def reset_bedrock_clients() -> None:
+    _bedrock_clients.clear()
+
+
+# ---------------------------------------------------------------------------
 # 호출과 오류 분류
 # ---------------------------------------------------------------------------
 
 
-def classify(exc: BaseException) -> str:
-    import openai
+# Bedrock 오류 코드 → 분류 코드. 상태 코드가 같아도 의미가 다른 것만 이름으로 본다.
+_BEDROCK_CODES = {
+    "ThrottlingException": HTTP_429, "ServiceQuotaExceededException": HTTP_429, "TooManyRequestsException": HTTP_429,
+    "AccessDeniedException": HTTP_403, "UnrecognizedClientException": HTTP_401, "ExpiredTokenException": HTTP_401,
+    "InvalidSignatureException": HTTP_401, "ValidationException": HTTP_400, "ModelTimeoutException": TIMEOUT,
+    "ModelNotReadyException": HTTP_5XX, "ServiceUnavailableException": HTTP_5XX, "InternalServerException": HTTP_5XX,
+}
 
+
+def _status_code(code: int) -> str:
+    if code == 401:
+        return HTTP_401
+    if code == 403:
+        return HTTP_403
+    if code == 429:
+        return HTTP_429
+    if code == 400:
+        return HTTP_400
+    if code >= 500:
+        return HTTP_5XX
+    return HTTP_OTHER
+
+
+def _classify_botocore(exc: BaseException) -> str | None:
+    from botocore import exceptions as bx
+
+    if isinstance(exc, (bx.ReadTimeoutError, bx.ConnectTimeoutError)):
+        return TIMEOUT
+    if isinstance(exc, (bx.EndpointConnectionError, bx.ConnectionClosedError, bx.ConnectionError)):
+        return CONNECTION
+    if isinstance(exc, (bx.NoCredentialsError, bx.PartialCredentialsError)):
+        return HTTP_401
+    if isinstance(exc, bx.ClientError):
+        err = exc.response.get("Error", {}) or {}
+        mapped = _BEDROCK_CODES.get(str(err.get("Code", "")))
+        if mapped:
+            return mapped
+        status = (exc.response.get("ResponseMetadata", {}) or {}).get("HTTPStatusCode")
+        return _status_code(int(status)) if isinstance(status, int) else HTTP_OTHER
+    return None
+
+
+def classify(exc: BaseException) -> str:
     if isinstance(exc, (asyncio.TimeoutError, TimeoutError)):
         return TIMEOUT
+    mapped = _classify_botocore(exc)
+    if mapped is not None:
+        return mapped
+    try:
+        import openai
+    except ImportError:  # bedrock만 쓰는 환경
+        return PROVIDER_RESPONSE
     if isinstance(exc, openai.APITimeoutError):  # APIConnectionError의 하위 타입이라 먼저 본다
         return TIMEOUT
     if isinstance(exc, openai.APIConnectionError):
         return CONNECTION
     if isinstance(exc, openai.APIStatusError):
-        code = exc.status_code
-        if code == 401:
-            return HTTP_401
-        if code == 403:
-            return HTTP_403
-        if code == 429:
-            return HTTP_429
-        if code == 400:
-            return HTTP_400
-        if code >= 500:
-            return HTTP_5XX
-        return HTTP_OTHER
+        return _status_code(exc.status_code)
     return PROVIDER_RESPONSE
 
 
@@ -264,6 +338,11 @@ class LlmCaller:
         if not tools:
             return model
         kwargs: dict[str, Any] = {}
+        if self.settings.provider == BEDROCK:
+            # Converse에는 parallel_tool_calls가 없다. tool_choice "required"는 Converse의 "any"다.
+            if self.settings.tool_choice:
+                kwargs["tool_choice"] = "any" if self.settings.tool_choice == "required" else self.settings.tool_choice
+            return model.bind_tools(tools, **kwargs)
         if self.settings.parallel_tool_calls == "false":
             kwargs["parallel_tool_calls"] = False
         if self.settings.tool_choice:
@@ -295,6 +374,8 @@ class LlmCaller:
             msg = await self._call(self._bind(self.fake, tools), messages, deadline_s, delay)
             self._after_response()
             return msg
+        if s.provider == BEDROCK:
+            return await self._ainvoke_bedrock(messages, deadline_s, tools, delay)
         key = api_key(s, self._env)  # 키 읽기 실패는 예약 전에(예약을 낭비하지 않는다)
         import httpx
         from langchain_openai import ChatOpenAI
@@ -312,6 +393,29 @@ class LlmCaller:
             model = ChatOpenAI(base_url=s.base_url, api_key=SecretStr(key), model=s.model, timeout=timeout, max_retries=0,
                                max_tokens=s.max_tokens, use_responses_api=False, http_async_client=http, **kwargs)
             msg = await self._call(self._bind(model, tools), messages, deadline_s, delay)
+        self._after_response()
+        return msg
+
+    async def _ainvoke_bedrock(self, messages: list[Any], deadline_s: float, tools: list[Any] | None, delay: float) -> Any:
+        s = self.settings
+        from langchain_aws import ChatBedrockConverse
+
+        kwargs: dict[str, Any] = {}
+        if s.temperature is not None:
+            kwargs["temperature"] = s.temperature
+        if s.extra_body:
+            kwargs["additional_model_request_fields"] = s.extra_body
+        client = bedrock_client(s)  # 클라이언트 생성 실패(리전 등)는 예약 전에
+        model = ChatBedrockConverse(model=s.model, client=client, region_name=s.region, max_tokens=s.max_tokens,
+                                    disable_streaming=True, **kwargs)
+        try:
+            bound = self._bind(model, tools)  # 모델이 tool_choice를 받지 않으면 langchain-aws가 ValueError를 낸다
+        except ValueError:
+            _log.warning("ai_llm reason=CONFIG_TOOL_CHOICE")
+            raise LlmError(CONFIG, reason="CONFIG_TOOL_CHOICE") from None
+        self._reserve(messages, tools)
+        self.calls_made += 1
+        msg = await self._call(bound, messages, deadline_s, delay)
         self._after_response()
         return msg
 

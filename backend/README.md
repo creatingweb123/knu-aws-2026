@@ -315,14 +315,15 @@ Docker 없이 확인한 대체 수단: moto 테스트(`tests/unit/test_plan_serv
 
 ### 10.2 배포 전 주의 (AWS 담당)
 
-1. **SecureString을 먼저 만든다**(템플릿이 만들지 않는다, BE-Q81). CloudFormation은 SecureString을 만들 수 없다. 표준 계층, AWS 관리형 키 `aws/ssm`, 이름 `/haru/<stage>/llm/api-key`. 값이 셸 기록에 남지 않게 한다.
+0. **기본 공급자는 Amazon Bedrock이다**(`LlmProvider=bedrock`, 2026-11-27). API 키·SSM이 없고 함수 실행 역할의 `bedrock:InvokeModel`로 호출한다(Converse API, 스트리밍 없음). 배포 전에 대상 리전 Bedrock 콘솔에서 쓸 모델의 액세스를 켜고, `LlmModel`에 모델 ID 또는 추론 프로필 ID를, 필요하면 `LlmRegion`(빈 값이면 함수 리전)을 넣는다. 예: `sam deploy --config-env dev --parameter-overrides "... LlmModel=<모델 또는 추론 프로필 ID>"`. 오류 분류는 `ThrottlingException`→`HTTP_429`, `AccessDeniedException`→`HTTP_403`, `ValidationException`→`HTTP_400`, `ModelTimeoutException`·읽기/연결 타임아웃→`TIMEOUT`이다. `LlmToolChoice`는 모델이 지원할 때만 넣는다(아니면 `CONFIG_TOOL_CHOICE`로 503). 1번(SecureString)은 `LlmProvider=openai_compat`일 때만 필요하다.
+1. **SecureString을 먼저 만든다**(`openai_compat`만, 템플릿이 만들지 않는다, BE-Q81). CloudFormation은 SecureString을 만들 수 없다. 표준 계층, AWS 관리형 키 `aws/ssm`, 이름 `/haru/<stage>/llm/api-key`. 값이 셸 기록에 남지 않게 한다.
    ```bash
    read -rs LLM_KEY && printf '%s' "$LLM_KEY" > /dev/shm/k && \
    aws ssm put-parameter --name /haru/dev/llm/api-key --type SecureString --value file:///dev/shm/k && rm -f /dev/shm/k; unset LLM_KEY
    ```
 2. 빌드는 **`sam build --use-container`**(AiCardFunction은 `Metadata.BuildMethod: makefile`, `src/Makefile`).
 3. `AgentMode`는 6a에서 `pipeline`만 허용했다. 6b 브랜치는 `agent`를 연다(11.2절). 그 밖의 값은 배포가 거부되고, 함수 환경 값이 다르면 할당량 전에 503.
-4. 공급자 값(`LlmBaseUrl`·`LlmModel`·`LlmApiKeyParam`·`LlmProviderLabel`)은 BE-Q6 전까지 비어 있다. 비어 있으면 `openai_compat`은 `CONFIG`로 503이 되고 사연은 나가지 않는다.
+4. 공급자 값(`LlmBaseUrl`·`LlmModel`·`LlmApiKeyParam`·`LlmProviderLabel`)은 BE-Q6 전까지 비어 있다. 비어 있으면 `openai_compat`은 `CONFIG`로 503이 되고 사연은 나가지 않는다. `bedrock`도 `LlmModel`이 비면 같다.
 5. Fake 모델은 `Stage=dev` **그리고** 실제 스택 이름 `haru-dev`일 때만 함수에 들어간다(Rules·Condition·런타임 함수 이름 검사, BE-Q86). `demo`에서 `LlmProvider=fake`는 배포가 거부된다. Fake 결과는 S4 연동·AWS 경로 확인용이고 공급자 검증·T12 근거가 아니다. `dev`의 Plan 지표는 품질 분석에 쓰지 않는다.
 6. `samconfig.toml`은 `Stage=dev`/`Stage=demo`를 명시한다(기본값은 `demo`).
 

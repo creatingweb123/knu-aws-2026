@@ -193,7 +193,9 @@ def test_ai_function_settings(template):
 
 def test_ai_function_env(template):
     env = template["Resources"]["AiCardFunction"]["Properties"]["Environment"]["Variables"]
-    assert env["LLM_PROVIDER"] == {"!If": ["FakeAllowed", {"!Ref": "LlmProvider"}, "openai_compat"]}
+    assert env["LLM_PROVIDER"] == {"!If": ["FakeAllowed", {"!Ref": "LlmProvider"},
+                                           {"!If": ["LlmIsFake", "bedrock", {"!Ref": "LlmProvider"}]}]}
+    assert env["LLM_REGION"] == {"!If": ["HasLlmRegion", {"!Ref": "LlmRegion"}, {"!Ref": "AWS::NoValue"}]}
     assert env["FAKE_LLM_ALLOWED"] == {"!If": ["FakeAllowed", "true", "false"]}
     assert env["LLM_API_KEY_PARAM"] == {"!If": ["HasLlmKeyParam", {"!Ref": "LlmApiKeyParam"}, {"!Ref": "AWS::NoValue"}]}
     assert env["LLM_MAX_RETRIES"] == "0" and env["AGENT_MODE"] == {"!Ref": "AgentMode"}
@@ -215,10 +217,10 @@ def test_ai_function_env(template):
 def test_ai_parameters(template):
     p = template["Parameters"]
     assert p["Stage"] == {"Type": "String", "AllowedValues": ["dev", "demo"], "Default": "demo", "Description": p["Stage"]["Description"]}
-    assert p["LlmProvider"]["AllowedValues"] == ["openai_compat", "fake"] and p["LlmProvider"]["Default"] == "openai_compat"
+    assert p["LlmProvider"]["AllowedValues"] == ["bedrock", "openai_compat", "fake"] and p["LlmProvider"]["Default"] == "bedrock"
     assert p["AgentMode"]["AllowedValues"] == ["pipeline", "agent"] and p["AgentMode"]["Default"] == "pipeline"  # 6b에서 agent를 연다
     assert p["AiFaultInject"]["AllowedValues"] == ["", "ai-slow"] and p["AiFaultInject"]["Default"] == ""
-    for k in ("LlmBaseUrl", "LlmModel", "LlmApiKeyParam", "LlmProviderLabel", "LlmExtraBody"):
+    for k in ("LlmBaseUrl", "LlmModel", "LlmRegion", "LlmApiKeyParam", "LlmProviderLabel", "LlmExtraBody"):
         assert p[k]["Default"] == "", k
     assert p["AiDailySessionLimit"]["Default"] == "10" and p["LlmMaxTokens"]["Default"] == "800"
     assert (p["LlmConnectTimeoutS"]["Default"], p["LlmReadTimeoutS"]["Default"], p["LlmTemperature"]["Default"]) == ("2", "8", "0")
@@ -234,7 +236,7 @@ def test_key_param_pattern(template, value, ok):
 
 def test_ai_iam(template):
     policies = template["Resources"]["AiCardFunction"]["Properties"]["Policies"]
-    assert len(policies) == 3  # 6b: 체크포인트 테이블 문장 추가(6a 기대값 2 → 3)
+    assert len(policies) == 4  # 6b: 체크포인트 테이블 문장 추가(6a 기대값 2 → 3), Bedrock 문장 추가(3 → 4)
     (ddb_stmt,) = policies[0]["Statement"]
     assert ddb_stmt["Effect"] == "Allow" and set(ddb_stmt["Action"]) == {"dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:UpdateItem"}
     assert ddb_stmt["Resource"] == {"!GetAtt": "HaruTable.Arn"}  # index/* 없음
@@ -249,9 +251,17 @@ def test_ai_iam(template):
     (ssm_stmt,) = doc["Statement"]
     assert ssm_stmt["Action"] == "ssm:GetParameter"
     assert ssm_stmt["Resource"] == {"!Sub": "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter${LlmApiKeyParam}"}
+    (br_stmt,) = policies[3]["Statement"]
+    assert br_stmt["Effect"] == "Allow" and br_stmt["Action"] == "bedrock:InvokeModel" and "Condition" not in br_stmt
+    assert br_stmt["Resource"] == [
+        {"!Sub": "arn:${AWS::Partition}:bedrock:*::foundation-model/*"},
+        {"!Sub": "arn:${AWS::Partition}:bedrock:*:${AWS::AccountId}:inference-profile/*"},
+        {"!Sub": "arn:${AWS::Partition}:bedrock:*:${AWS::AccountId}:application-inference-profile/*"},
+    ]  # 스트리밍(InvokeModelWithResponseStream)·관리 API 없음
     text = (BACKEND / "template.yaml").read_text(encoding="utf-8")
     ai_block = text[text.index("  AiCardFunction:"): text.index("  AgentTokensAlarm:")]
-    for forbidden in ("dynamodb:Scan", "dynamodb:DeleteItem", "TransactWriteItems", "GetParameters", "kms:"):
+    for forbidden in ("dynamodb:Scan", "dynamodb:DeleteItem", "TransactWriteItems", "GetParameters", "kms:", "Action: bedrock:*",
+                      "InvokeModelWithResponseStream"):
         assert forbidden not in ai_block, forbidden
     haru_stmts = [st for pol in policies[:2] for st in pol["Statement"] if st["Resource"] == {"!GetAtt": "HaruTable.Arn"}]
     assert all("dynamodb:Query" not in st["Action"] for st in haru_stmts)  # HaruTable에는 여전히 Query 없음
@@ -364,12 +374,15 @@ def _eval(expr, params, conditions):
 
 @pytest.mark.parametrize(("stage", "provider", "stack", "accepted", "allowed", "fake_on"), [
     ("dev", "fake", "haru-dev", True, True, True),
-    ("dev", "fake", "haru-dev-copy", True, False, False),   # 스택 이름이 다르면 함수에는 openai_compat
+    ("dev", "fake", "haru-dev-copy", True, False, False),   # 스택 이름이 다르면 함수에는 bedrock
     ("dev", "openai_compat", "haru-dev", True, True, False),
+    ("dev", "bedrock", "haru-dev", True, True, False),
+    ("dev", "bedrock", "haru-dev-copy", True, False, False),
     ("demo", "fake", "haru-demo", False, False, False),     # Rules가 배포를 거부
     ("demo", "fake", "haru-dev", False, False, False),
     ("demo", "openai_compat", "haru-demo", True, False, False),
     ("demo", "openai_compat", "haru-dev", True, False, False),
+    ("demo", "bedrock", "haru-demo", True, False, False),
 ])
 def test_fake_guard(template, stage, provider, stack, accepted, allowed, fake_on):
     params = {"Stage": stage, "LlmProvider": provider, "AWS::StackName": stack, "LlmApiKeyParam": "", "AiFaultInject": ""}
@@ -380,8 +393,13 @@ def test_fake_guard(template, stage, provider, stack, accepted, allowed, fake_on
         assert _eval({"!Condition": "FakeAllowed"}, params, conds) is allowed
         env = template["Resources"]["AiCardFunction"]["Properties"]["Environment"]["Variables"]
         cond, then, other = env["LLM_PROVIDER"]["!If"]
-        effective = params[then["!Ref"]] if _eval({"!Condition": cond}, params, conds) else other
+        if _eval({"!Condition": cond}, params, conds):
+            effective = params[then["!Ref"]]
+        else:
+            in_cond, in_then, in_else = other["!If"]
+            effective = in_then if _eval({"!Condition": in_cond}, params, conds) else params[in_else["!Ref"]]
         assert (effective == "fake") is fake_on
+        assert effective == (provider if allowed or provider != "fake" else "bedrock")
         fa_cond, fa_then, fa_else = env["FAKE_LLM_ALLOWED"]["!If"]
         assert (fa_then if _eval({"!Condition": fa_cond}, params, conds) else fa_else) == ("true" if allowed else "false")
 

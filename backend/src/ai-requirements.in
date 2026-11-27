@@ -7,6 +7,8 @@ langgraph==1.2.24
 langgraph-checkpoint==4.3.2
 langchain-core==1.8.4
 langchain-openai==1.8.5
+# Amazon Bedrock Converse(LLM_PROVIDER=bedrock, 2026-11-27). numpy가 함께 들어온다
+langchain-aws==1.10.0
 langgraph-checkpoint-aws==1.3.0
 boto3>=1.43.64
 # 공통 의존성은 src/requirements.txt와 같은 버전
