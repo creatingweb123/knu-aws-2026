@@ -92,6 +92,11 @@ Parameters:
   AiDailySessionLimit:
     Type: String
     Default: "10"
+  AiMaskBeforeSend:
+    Type: String
+    AllowedValues: ["false", "true"]
+    Default: "false"
+    Description: 사연·답변을 모델로 보내기 전에 전화·이메일·주민번호·동호수를 가릴지(BE-Q10). 미결 정책이라 false를 유지한다. 승인 전에는 바꾸지 않는다.
 
   # --- 7단계 알람 임계값. 명세에 값이 없어 **임시값**이다(BE-Q130). 값은 dev 부하 관측 뒤 AWS 담당·팀이 정한다.
   AlarmApi5xxThreshold:
@@ -380,6 +385,7 @@ Resources:
           FAULT_INJECT: !If [FakeAllowed, !Ref AiFaultInject, ""]
           FAULT_INJECT_ALLOWED: !If [FakeAllowed, "true", "false"]
           AI_DAILY_SESSION_LIMIT: !Ref AiDailySessionLimit
+          AI_MASK_BEFORE_SEND: !Ref AiMaskBeforeSend
           # AI 함수 전용 SDK 설정(BE-Q85). 다른 함수는 기본값 그대로다(BE-Q48).
           AI_SDK_CONNECT_TIMEOUT_S: "1"
           AI_SDK_READ_TIMEOUT_S: "2"

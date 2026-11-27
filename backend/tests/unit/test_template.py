@@ -233,8 +233,9 @@ def test_ai_function_env(template):
     assert env["FAULT_INJECT_ALLOWED"] == {"!If": ["FakeAllowed", "true", "false"]}
     assert not any(k.startswith("AGENT_TEST") or k == "AGENT_CRASH_AT" for k in env)  # 로컬 전용 훅은 AWS에 없다
     for k in ("LLM_BASE_URL", "LLM_MODEL", "LLM_TOOL_CHOICE", "LLM_PARALLEL_TOOL_CALLS", "LLM_TEMPERATURE", "LLM_MAX_TOKENS",
-              "LLM_CONNECT_TIMEOUT_S", "LLM_READ_TIMEOUT_S", "LLM_EXTRA_BODY", "LLM_PROVIDER_LABEL", "AI_DAILY_SESSION_LIMIT"):
+              "LLM_CONNECT_TIMEOUT_S", "LLM_READ_TIMEOUT_S", "LLM_EXTRA_BODY", "LLM_PROVIDER_LABEL", "AI_DAILY_SESSION_LIMIT", "AI_MASK_BEFORE_SEND"):
         assert k in env, k
+    assert env["AI_MASK_BEFORE_SEND"] == {"!Ref": "AiMaskBeforeSend"} and template["Parameters"]["AiMaskBeforeSend"]["Default"] == "false"  # BE-Q10 미결: 기본 꺼짐
     assert (env["AI_SDK_CONNECT_TIMEOUT_S"], env["AI_SDK_READ_TIMEOUT_S"], env["AI_SDK_MAX_ATTEMPTS"]) == ("1", "2", "2")
     text = (BACKEND / "template.yaml").read_text(encoding="utf-8")
     for forbidden in ("LLM_API_KEY:", "LANGSMITH_API_KEY", "LANGCHAIN_API_KEY", "OPENAI_API_KEY", "OPENAI_LOG", "FAKE_LLM_SCENARIO"):

@@ -1,7 +1,7 @@
 """레벨 0 프롬프트와 데이터 블록 (design §8.1, Requirement 10, BE-AI-03).
 
 - 사연은 <story> 블록 안에만 넣는다. 블록 경계를 흉내 내는 태그는 '<'를 전각 '＜'로 바꿔 무력화한다.
-  그 밖의 글자는 원문 그대로다(전송 전 마스킹은 BE-Q10 미결, 결정 전에는 하지 않는다).
+  그 밖의 글자는 원문 그대로다(전송 전 마스킹은 BE-Q10 미결이라 기본은 꺼짐이고, AI_MASK_BEFORE_SEND=true일 때만 HIGH 개인정보를 가린다).
 - 원문 대조 근거(Sources)는 바꾸지 않은 원문이다.
 - 재시도 메시지에는 실패한 응답 원문을 넣지 않고 오류 종류와 경로만 넣는다.
 """
@@ -9,11 +9,14 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import re
 from functools import lru_cache
 from pathlib import Path
 
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
+
+from domain.privacy import mask
 
 PROMPT_FILE = Path(__file__).resolve().parents[1] / "prompts" / "day_card.md"
 _TAG = re.compile(r"<(?=\s*/?\s*(?:story|answer)\b)", re.IGNORECASE)
@@ -30,7 +33,19 @@ def prompt_version() -> str:
     return hashlib.sha256(system_prompt().encode("utf-8")).hexdigest()[:12]
 
 
+def mask_before_send() -> bool:
+    """BE-Q10 스위치. 사연·답변을 모델로 보내기 전에 HIGH 개인정보(전화·이메일·주민번호·동호수)를 ***로 가린다.
+
+    **미결 정책이라 기본은 꺼짐이다**(AI_MASK_BEFORE_SEND가 "true"일 때만 켠다). 켜면 모델 입력만 가려지고,
+    NOT_IN_SOURCE 대조 원문(state의 story·sources)과 저장 값은 그대로다. 모델이 가려진 값을 만들어 낼 수 없으므로
+    대조 결과는 달라지지 않는다. 운영 결정(BE-Q10) 전에는 템플릿 파라미터 AiMaskBeforeSend를 바꾸지 않는다.
+    """
+    return os.environ.get("AI_MASK_BEFORE_SEND", "false").lower() == "true"
+
+
 def neutralize(story: str) -> str:
+    if mask_before_send():
+        story = mask(story) or story
     return _TAG.sub(FULLWIDTH_LT, story)
 
 
