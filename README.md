@@ -103,6 +103,7 @@ frontend/     # 프론트엔드 코드: React, TypeScript, Vite (구조는 §2.1
 - 백엔드(`main`에 병합): 1–6b단계(6a·6b는 AI 레벨 0·에이전트)와 LLM 공급자 Amazon Bedrock 전환(`bedrock` 기본, `openai_compat`·`fake` 선택). 이 중 1–3단계 15건만 2026-11-25 `haru-dev`에서 AWS 판정을 통과했고 나머지는 AWS 판정 전입니다.
 - 백엔드(2026-11-27 `main`에 병합, AWS 배포 전): `GET /claims/{claimId}/record`(BE-Q46 권장안, §3.4 503 계약은 **프론트엔드 담당 승인 대기**), 7단계 웹 버킷·CloudFront(OAC)·알람·대시보드·선택 Budgets, `scripts/seed.py`·`report.py`·`deploy_web.py`·`photo_orphans.py`. 단위·로컬 통합·`cfn-lint`·`sam validate --lint`·`sam build --use-container` 통과, **실제 AWS 배포·인수 판정 대기**([인계 문서](./.kiro/specs/backend-stage7-ops/aws-handoff.md)).
 - 프론트엔드: 1–6단계 완료, 7단계는 로그인·Amplify 연동 코드까지이며(MSW 목업·로컬 백엔드 dev-jwt 연동 확인), 실제 Cognito·API 전환과 배포는 AWS 스택 배포 뒤입니다.
+- 정합성(2026-11-27, `main`): 최신 프론트엔드(`cf0220e`)를 로컬 실제 API(compose·Floci·dev-jwt)에 붙여 주 흐름을 Agent·Pipeline 두 모드, 산책·비산책 사례로 확인했다. 닉네임 `null` 화면 오류와 가입 닉네임 길이 검사를 고쳤다. 계약 승인 대기(닉네임 `null` 확정, 뺀 장소 복원, `GET /record` 503)와 검증 기록은 [`.kiro/specs/backend-frontend-alignment/`](./.kiro/specs/backend-frontend-alignment/tasks.md)에 있다.
 - 일정: 담당자와 날짜는 아직 정해지지 않았습니다([`docs/07-development-plan.md`](./docs/07-development-plan.md)).
 - LLM 운영 공급자·모델·외부 전송 동의 문구·마스킹 정책: 팀 결정 대기(BE-Q6·Q7·Q10, [`docs/08-open-questions.md`](./docs/08-open-questions.md)).
 - 데모 링크: 배포 후 기재합니다.
@@ -111,6 +112,7 @@ frontend/     # 프론트엔드 코드: React, TypeScript, Vite (구조는 §2.1
 
 | 날짜 | 내용 |
 |---|---|
+| 2026-11-27 | 최신 프론트엔드와 백엔드의 정합성을 실제 로컬 API와 브라우저로 점검했다. 닉네임 `null` 상세 화면 오류, 가입 닉네임 길이 검사, 가입 거절 문구를 고쳤다. 계약 변경(닉네임 `null` 확정, `restore`, 503)은 승인 대기로 남겼다. spec `backend-frontend-alignment` |
 | 2026-11-27 | 프론트엔드 화면 개선안을 적용했다(티켓 모양 하루 카드, 아이콘이 있는 하단 탭, 내 하루 남은 날 칩·진행 단계, Pretendard 글꼴, 결과 화면 아이콘 체계). 디자인 기준은 docs/05 §5.3, 글꼴·간격 결정은 FE-Q14 |
 | 2026-11-27 | 서비스 정의를 '취소된 하루의 양도와 경험의 반환'으로 일반화하고(본질·MVP 적용 범위·대표 활용 사례 구분), 명세 문서(docs/01·02·05–07)의 산책 종속 문구를 정리했다. 코드·목업 문구와 검증 상태는 backend/README, frontend/README를 따른다 |
 | 2026-11-27 | LLM 기본 공급자를 Amazon Bedrock(Converse, `bedrock`)으로 전환(`openai_compat`·`fake` 경로 유지). 프론트엔드 1–7단계(7단계는 인증 코드까지)와 백엔드 4단계(수신함), 5단계(사진 파이프라인), 6a단계(AI 레벨 0), 6b단계(AI 에이전트)를 `main`에 병합했다 |

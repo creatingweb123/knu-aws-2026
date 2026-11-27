@@ -9,6 +9,7 @@
 - API CORS: 허용 Origin = CloudFront 도메인, `http://localhost:5173` / 허용 헤더 = `Authorization`, `Content-Type`, `Idempotency-Key` / 허용 메서드 = `GET`, `POST`, `PUT`, `OPTIONS`.
 - 에러 형식: `{ "error": { "code": "ALREADY_CLAIMED", "message": "이미 다른 사람이 이어받았어요.", "details": { "places[0].name": "1–30자로 입력해 주세요." } } }` — `details`는 `VALIDATION_ERROR`일 때만, 키는 요청 본문 경로(`flags[].path`와 같은 표기).
 - 시간은 모두 ISO 8601 UTC 문자열이고 밀리초 3자리를 고정한다(`2026-11-17T09:00:00.000Z`). 서버가 저장한 시각을 문자열로 비교·정렬하므로 자릿수를 섞지 않는다. 이 문서의 예시는 밀리초를 생략해 적었다.
+- 닉네임(`nickname`, `owner.nickname`, `ownerNickname`, `claimer.nickname`, `claimerNickname`)은 저장된 값이 없으면 `null`이다. 빈 문자열이나 가짜 값으로 채우지 않는다(BE-Q45). 프론트는 기본 표시명("계획을 남긴 사람", "이어받은 사람")으로 보여 준다. **상태: 구현 반영(2026-11-27, 프론트 타입 `string | null`), 계약 확정은 프론트 담당 리뷰 대기.**
 
 ## 3.1 내 정보
 
@@ -51,6 +52,7 @@
 - `card`·`flags`·`notes`: `READY`일 때만 채운다. 그 외에는 `card: null`, 빈 배열.
   - `card`의 필드 이름은 `POST /plans` 요청과 **동일**하다(`places[].name/activity/whyChosen`). 프론트는 `card`를 그대로 폼 초기값으로 쓰고(`null`은 빈칸), `flags[].path`도 같은 경로로 폼 필드에 연결한다.
   - `notes`는 'AI가 바꾼 것' 메모. `source`는 근거가 사연(`STORY`)인지 계획자 답변(`ANSWER`)인지 나타낸다.
+  - 뺀 장소를 되살리는 값(`notes[].restore`)은 이 계약에 없다. 실제 API는 원래 값을 응답하지 않으며, 계획자는 장소 추가로 직접 넣는다. 복원 방식(안 A·B)은 **승인 대기**다(FE-Q7·BE-Q13, [설계 §4](../.kiro/specs/backend-frontend-alignment/design.md)). MSW 목업에서만 `restore`가 온다.
 - `degraded`: 세션 예산 소진이나 LLM 오류로 결정적 폴백 카드를 돌려줬으면 `true`.
 
 **예시: 세션 생성 → 질문 1개 → 답변 → READY** (데모 사연. 이 값들은 예시일 뿐이다. 요청·응답 스키마는 활동 유형과 무관하게 같고, 장소가 1곳이거나 걷지 않는 활동(카페, 전시회, 서점 등)이어도 같은 계약이다)
@@ -346,6 +348,7 @@ flowchart TD
 { "record": Record, "claimStatus": "ACTIVE", "delivered": false, "photoStatus": "PROCESSING" }
 ```
 - 요청자 = claimer만 조회 가능. 기록이 아직 없으면 200 `{ "record": null, "claimStatus": "ACTIVE", "delivered": false, "photoStatus": "NONE" }`.
+- 503 `TRY_AGAIN`: 스냅샷 읽기의 트랜잭션 충돌 재시도를 다 쓰면 응답한다(BE-Q46 권장안, 구현 완료). **상태: 계약 반영 승인 대기**. 승인 전에는 이 항목을 확정으로 보지 않는다. 프론트 클라이언트는 `TRY_AGAIN`을 1회 재요청한다(FE-COM-04).
 - 포기·만료된 Claim도 조회는 가능하다. 프론트는 **`claimStatus`** 가 `ABANDONED`/`EXPIRED`이면 종료 안내를 띄운다(`photoStatus = DISCARDED`는 글로 완료 성공 시에도 나오므로 종료 판단에 쓰지 않는다).
 
 **`POST /claims/{claimId}/complete`** — 요청자 = claimer가 아니면 403 `FORBIDDEN` (트랜잭션 전 `ClaimLookup`/Claim으로 확인. 사진 처리 Lambda 경로는 이 검사를 생략)

@@ -67,3 +67,7 @@
 
 1. THE 테스트 SHALL `decideAiNextStep`, 목업 시나리오 9가지, 3-1 화면 흐름(ai-ask 답변·건너뛰기·이대로 받기, ai-working 자동 finish, ai-busy 재동기화, ai-degraded flags·다시 넣기, 실패 4종 → 직접 작성, 새로고침 복구), 폼 flags 표시·지우기, AI_EDITED 공개 본문을 확인한다.
 2. THE Frontend SHALL lint, test, build, format:check를 통과한다.
+
+## 정합성 갱신(2026-11-27, spec backend-frontend-alignment)
+
+- `notes[].restore`는 MSW 목업에서만 온다. 실제 API에는 없으므로 "다시 넣기"는 보이지 않는다. 복원 방식(안 A 적용, 안 B 승인 대기)은 [설계 §4](../backend-frontend-alignment/design.md)를 따른다(FE-Q7·BE-Q13).

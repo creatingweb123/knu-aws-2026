@@ -33,3 +33,7 @@
 
 1. THE 테스트 SHALL 오류 문구·입력 검사, dev JWT 발급·만료·404, 로그인 화면(redirect 왕복, 입력 검사, 오류, 열린 리디렉션 방지, 회원가입, dev-jwt, 목업 안내)을 확인한다.
 2. THE Frontend SHALL lint, test, build, format:check를 통과하고, 목업 모드 번들에 Amplify가 들어가지 않는다(동적 import).
+
+## 정합성 갱신(2026-11-27, spec backend-frontend-alignment)
+
+- 가입 닉네임 1–20자는 프론트 사전 검사와 백엔드 PreSignUp 검사가 같은 규칙을 쓴다(BE-Q139). PreSignUp 거절 `UserLambdaValidationException`은 "입력값을 확인해 주세요."로 안내한다.

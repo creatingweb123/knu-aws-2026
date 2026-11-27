@@ -288,3 +288,7 @@
 | BE-Q17, BE-Q30 | 2.2 | ID 토큰에 `nickname` 클레임이 없을 때의 응답 형태는 미정 |
 
 계약 변경(BE-Q23, BE-Q24, BE-Q29)은 `docs/07-development-plan.md` §7.2의 계약 변경 절차(프론트엔드 리뷰)를 따른다.
+
+## 정합성 갱신(2026-11-27, spec backend-frontend-alignment)
+
+- PreSignUp 트리거가 `request.userAttributes.nickname`을 앞뒤 공백을 뺀 1–20자로 검사하고 어긋나면 가입을 거절한다(BE-Q139, `handlers/pre_signup.py`). 속성이 없으면 User Pool Required 설정에 맡긴다. AWS 배포 뒤 확인이 필요하다.
