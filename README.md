@@ -76,6 +76,7 @@ frontend/     # 프론트엔드 코드: React, TypeScript, Vite (구조는 §2.1
 | 6 | [`docs/06-requirements.md`](./docs/06-requirements.md) | 요구사항 목록(`BE-*`, `FE-*`), 비기능 요구사항, 인수 기준 |
 | 7 | [`docs/07-development-plan.md`](./docs/07-development-plan.md) | 단계별 계획, 연동 지점 S0–S5, 테스트 전략, 검증 시나리오 T1–T22, 완료 기준, 위험 |
 | 8 | [`docs/08-open-questions.md`](./docs/08-open-questions.md) | 확인이 필요한 사항(`BE-Q1`–`BE-Q33`, `FE-Q1`–`FE-Q9`), 문서 사이의 불일치 |
+| 9 | [`docs/09-demo-video.md`](./docs/09-demo-video.md) | 2분 주요 기능 시연 영상 시나리오: 장면별 타임라인, 화면·동작·자막, 촬영 준비, 리허설 체크리스트 |
 
 절 번호는 문서 전체에서 하나만 씁니다. 첫 숫자가 장(문서) 번호이므로 `§3.2`는 `03-api-contract.md`의 3.2절입니다.
 
