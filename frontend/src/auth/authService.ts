@@ -19,6 +19,8 @@ export interface AuthService {
   signUp(email: string, password: string, nickname: string): Promise<void>;
   /** dev-jwt 전용 */
   devSignIn?(userId: string, nickname: string): Promise<void>;
+  /** 이 기기의 로그인을 끝낸다(토큰 삭제). 서버의 이어받기·계획은 그대로다 */
+  signOut(): Promise<void>;
 }
 
 const mockService: AuthService = {
@@ -30,6 +32,8 @@ const mockService: AuthService = {
   signUp: async () => {
     throw new AuthError('목업 모드에서는 위쪽 목업 바에서 사용자를 골라 주세요.');
   },
+  // 목업 모드는 목업 바가 사용자를 바꾸므로 로그아웃 버튼을 보이지 않는다
+  signOut: async () => undefined,
 };
 
 let override: AuthService | null = null;

@@ -8,12 +8,13 @@ import { PrimaryButton } from '../../components/PrimaryButton';
 import { RouteTimeline } from '../../components/RouteTimeline';
 import { claimStep, dDayText, dueText, recordPath } from '../../utils/claim';
 import { planMetaText } from '../../utils/plan';
+import { AccountSection } from './AccountSection';
 import styles from './Me.module.css';
 import { OWNER_FALLBACK_NAME, displayNickname } from '../../utils/nickname';
 
 /**
  * 4. 내 하루(FE-ME-01–03). 진행 중인 이어받기를 모두 카드로 보여 준다(FE-Q21).
- * 하단 탭이 있는 화면이라 버튼은 카드 안에 둔다.
+ * 하단 탭이 있는 화면이라 버튼은 카드 안에 둔다. 맨 아래에 계정 영역(로그아웃, FE-AUTH-04)을 둔다.
  */
 export function MyDayPage() {
   const navigate = useNavigate();
@@ -52,6 +53,8 @@ export function MyDayPage() {
           ))}
         </ul>
       ) : null}
+
+      <AccountSection />
     </section>
   );
 }

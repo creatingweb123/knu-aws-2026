@@ -59,6 +59,9 @@ export const devJwtService: AuthService = {
   devSignIn: async (userId, nickname) => {
     token = await requestDevToken(userId, nickname);
   },
+  signOut: async () => {
+    token = null;
+  },
 };
 
 /** 테스트용 */

@@ -182,3 +182,176 @@
 .two-buttons {
   padding-bottom: calc(52px + var(--space-2));
 }
+
+/* 계정 영역(로그아웃, FE-AUTH-04) */
+.account {
+  margin-top: 40px;
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--color-border);
+}
+
+.account-title {
+  margin-bottom: 10px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--color-text-sub);
+}
+
+.account-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) 14px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+}
+
+.avatar {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-pill);
+  background: var(--color-plan);
+  color: var(--color-plan-text);
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.account-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.account-name {
+  overflow: hidden;
+  font-size: 15px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-hint {
+  margin-top: 2px;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-sub);
+}
+
+.account-button {
+  flex: none;
+  min-height: var(--touch-target);
+  padding: 0 14px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-input);
+  background: var(--color-surface);
+  color: var(--color-text-body);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.account-button:hover {
+  background: var(--color-surface-sub);
+}
+
+/* 로그아웃 확인 시트 */
+.sheet-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgb(31 42 36 / 45%);
+}
+
+.sheet {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  width: 100%;
+  max-width: var(--layout-max-width);
+  padding: var(--space-3) var(--page-gutter) calc(28px + env(safe-area-inset-bottom));
+  border-radius: 24px 24px 0 0;
+  background: var(--color-bg);
+}
+
+.grabber {
+  align-self: center;
+  width: 40px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--color-border-strong);
+}
+
+.sheet-head {
+  display: flex;
+  gap: var(--space-3);
+  padding-top: var(--space-1);
+}
+
+.sheet-icon {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--touch-target);
+  height: var(--touch-target);
+  border-radius: var(--radius-pill);
+  background: var(--color-plan);
+  color: var(--color-plan-text);
+}
+
+.sheet-title {
+  font-size: 19px;
+  font-weight: 800;
+  color: var(--color-primary);
+}
+
+.sheet-text {
+  margin-top: var(--space-1);
+  font-size: var(--font-size-sm);
+  line-height: 1.55;
+  color: var(--color-text-sub);
+}
+
+.sheet-warn {
+  display: flex;
+  gap: 10px;
+  padding: var(--space-3) 14px;
+  border-radius: var(--radius-md);
+  background: var(--color-danger-bg);
+  color: var(--color-danger);
+}
+
+.sheet-warn > svg {
+  flex: none;
+  margin-top: 1px;
+}
+
+.sheet-warn-title {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.sheet-warn-text {
+  margin-top: 2px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #5a3a32;
+}
+
+.sheet-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}

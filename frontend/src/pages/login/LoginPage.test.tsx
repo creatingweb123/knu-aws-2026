@@ -22,6 +22,9 @@ function fakeAuth(kind: AuthService['kind'], over: Partial<AuthService> = {}) {
     devSignIn: vi.fn(async () => {
       token = 'mock.u-suhyun';
     }),
+    signOut: vi.fn(async () => {
+      token = null;
+    }),
     ...over,
   };
   setAuthService(service);

@@ -78,4 +78,10 @@ export const cognitoService: AuthService = {
     }
     await cognitoService.signIn(username, password);
   },
+
+  // 이 기기의 토큰만 지운다(global: false). 다른 기기의 로그인은 그대로 둔다
+  signOut: async () => {
+    const auth = await amplifyAuth();
+    await auth.signOut();
+  },
 };

@@ -8,7 +8,8 @@ export interface SendingClock {
   uploadFailed: boolean;
 }
 
-const key = (claimId: string) => `haru.sending.${claimId}`;
+export const SENDING_PREFIX = 'haru.sending.';
+const key = (claimId: string) => `${SENDING_PREFIX}${claimId}`;
 
 export function loadSending(claimId: string): SendingClock | null {
   try {
